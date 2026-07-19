@@ -308,7 +308,7 @@ class _DelegatedTasksPageState extends State<DelegatedTasksPage> {
                   width: 4,
                   height: 40,
                   decoration: BoxDecoration(
-                    color: si.$1,
+                    color: statusClr,
                     borderRadius: BorderRadius.circular(4),
                   ),
                 ),

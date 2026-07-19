@@ -760,7 +760,6 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     final priorityLbl = TaskLabels.priorityLabel(priority);
     final priorityClr = TaskLabels.priorityColor(priority);
     final isContinuous = t['task_type'] == 'continuous';
-
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -1731,7 +1730,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
           Container(
             padding: const EdgeInsets.all(7),
             decoration: BoxDecoration(
-              color: ai.$1.withValues(alpha: 0.12),
+              color: actionClr.withValues(alpha: 0.12),
               shape: BoxShape.circle,
             ),
             child: Icon(actionIco, color: actionClr, size: 14),
@@ -1992,7 +1991,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         }
         return parts.join('\n');
       } catch (_) {
-        return notes; // اگر پارس نشد، متن خام رو نشون بده (کرش نکنه)
+        return notes;
       }
     }
 

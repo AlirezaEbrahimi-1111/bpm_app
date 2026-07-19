@@ -433,7 +433,7 @@ class DashboardPageState extends State<DashboardPage> {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: ai.$1.withValues(alpha: 0.12),
+                color: actionClr.withValues(alpha: 0.12),
                 shape: BoxShape.circle,
               ),
               child: Icon(actionIco, color: actionClr, size: 15),

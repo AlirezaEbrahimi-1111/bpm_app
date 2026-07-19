@@ -520,7 +520,11 @@ class MyTasksPageState extends State<MyTasksPage> {
                 ],
               ),
             ),
-            TaskLabels.priorityColor(priority),
+            Icon(
+              Icons.flag_rounded,
+              color: TaskLabels.priorityColor(priority),
+              size: 22,
+            ),
           ],
         ),
       ),
