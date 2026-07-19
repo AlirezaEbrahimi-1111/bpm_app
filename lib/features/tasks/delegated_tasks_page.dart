@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../core/network/api_client.dart';
 import 'task_detail_page.dart';
+import '../../core/utils/task_labels.dart';
 
 class DelegatedTasksPage extends StatefulWidget {
   const DelegatedTasksPage({super.key});
@@ -276,7 +277,8 @@ class _DelegatedTasksPageState extends State<DelegatedTasksPage> {
   Widget _buildTaskCard(Map<String, dynamic> task) {
     final status = task['status'] as String? ?? '';
     final priority = task['priority'] as String? ?? '';
-    final si = _statusInfo(status);
+    final statusLbl = TaskLabels.statusLabel(status);
+    final statusClr = TaskLabels.statusColor(status);
     final assigneeName = (task['assignee_name'] ?? '').toString().trim();
 
     return GestureDetector(
@@ -325,7 +327,7 @@ class _DelegatedTasksPageState extends State<DelegatedTasksPage> {
                 ),
                 Icon(
                   Icons.flag_rounded,
-                  color: _priorityColor(priority),
+                  color: TaskLabels.priorityColor(priority),
                   size: 20,
                 ),
               ],
@@ -347,7 +349,7 @@ class _DelegatedTasksPageState extends State<DelegatedTasksPage> {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                _chip(si.$2, si.$1),
+                _chip(statusLbl, statusClr),
               ],
             ),
           ],
@@ -373,15 +375,5 @@ class _DelegatedTasksPageState extends State<DelegatedTasksPage> {
     'medium' => const Color(0xFFF59E0B),
     'low' => const Color(0xFF22C55E),
     _ => Colors.grey.shade300,
-  };
-
-  (Color, String) _statusInfo(String s) => switch (s) {
-    'completed' => (const Color(0xFF22C55E), 'انجام شده'),
-    'in_progress' => (const Color(0xFF3B82F6), 'در جریان'),
-    'delegated' => (const Color(0xFFF59E0B), 'ارجاع شده'),
-    'approved' => (const Color(0xFF22C55E), 'تأیید شده'),
-    'rejected' => (const Color(0xFFEF4444), 'رد شده'),
-    'pending_approval' => (const Color(0xFFF59E0B), 'منتظر تأیید'),
-    _ => (const Color(0xFF9CA3AF), 'شروع نشده'),
   };
 }

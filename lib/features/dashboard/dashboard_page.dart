@@ -5,6 +5,7 @@ import '../../core/network/api_client.dart';
 import '../../core/utils/persian_number.dart';
 import '../tasks/task_detail_page.dart';
 import '../profile/profile_page.dart';
+import '../../core/utils/task_labels.dart';
 
 class DashboardPage extends StatefulWidget {
   final Map<String, dynamic> user;
@@ -404,7 +405,9 @@ class DashboardPageState extends State<DashboardPage> {
 
   Widget _activityItem(Map<String, dynamic> act, bool isLast) {
     final action = act['action'] as String? ?? '';
-    final ai = _actionInfo(action);
+    final actionLbl = TaskLabels.actionLabel(action);
+    final actionClr = TaskLabels.actionColor(action);
+    final actionIco = TaskLabels.actionIcon(action);
     final taskTitle = act['task_title'] ?? 'کار';
     final fromName = (act['from_user_name'] ?? '').toString().trim();
     final taskId = int.tryParse(act['task_id']?.toString() ?? '');
@@ -433,7 +436,7 @@ class DashboardPageState extends State<DashboardPage> {
                 color: ai.$1.withValues(alpha: 0.12),
                 shape: BoxShape.circle,
               ),
-              child: Icon(ai.$2, color: ai.$1, size: 15),
+              child: Icon(actionIco, color: actionClr, size: 15),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -453,7 +456,7 @@ class DashboardPageState extends State<DashboardPage> {
                           text: 'کار «$taskTitle» ',
                           style: const TextStyle(fontWeight: FontWeight.w600),
                         ),
-                        TextSpan(text: ai.$3),
+                        TextSpan(text: actionLbl),
                       ],
                     ),
                   ),
@@ -500,41 +503,4 @@ class DashboardPageState extends State<DashboardPage> {
       return '';
     }
   }
-
-  (Color, IconData, String) _actionInfo(String a) => switch (a) {
-    'created' => (_primary, Icons.add_circle_outline, 'ایجاد شد'),
-    'started' || 'in_progress' => (
-      const Color(0xFF3B82F6),
-      Icons.play_circle_outline,
-      'شروع شد',
-    ),
-    'completed' => (
-      const Color(0xFF10B981),
-      Icons.check_circle_outline,
-      'تکمیل شد',
-    ),
-    'pending_approval' => (
-      const Color(0xFFF59E0B),
-      Icons.hourglass_empty_rounded,
-      'منتظر تأیید شد',
-    ),
-    'approved' || 'completion_approved' => (
-      const Color(0xFF10B981),
-      Icons.verified_outlined,
-      'تأیید شد',
-    ),
-    'rejected' || 'completion_rejected' => (
-      const Color(0xFFEF4444),
-      Icons.cancel_outlined,
-      'رد شد',
-    ),
-    'delegated' => (const Color(0xFFF59E0B), Icons.send_outlined, 'ارجاع شد'),
-    'deleted' => (
-      const Color(0xFFEF4444),
-      Icons.delete_outline_rounded,
-      'حذف شد',
-    ),
-    'updated' => (_primary, Icons.edit_outlined, 'ویرایش شد'),
-    _ => (const Color(0xFF9CA3AF), Icons.circle_outlined, a),
-  };
 }

@@ -5,6 +5,7 @@ import '../../core/network/api_client.dart';
 import '../../core/utils/persian_number.dart';
 import 'task_detail_page.dart';
 import '../profile/profile_page.dart';
+import '../../core/utils/task_labels.dart';
 
 class MyTasksPage extends StatefulWidget {
   final Map<String, dynamic> user;
@@ -409,7 +410,8 @@ class MyTasksPageState extends State<MyTasksPage> {
     final status = task['status'] as String? ?? '';
     final priority = task['priority'] as String? ?? '';
     final isDone = status == 'completed' || status == 'approved';
-    final si = _statusInfo(status);
+    final statusLbl = TaskLabels.statusLabel(status);
+    final statusClr = TaskLabels.statusColor(status);
 
     return GestureDetector(
       onTap: () async {
@@ -476,13 +478,13 @@ class MyTasksPageState extends State<MyTasksPage> {
                         width: 8,
                         height: 8,
                         decoration: BoxDecoration(
-                          color: si.$1,
+                          color: statusClr,
                           shape: BoxShape.circle,
                         ),
                       ),
                       const SizedBox(width: 6),
                       Text(
-                        si.$2,
+                        statusLbl,
                         style: TextStyle(
                           fontSize: 12,
                           color: Colors.grey.shade500,
@@ -518,26 +520,10 @@ class MyTasksPageState extends State<MyTasksPage> {
                 ],
               ),
             ),
-            Icon(Icons.flag_rounded, color: _priorityColor(priority), size: 22),
+            TaskLabels.priorityColor(priority),
           ],
         ),
       ),
     );
   }
-
-  Color _priorityColor(String p) => switch (p) {
-    'high' => const Color(0xFFEF4444),
-    'medium' => const Color(0xFFF59E0B),
-    'low' => const Color(0xFF22C55E),
-    _ => Colors.grey.shade300,
-  };
-
-  (Color, String) _statusInfo(String s) => switch (s) {
-    'completed' => (const Color(0xFF22C55E), 'انجام شده'),
-    'in_progress' => (const Color(0xFF3B82F6), 'در جریان'),
-    'delegated' => (const Color(0xFFF59E0B), 'ارجاع شده'),
-    'approved' => (const Color(0xFF22C55E), 'تأیید شده'),
-    'rejected' => (const Color(0xFFEF4444), 'رد شده'),
-    _ => (const Color(0xFF9CA3AF), 'شروع نشده'),
-  };
 }

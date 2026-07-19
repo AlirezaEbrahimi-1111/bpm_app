@@ -6,6 +6,8 @@ import 'package:dio/dio.dart' as dio;
 import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/utils/persian_number.dart';
+import 'dart:convert';
+import '../../core/utils/task_labels.dart';
 
 class TaskDetailPage extends StatefulWidget {
   final int taskId;
@@ -753,8 +755,10 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     final t = _task!;
     final status = t['status'] as String? ?? '';
     final priority = t['priority'] as String? ?? '';
-    final si = _statusInfo(status);
-    final pi = _priorityInfo(priority);
+    final statusLbl = TaskLabels.statusLabel(status);
+    final statusClr = TaskLabels.statusColor(status);
+    final priorityLbl = TaskLabels.priorityLabel(priority);
+    final priorityClr = TaskLabels.priorityColor(priority);
     final isContinuous = t['task_type'] == 'continuous';
 
     return SingleChildScrollView(
@@ -781,13 +785,13 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                         ),
                       ),
                     ),
-                    _chip(si.$2, si.$1),
+                    _chip(statusLbl, statusClr),
                   ],
                 ),
                 const SizedBox(height: 8),
                 Row(
                   children: [
-                    _chip(pi.$2, pi.$1),
+                    _chip(priorityLbl, priorityClr),
                     const SizedBox(width: 8),
                     _chip(isContinuous ? 'دوره‌ای' : 'مقطعی', _primary),
                   ],
@@ -849,7 +853,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                   _infoRow(
                     Icons.repeat_rounded,
                     'دوره تکرار',
-                    _periodLabel(t['period_type']),
+                    TaskLabels.periodLabel(t['period_type']),
                   ),
                 ] else
                   _infoRow(
@@ -1706,7 +1710,9 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
 
   Widget _historyItem(Map<String, dynamic> h) {
     final action = h['action'] as String? ?? '';
-    final ai = _actionInfo(action);
+    final actionLbl = TaskLabels.actionLabel(action);
+    final actionClr = TaskLabels.actionColor(action);
+    final actionIco = TaskLabels.actionIcon(action);
 
     // نام فردی که عمل را انجام داد
     final fromName =
@@ -1728,7 +1734,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
               color: ai.$1.withValues(alpha: 0.12),
               shape: BoxShape.circle,
             ),
-            child: Icon(ai.$2, color: ai.$1, size: 14),
+            child: Icon(actionIco, color: actionClr, size: 14),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -1739,7 +1745,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                 Row(
                   children: [
                     Text(
-                      ai.$3,
+                      actionLbl,
                       style: const TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
@@ -1778,11 +1784,11 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                     ),
                   ),
                 // توضیحات
-                if ((h['notes'] ?? '').toString().isNotEmpty)
+                if (_formatHistoryNotes(action, h['notes']).isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(top: 4),
                     child: Text(
-                      h['notes'],
+                      _formatHistoryNotes(action, h['notes']),
                       style: TextStyle(
                         fontSize: 12,
                         color: Colors.grey.shade600,
@@ -1964,82 +1970,32 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     ),
   );
 
-  String _periodLabel(String? p) => switch (p) {
-    'daily' => 'روزانه',
-    'weekly' => 'هفتگی',
-    'monthly' => 'ماهانه',
-    _ => '—',
-  };
+  String _formatHistoryNotes(String action, dynamic rawNotes) {
+    final notes = (rawNotes ?? '').toString();
+    if (notes.isEmpty) return '';
 
-  (Color, String) _statusInfo(String s) => switch (s) {
-    'completed' => (const Color(0xFF22C55E), 'انجام شده'),
-    'in_progress' => (const Color(0xFF3B82F6), 'در جریان'),
-    'delegated' => (const Color(0xFFF59E0B), 'ارجاع شده'),
-    'approved' => (const Color(0xFF22C55E), 'تأیید شده'),
-    'rejected' => (const Color(0xFFEF4444), 'رد شده'),
-    _ => (const Color(0xFF9CA3AF), 'شروع نشده'),
-  };
+    if (action == 'deadline_extended') {
+      try {
+        final data = jsonDecode(notes) as Map<String, dynamic>;
+        final oldDeadline = data['old_deadline']?.toString();
+        final newDeadline = data['new_deadline']?.toString();
+        final reason = data['reason']?.toString();
 
-  (Color, String) _priorityInfo(String p) => switch (p) {
-    'high' => (const Color(0xFFEF4444), 'اولویت بالا'),
-    'medium' => (const Color(0xFFF59E0B), 'اولویت متوسط'),
-    'low' => (const Color(0xFF22C55E), 'اولویت پایین'),
-    _ => (const Color(0xFF9CA3AF), '—'),
-  };
+        final parts = <String>[];
+        if (oldDeadline != null && newDeadline != null) {
+          parts.add(
+            'موعد از ${_toShamsi(oldDeadline)} به ${_toShamsi(newDeadline)} تغییر کرد',
+          );
+        }
+        if (reason != null && reason.trim().isNotEmpty) {
+          parts.add('دلیل: $reason');
+        }
+        return parts.join('\n');
+      } catch (_) {
+        return notes; // اگر پارس نشد، متن خام رو نشون بده (کرش نکنه)
+      }
+    }
 
-  (Color, IconData, String) _actionInfo(String a) => switch (a) {
-    'created' => (
-      const Color(0xFF6C63FF),
-      Icons.add_circle_outline,
-      'ایجاد شد',
-    ),
-    'started' || 'in_progress' => (
-      const Color(0xFF3B82F6),
-      Icons.play_circle_outline,
-      'شروع شد',
-    ),
-    'completed' => (
-      const Color(0xFF22C55E),
-      Icons.check_circle_outline,
-      'تکمیل شد',
-    ),
-    'pending_approval' => (
-      const Color(0xFFF59E0B),
-      Icons.hourglass_empty_rounded,
-      'منتظر تأیید',
-    ),
-    'approved' || 'completion_approved' => (
-      const Color(0xFF22C55E),
-      Icons.verified_outlined,
-      'تأیید شد',
-    ),
-    'rejected' || 'completion_rejected' => (
-      const Color(0xFFEF4444),
-      Icons.cancel_outlined,
-      'رد شد',
-    ),
-    'delegated' => (const Color(0xFFF59E0B), Icons.send_outlined, 'ارجاع شد'),
-    'assigned' => (
-      const Color(0xFF3B82F6),
-      Icons.person_add_outlined,
-      'تخصیص یافت',
-    ),
-    'stopped' => (
-      const Color(0xFF9CA3AF),
-      Icons.stop_circle_outlined,
-      'متوقف شد',
-    ),
-    'reopened' => (
-      const Color(0xFF3B82F6),
-      Icons.refresh_rounded,
-      'بازگشایی شد',
-    ),
-    'deleted' => (
-      const Color(0xFFEF4444),
-      Icons.delete_outline_rounded,
-      'حذف شد',
-    ),
-    'updated' => (const Color(0xFF6C63FF), Icons.edit_outlined, 'ویرایش شد'),
-    _ => (const Color(0xFF9CA3AF), Icons.circle_outlined, a),
-  };
+    return notes;
+  }
 }
