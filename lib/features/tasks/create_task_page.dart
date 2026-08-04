@@ -5,6 +5,7 @@ import 'package:persian_datetime_picker/persian_datetime_picker.dart';
 import 'package:dio/dio.dart' as dio;
 import 'package:file_picker/file_picker.dart';
 import '../../core/utils/persian_number.dart';
+import 'widgets/persian_date_picker_sheet.dart';
 
 class CreateTaskPage extends StatefulWidget {
   final String userRole;
@@ -33,7 +34,6 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
   List<dynamic> _groups = [];
   int? _selectedGroupId;
   String _groupLabel = 'بدون گروه';
-  bool _showMore = false;
   bool _isLoading = false;
   // چک‌لیست
   final List<String> _checklistItems = [];
@@ -115,29 +115,16 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
   }
 
   // ── انتخاب تاریخ ──────────────────────────────────
+  // 🔧 اصلاح: به‌جای پکیج persian_datetime_picker (که گاهی ارقام را
+  // انگلیسی نشان می‌داد)، از انتخابگر اختصاصیِ خودمان استفاده می‌کنیم
+  // که تضمین می‌کند همه‌ی ارقام همیشه فارسی نمایش داده شوند.
   Future<DateTime?> _pickDate({DateTime? initial}) async {
-    Jalali? picked = await showPersianDatePicker(
-      context: context,
-      initialDate: initial != null
-          ? Jalali.fromDateTime(initial)
-          : Jalali.now(),
-      firstDate: Jalali(1400, 1),
-      lastDate: Jalali(1410, 12),
-      builder: (ctx, child) => Directionality(
-        textDirection: TextDirection.rtl,
-        child: Localizations.override(
-          context: ctx,
-          locale: const Locale('fa', 'IR'),
-          child: Theme(
-            data: Theme.of(
-              ctx,
-            ).copyWith(colorScheme: const ColorScheme.light(primary: _primary)),
-            child: child!,
-          ),
-        ),
-      ),
+    return showCustomPersianDatePicker(
+      context,
+      initialDate: initial,
+      firstDate: Jalali(1400, 1, 1),
+      lastDate: Jalali(1410, 12, 29),
     );
-    return picked?.toDateTime();
   }
 
   // ── ارسال فرم ─────────────────────────────────────
@@ -431,195 +418,144 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
             ),
             const SizedBox(height: 12),
 
-            // ── جزئیات بیشتر ───────────────────────────
-            GestureDetector(
-              onTap: () => setState(() => _showMore = !_showMore),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 14,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.04),
-                      blurRadius: 8,
-                    ),
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(
-                        color: _primary.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Icon(
-                        _showMore ? Icons.remove : Icons.add,
-                        color: _primary,
-                        size: 18,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Text(
-                      _showMore ? 'بستن جزئیات' : 'جزئیات بیشتر',
-                      style: const TextStyle(
-                        color: _primary,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+            // 🔧 اصلاح: بخش «جزئیات بیشتر» حذف شد — همه‌ی جزئیات
+            // همیشه و یک‌جا نمایش داده می‌شوند (بدون نیاز به باز کردن).
+            _card(
+              children: [
+                // توضیحات
+                _label('توضیحات'),
+                _textField(_descController, 'توضیحات اختیاری...', maxLines: 3),
+                const SizedBox(height: 16),
+
+                // مسئول
+                _label('مسئول کار'),
+                _assigneePicker(),
+                const SizedBox(height: 16),
+                // گروه
+                _label('گروه'),
+                _groupPicker(),
+              ],
             ),
-
-            if (_showMore) ...[
-              const SizedBox(height: 12),
-              _card(
-                children: [
-                  // توضیحات
-                  _label('توضیحات'),
-                  _textField(
-                    _descController,
-                    'توضیحات اختیاری...',
-                    maxLines: 3,
-                  ),
-                  const SizedBox(height: 16),
-
-                  // مسئول
-                  _label('مسئول کار'),
-                  _assigneePicker(),
-                  const SizedBox(height: 16),
-                  // گروه
-                  _label('گروه'),
-                  _groupPicker(),
-                ],
-              ),
-              const SizedBox(height: 12),
-              _card(
-                children: [
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.checklist_rounded,
-                        size: 18,
-                        color: _primary,
+            const SizedBox(height: 12),
+            _card(
+              children: [
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.checklist_rounded,
+                      size: 18,
+                      color: _primary,
+                    ),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'چک‌لیست',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF1A1A2E),
                       ),
-                      const SizedBox(width: 8),
-                      const Text(
-                        'چک‌لیست',
+                    ),
+                    const Spacer(),
+                    if (_checklistItems.isNotEmpty)
+                      Text(
+                        '${_checklistItems.length} آیتم',
                         style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF1A1A2E),
+                          fontSize: 12,
+                          color: Colors.grey.shade500,
                         ),
                       ),
-                      const Spacer(),
-                      if (_checklistItems.isNotEmpty)
-                        Text(
-                          '${_checklistItems.length} آیتم',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey.shade500,
+                  ],
+                ),
+                const SizedBox(height: 12),
+
+                // آیتم‌های اضافه‌شده
+                ..._checklistItems.asMap().entries.map((entry) {
+                  final i = entry.key;
+                  final text = entry.value;
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF5F6FA),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.radio_button_unchecked,
+                          size: 18,
+                          color: Colors.grey.shade400,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            text,
+                            style: const TextStyle(fontSize: 13),
                           ),
                         ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-
-                  // آیتم‌های اضافه‌شده
-                  ..._checklistItems.asMap().entries.map((entry) {
-                    final i = entry.key;
-                    final text = entry.value;
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF5F6FA),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.radio_button_unchecked,
+                        GestureDetector(
+                          onTap: () =>
+                              setState(() => _checklistItems.removeAt(i)),
+                          child: Icon(
+                            Icons.close_rounded,
                             size: 18,
                             color: Colors.grey.shade400,
                           ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              text,
-                              style: const TextStyle(fontSize: 13),
-                            ),
-                          ),
-                          GestureDetector(
-                            onTap: () =>
-                                setState(() => _checklistItems.removeAt(i)),
-                            child: Icon(
-                              Icons.close_rounded,
-                              size: 18,
-                              color: Colors.grey.shade400,
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  }),
+                        ),
+                      ],
+                    ),
+                  );
+                }),
 
-                  // فیلد افزودن آیتم
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _checklistController,
-                          decoration: InputDecoration(
-                            hintText: 'افزودن آیتم جدید...',
-                            hintStyle: TextStyle(
-                              color: Colors.grey.shade400,
-                              fontSize: 13,
-                            ),
-                            filled: true,
-                            fillColor: const Color(0xFFF5F6FA),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide.none,
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 10,
-                            ),
+                // فیلد افزودن آیتم
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _checklistController,
+                        decoration: InputDecoration(
+                          hintText: 'افزودن آیتم جدید...',
+                          hintStyle: TextStyle(
+                            color: Colors.grey.shade400,
+                            fontSize: 13,
                           ),
-                          onSubmitted: (_) => _addChecklistItem(),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      GestureDetector(
-                        onTap: _addChecklistItem,
-                        child: Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: _primary,
+                          filled: true,
+                          fillColor: const Color(0xFFF5F6FA),
+                          border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
                           ),
-                          child: const Icon(
-                            Icons.add,
-                            color: Colors.white,
-                            size: 20,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 10,
                           ),
                         ),
+                        onSubmitted: (_) => _addChecklistItem(),
                       ),
-                    ],
-                  ),
-                ],
-              ),
-            ],
+                    ),
+                    const SizedBox(width: 8),
+                    GestureDetector(
+                      onTap: _addChecklistItem,
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: _primary,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(
+                          Icons.add,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
             const SizedBox(height: 12),
             _card(
               children: [
@@ -1182,6 +1118,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     );
   }
 
+  // 🔧 اصلاح: حالا این مودال یک ویجت جدا با قابلیت جستجوست
   void _showAssigneeSheet() {
     showModalBottomSheet(
       context: context,
@@ -1189,108 +1126,11 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => DraggableScrollableSheet(
-        initialChildSize: 0.7,
-        minChildSize: 0.4,
-        maxChildSize: 0.9,
-        expand: false,
-        builder: (ctx, scrollController) => Column(
-          children: [
-            const SizedBox(height: 12),
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.grey.shade300,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'انتخاب مسئول',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-            ),
-            const SizedBox(height: 12),
-            Expanded(
-              child: ListView(
-                controller: scrollController,
-                children: [
-                  // خودم
-                  _assigneeTile(
-                    icon: Icons.person,
-                    color: Colors.grey,
-                    label: 'خودم',
-                    onTap: () => _selectAssignee('self', null, 'خودم'),
-                  ),
-
-                  // ── واحدها (فقط supervisor) ──
-                  // ── واحدها (برای همه) ──
-                  if (_sections.isNotEmpty) ...[
-                    _sheetHeader('📁 واحدها'),
-                    // «همه واحدها» فقط supervisor
-                    if (_isSupervisor)
-                      _assigneeTile(
-                        icon: Icons.groups,
-                        color: const Color(0xFF6B21A8),
-                        label: 'همه واحدها',
-                        meta: '${_users.length} نفر — یک تسک برای هر نفر',
-                        onTap: () => _selectAssignee(
-                          'all_sections',
-                          '__all__',
-                          'همه واحدها',
-                        ),
-                      ),
-                    ..._sections.map((s) {
-                      final key = s['section_key'];
-                      final label = s['section_label'] ?? key;
-                      final count = _users
-                          .where((u) => u['activity_section'] == key)
-                          .length;
-                      return _assigneeTile(
-                        icon: Icons.folder_outlined,
-                        color: const Color(0xFF854D0E),
-                        label: label,
-                        meta: count > 0 ? '$count نفر' : 'بدون عضو',
-                        onTap: () => _selectAssignee('section', key, label),
-                      );
-                    }),
-                  ],
-
-                  // ── کاربران ──
-                  _sheetHeader('👤 کاربران'),
-                  if (_isSupervisor)
-                    _assigneeTile(
-                      icon: Icons.people,
-                      color: const Color(0xFF6B21A8),
-                      label: 'همه کاربران',
-                      meta: '${_users.length} نفر — یک تسک برای هر نفر',
-                      onTap: () => _selectAssignee(
-                        'all_users',
-                        '__all_users__',
-                        'همه کاربران',
-                      ),
-                    ),
-                  ..._users.map((u) {
-                    final name =
-                        '${u['first_name'] ?? ''} ${u['last_name'] ?? ''}'
-                            .trim();
-                    final display = name.isEmpty
-                        ? (u['phone'] ?? 'بدون نام')
-                        : name;
-                    return _assigneeTile(
-                      avatar: display.toString().isNotEmpty
-                          ? display.toString()[0]
-                          : '?',
-                      label: display,
-                      onTap: () => _selectAssignee('user', u['id'], display),
-                    );
-                  }),
-                  const SizedBox(height: 20),
-                ],
-              ),
-            ),
-          ],
-        ),
+      builder: (_) => _AssigneeSelectSheet(
+        users: _users,
+        sections: _sections,
+        isSupervisor: _isSupervisor,
+        onSelected: _selectAssignee,
       ),
     );
   }
@@ -1301,10 +1141,231 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       _assigneeValue = value;
       _assigneeLabel = label;
     });
-    Get.back();
+    // 🔧 توجه: بستنِ مودال حالا داخل خودِ _AssigneeSelectSheet انجام می‌شود
+    // (Navigator.pop) — اینجا دیگر آن را نمی‌بندیم تا دوبار بسته نشود.
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// 🔧 اصلاح: مودالِ انتخابِ مسئول، حالا با قابلیتِ جستجو
+// این ویجت جدا شده تا بتواند وضعیتِ متنِ جستجو را نگه دارد و با
+// هر تایپ، لیست را فوراً فیلتر کند.
+// ════════════════════════════════════════════════════════════
+class _AssigneeSelectSheet extends StatefulWidget {
+  final List<dynamic> users;
+  final List<dynamic> sections;
+  final bool isSupervisor;
+  final void Function(String type, dynamic value, String label) onSelected;
+
+  const _AssigneeSelectSheet({
+    required this.users,
+    required this.sections,
+    required this.isSupervisor,
+    required this.onSelected,
+  });
+
+  @override
+  State<_AssigneeSelectSheet> createState() => _AssigneeSelectSheetState();
+}
+
+class _AssigneeSelectSheetState extends State<_AssigneeSelectSheet> {
+  static const _primary = Color(0xFF6D28D9);
+
+  final _searchController = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
-  Widget _sheetHeader(String text) => Container(
+  String _userLabel(dynamic u) {
+    final name = '${u['first_name'] ?? ''} ${u['last_name'] ?? ''}'.trim();
+    return name.isEmpty ? (u['phone']?.toString() ?? 'بدون نام') : name;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final q = _query.trim().toLowerCase();
+
+    final filteredSections = q.isEmpty
+        ? widget.sections
+        : widget.sections.where((s) {
+            final label = (s['section_label'] ?? s['section_key'] ?? '')
+                .toString()
+                .toLowerCase();
+            return label.contains(q);
+          }).toList();
+
+    final filteredUsers = q.isEmpty
+        ? widget.users
+        : widget.users.where((u) {
+            final label = _userLabel(u).toLowerCase();
+            final phone = (u['phone'] ?? '').toString().toLowerCase();
+            return label.contains(q) || phone.contains(q);
+          }).toList();
+
+    final showSelfOption = q.isEmpty || 'خودم'.contains(q);
+    final showGroupOptions = q.isEmpty; // گزینه‌های «همه...» فقط بدون جستجو
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.75,
+      minChildSize: 0.4,
+      maxChildSize: 0.9,
+      expand: false,
+      builder: (ctx, scrollController) => Column(
+        children: [
+          const SizedBox(height: 12),
+          Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.grey.shade300,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'انتخاب مسئول',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          ),
+          const SizedBox(height: 12),
+
+          // 🔧 فیلد جستجو
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: TextField(
+              controller: _searchController,
+              onChanged: (v) => setState(() => _query = v),
+              decoration: InputDecoration(
+                hintText: 'جستجوی نام یا واحد...',
+                hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 13),
+                prefixIcon: Icon(
+                  Icons.search_rounded,
+                  color: Colors.grey.shade400,
+                  size: 20,
+                ),
+                suffixIcon: _query.isNotEmpty
+                    ? IconButton(
+                        icon: Icon(
+                          Icons.close_rounded,
+                          color: Colors.grey.shade400,
+                          size: 18,
+                        ),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() => _query = '');
+                        },
+                      )
+                    : null,
+                filled: true,
+                fillColor: const Color(0xFFF5F6FA),
+                contentPadding: const EdgeInsets.symmetric(vertical: 4),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+
+          Expanded(
+            child:
+                (filteredSections.isEmpty &&
+                    filteredUsers.isEmpty &&
+                    !showSelfOption)
+                ? Center(
+                    child: Text(
+                      'نتیجه‌ای یافت نشد',
+                      style: TextStyle(
+                        color: Colors.grey.shade400,
+                        fontSize: 13,
+                      ),
+                    ),
+                  )
+                : ListView(
+                    controller: scrollController,
+                    children: [
+                      if (showSelfOption)
+                        _tile(
+                          icon: Icons.person,
+                          color: Colors.grey,
+                          label: 'خودم',
+                          onTap: () => _select('self', null, 'خودم'),
+                        ),
+
+                      if (filteredSections.isNotEmpty) ...[
+                        _header('📁 واحدها'),
+                        if (widget.isSupervisor && showGroupOptions)
+                          _tile(
+                            icon: Icons.groups,
+                            color: const Color(0xFF6B21A8),
+                            label: 'همه واحدها',
+                            meta:
+                                '${widget.users.length} نفر — یک تسک برای هر نفر',
+                            onTap: () => _select(
+                              'all_sections',
+                              '__all__',
+                              'همه واحدها',
+                            ),
+                          ),
+                        ...filteredSections.map((s) {
+                          final key = s['section_key'];
+                          final label = s['section_label'] ?? key;
+                          final count = widget.users
+                              .where((u) => u['activity_section'] == key)
+                              .length;
+                          return _tile(
+                            icon: Icons.folder_outlined,
+                            color: const Color(0xFF854D0E),
+                            label: label,
+                            meta: count > 0 ? '$count نفر' : 'بدون عضو',
+                            onTap: () => _select('section', key, label),
+                          );
+                        }),
+                      ],
+
+                      if (filteredUsers.isNotEmpty || showGroupOptions) ...[
+                        _header('👤 کاربران'),
+                        if (widget.isSupervisor && showGroupOptions)
+                          _tile(
+                            icon: Icons.people,
+                            color: const Color(0xFF6B21A8),
+                            label: 'همه کاربران',
+                            meta:
+                                '${widget.users.length} نفر — یک تسک برای هر نفر',
+                            onTap: () => _select(
+                              'all_users',
+                              '__all_users__',
+                              'همه کاربران',
+                            ),
+                          ),
+                        ...filteredUsers.map((u) {
+                          final display = _userLabel(u);
+                          return _tile(
+                            avatar: display.isNotEmpty ? display[0] : '?',
+                            label: display,
+                            onTap: () => _select('user', u['id'], display),
+                          );
+                        }),
+                      ],
+                      const SizedBox(height: 20),
+                    ],
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _select(String type, dynamic value, String label) {
+    widget.onSelected(type, value, label);
+    Navigator.of(context).pop();
+  }
+
+  Widget _header(String text) => Container(
     width: double.infinity,
     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
     color: const Color(0xFFF5F6FA),
@@ -1318,7 +1379,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     ),
   );
 
-  Widget _assigneeTile({
+  Widget _tile({
     IconData? icon,
     Color? color,
     String? avatar,

@@ -125,7 +125,11 @@ class ProfilePage extends StatelessWidget {
                     'شماره موبایل',
                     user['phone']?.toString() ?? '—',
                   ),
-                  if ((user['username'] ?? '').toString().isNotEmpty) ...[
+                  // 🔧 اصلاح: اگر نام کاربری همان شماره موبایل باشد،
+                  // دوباره نمایشش نده (تکراری و بی‌فایده است)
+                  if ((user['username'] ?? '').toString().isNotEmpty &&
+                      user['username'].toString() !=
+                          (user['phone']?.toString() ?? '')) ...[
                     const Divider(height: 20),
                     _infoRow(
                       Icons.person_outline,

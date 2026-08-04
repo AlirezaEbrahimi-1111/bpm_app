@@ -1,4 +1,4 @@
-package com.example.bpm_app
+package com.malek.bpm
 
 import io.flutter.embedding.android.FlutterActivity
 

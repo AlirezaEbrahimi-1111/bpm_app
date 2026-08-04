@@ -4,13 +4,11 @@ import 'package:shamsi_date/shamsi_date.dart';
 import '../../core/network/api_client.dart';
 import '../../core/utils/persian_number.dart';
 import '../tasks/task_detail_page.dart';
-import '../profile/profile_page.dart';
 import '../../core/utils/task_labels.dart';
 
 class DashboardPage extends StatefulWidget {
   final Map<String, dynamic> user;
-  final VoidCallback? onMenuTap;
-  const DashboardPage({super.key, required this.user, this.onMenuTap});
+  const DashboardPage({super.key, required this.user});
   @override
   State<DashboardPage> createState() => DashboardPageState();
 }
@@ -34,26 +32,40 @@ class DashboardPageState extends State<DashboardPage> {
 
   void reload() => _loadData();
 
+  // 🔧 اصلاح سرعت: این دو درخواست از هم مستقل‌اند (آمار و فعالیت‌های
+  // اخیر) — قبلاً پشت‌سرهم (sequential) گرفته می‌شدند که یعنی زمان لود
+  // برابر با مجموع زمان دو درخواست بود. حالا هم‌زمان (parallel) گرفته
+  // می‌شوند تا زمان لود تقریباً برابر با کندترینِ آن‌ها باشد، نه مجموعشان.
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
+    final results = await Future.wait([_fetchStats(), _fetchActivities()]);
+    if (mounted) {
+      setState(() {
+        _stats = results[0] as Map<String, dynamic>?;
+        _activities = results[1] as List<dynamic>;
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<Map<String, dynamic>?> _fetchStats() async {
     try {
-      final statsRes = await ApiClient.dio.get('/api/tasks/stats.php');
-      final actRes = await ApiClient.dio.get(
+      final res = await ApiClient.dio.get('/api/tasks/stats.php');
+      if (res.data['success'] == true) return res.data['stats'];
+    } catch (_) {}
+    return null;
+  }
+
+  Future<List<dynamic>> _fetchActivities() async {
+    try {
+      final res = await ApiClient.dio.get(
         '/api/tasks/recent-activities.php',
         queryParameters: {'limit': 8},
       );
-
-      setState(() {
-        if (statsRes.data['success'] == true) _stats = statsRes.data['stats'];
-        final actData = ApiClient.parseResponse(actRes.data);
-        if (actData['success'] == true) {
-          _activities = actData['activities'] ?? [];
-        }
-        _isLoading = false;
-      });
-    } catch (e) {
-      setState(() => _isLoading = false);
-    }
+      final data = ApiClient.parseResponse(res.data);
+      if (data['success'] == true) return data['activities'] ?? [];
+    } catch (_) {}
+    return [];
   }
 
   String _getShamsiDate() {
@@ -103,8 +115,6 @@ class DashboardPageState extends State<DashboardPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _buildTopBar(),
-                      const SizedBox(height: 20),
                       _buildWelcomeCard(),
                       const SizedBox(height: 20),
                       _buildStatsGrid(),
@@ -115,36 +125,6 @@ class DashboardPageState extends State<DashboardPage> {
                 ),
               ),
             ),
-    );
-  }
-
-  Widget _buildTopBar() {
-    final first = widget.user['first_name'] ?? 'U';
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        IconButton(
-          onPressed: widget.onMenuTap,
-          icon: const Icon(Icons.menu_rounded, size: 26, color: _ink),
-          padding: EdgeInsets.zero,
-          constraints: const BoxConstraints(),
-        ),
-        GestureDetector(
-          onTap: () => Get.to(() => ProfilePage(user: widget.user)),
-          child: CircleAvatar(
-            radius: 20,
-            backgroundColor: _primary.withValues(alpha: 0.15),
-            child: Text(
-              first.toString().isNotEmpty ? first.toString()[0] : 'U',
-              style: const TextStyle(
-                color: _primary,
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-              ),
-            ),
-          ),
-        ),
-      ],
     );
   }
 

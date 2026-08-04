@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import '../../core/network/api_client.dart';
 import 'task_detail_page.dart';
 import '../../core/utils/task_labels.dart';
+import '../../core/utils/task_search.dart';
 
 class DelegatedTasksPage extends StatefulWidget {
   const DelegatedTasksPage({super.key});
@@ -53,9 +54,10 @@ class _DelegatedTasksPageState extends State<DelegatedTasksPage> {
     var list = List<dynamic>.from(_tasks);
 
     if (_filter == 'در جریان') {
-      list = list
-          .where((t) => t['status'] != 'completed' && t['status'] != 'approved')
-          .toList();
+      // 🔧 اصلاح: قبلاً هر وضعیتی غیر از completed/approved (حتی
+      // «شروع نشده» و «ارجاع شده») این‌جا نمایش داده می‌شد. الان فقط
+      // کارهایی که واقعاً «در حال انجام»ند نشان داده می‌شوند.
+      list = list.where((t) => t['status'] == 'in_progress').toList();
     } else if (_filter == 'تکمیل شده') {
       list = list
           .where((t) => t['status'] == 'completed' || t['status'] == 'approved')
@@ -65,12 +67,7 @@ class _DelegatedTasksPageState extends State<DelegatedTasksPage> {
     }
 
     if (_searchQuery.trim().isNotEmpty) {
-      final q = _searchQuery.trim();
-      list = list.where((t) {
-        final title = (t['title'] ?? '').toString();
-        final assignee = (t['assignee_name'] ?? '').toString();
-        return title.contains(q) || assignee.contains(q);
-      }).toList();
+      list = list.where((t) => taskMatchesQuery(t, _searchQuery)).toList();
     }
 
     return list;

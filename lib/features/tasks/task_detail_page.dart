@@ -411,10 +411,24 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         data: {'item_id': item['id'], 'is_done': newValue},
       );
       if (res.data['success'] == true) {
+        // 🔧 اصلاح: حتماً باید ست شود تا وقتی از این صفحه خارج می‌شویم،
+        // صفحه‌ی «لیست کارها» بفهمد چیزی تغییر کرده و خودش را تازه کند
+        // (وگرنه وضعیتِ قدیمی/نادرست در لیست باقی می‌ماند).
+        _hasChanges = true;
+
         _loadChecklist();
-        // اگر کار خودکار تکمیل شد، کل صفحه را refresh کن
+        // 🔧 اصلاح: قبلاً فقط وقتی auto_completed بود جزئیات کار
+        // تازه‌سازی می‌شد؛ برای همین با تیک زدن اولین آیتم، وضعیت بالای
+        // صفحه («شروع نشده») به‌روز نمی‌شد. الان همیشه تازه‌سازی می‌کنیم.
+        _loadDetail();
+
         if (res.data['auto_completed'] == true) {
-          _loadDetail();
+          Get.snackbar(
+            '✅ تکمیل شد',
+            'همه آیتم‌های چک‌لیست تکمیل شدند. کار طبق روال ادامه یافت.',
+            snackPosition: SnackPosition.BOTTOM,
+            backgroundColor: Colors.green.shade100,
+          );
         }
       } else {
         Get.snackbar(
@@ -1023,11 +1037,28 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
 
     int? selectedUserId;
     String? selectedUserName;
+    String searchQuery = '';
     final notesController = TextEditingController();
+    final searchController = TextEditingController();
+
+    String userDisplay(dynamic u) {
+      final name = '${u['first_name'] ?? ''} ${u['last_name'] ?? ''}'.trim();
+      return name.isEmpty ? (u['phone']?.toString() ?? 'بدون نام') : name;
+    }
 
     Get.bottomSheet(
       StatefulBuilder(
-        builder: (ctx, setSheetState) => Container(
+        builder: (ctx, setSheetState) {
+          final q = searchQuery.trim().toLowerCase();
+          final filteredUsers = q.isEmpty
+              ? _users
+              : _users.where((u) {
+                  final display = userDisplay(u).toLowerCase();
+                  final phone = (u['phone'] ?? '').toString().toLowerCase();
+                  return display.contains(q) || phone.contains(q);
+                }).toList();
+
+          return Container(
           decoration: const BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
@@ -1052,19 +1083,67 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                 'ارجاع کار',
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
+
+              // فیلد جستجو
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: TextField(
+                  controller: searchController,
+                  onChanged: (v) => setSheetState(() => searchQuery = v),
+                  decoration: InputDecoration(
+                    hintText: 'جستجوی نام یا شماره...',
+                    hintStyle: TextStyle(
+                      color: Colors.grey.shade400,
+                      fontSize: 13,
+                    ),
+                    prefixIcon: Icon(
+                      Icons.search_rounded,
+                      color: Colors.grey.shade400,
+                      size: 20,
+                    ),
+                    suffixIcon: searchQuery.isNotEmpty
+                        ? IconButton(
+                            icon: Icon(
+                              Icons.close_rounded,
+                              color: Colors.grey.shade400,
+                              size: 18,
+                            ),
+                            onPressed: () => setSheetState(() {
+                              searchController.clear();
+                              searchQuery = '';
+                            }),
+                          )
+                        : null,
+                    filled: true,
+                    fillColor: const Color(0xFFF5F6FA),
+                    contentPadding: const EdgeInsets.symmetric(vertical: 4),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
 
               // لیست کاربران
               Flexible(
-                child: ListView(
+                child: filteredUsers.isEmpty
+                    ? Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 24),
+                        child: Text(
+                          'نتیجه‌ای یافت نشد',
+                          style: TextStyle(
+                            color: Colors.grey.shade400,
+                            fontSize: 13,
+                          ),
+                        ),
+                      )
+                    : ListView(
                   shrinkWrap: true,
-                  children: _users.map((u) {
-                    final name =
-                        '${u['first_name'] ?? ''} ${u['last_name'] ?? ''}'
-                            .trim();
-                    final display = name.isEmpty
-                        ? (u['phone'] ?? 'بدون نام')
-                        : name;
+                  children: filteredUsers.map((u) {
+                    final display = userDisplay(u);
                     final selected = selectedUserId == u['id'];
                     return ListTile(
                       leading: CircleAvatar(
@@ -1161,7 +1240,8 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
               ),
             ],
           ),
-        ),
+        );
+        },
       ),
       isScrollControlled: true,
     );

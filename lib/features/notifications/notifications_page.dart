@@ -6,7 +6,12 @@ import '../../core/utils/persian_number.dart';
 import '../tasks/task_detail_page.dart';
 
 class NotificationsPage extends StatefulWidget {
-  const NotificationsPage({super.key});
+  // 🔧 اصلاح: با این callback، هر وقت تعداد اعلان‌های نخوانده تغییر کند
+  // (بارگذاری اول، خوانده‌شدن یک اعلان، یا «همه را خوانده کن»)،
+  // به بیرون (پوسته‌ی اصلی اپ) خبر می‌دهیم تا روی آیکون زنگوله، عدد
+  // اعلان‌های نخوانده نشان داده شود.
+  final ValueChanged<int>? onUnreadCountChanged;
+  const NotificationsPage({super.key, this.onUnreadCountChanged});
 
   @override
   State<NotificationsPage> createState() => _NotificationsPageState();
@@ -77,6 +82,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
           _unreadCount = data['unread_count'] ?? 0;
           _isLoading = false;
         });
+        widget.onUnreadCountChanged?.call(_unreadCount);
       } else {
         setState(() => _isLoading = false);
       }
@@ -123,7 +129,11 @@ class _NotificationsPageState extends State<NotificationsPage> {
     final isRead = notif['is_read'] == 1 || notif['is_read'] == true;
     if (!isRead) {
       _markAsRead(notif['id']);
-      setState(() => notif['is_read'] = 1);
+      setState(() {
+        notif['is_read'] = 1;
+        if (_unreadCount > 0) _unreadCount--;
+      });
+      widget.onUnreadCountChanged?.call(_unreadCount);
     }
     if (notif['related_type'] == 'task' && notif['related_id'] != null) {
       final taskId = int.tryParse(notif['related_id'].toString());
@@ -288,7 +298,12 @@ class _NotificationsPageState extends State<NotificationsPage> {
                           ? _buildEmpty()
                           : ListView.builder(
                               physics: const AlwaysScrollableScrollPhysics(),
-                              padding: const EdgeInsets.fromLTRB(20, 8, 20, 100),
+                              padding: const EdgeInsets.fromLTRB(
+                                20,
+                                8,
+                                20,
+                                100,
+                              ),
                               itemCount: _filteredNotifications.length,
                               itemBuilder: (ctx, i) =>
                                   _buildNotifCard(_filteredNotifications[i]),

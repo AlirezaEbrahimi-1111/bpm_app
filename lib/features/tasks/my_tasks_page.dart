@@ -3,29 +3,29 @@ import 'package:get/get.dart';
 import 'package:shamsi_date/shamsi_date.dart';
 import '../../core/network/api_client.dart';
 import '../../core/utils/persian_number.dart';
+import '../../core/utils/task_search.dart';
 import 'task_detail_page.dart';
-import '../profile/profile_page.dart';
-import '../../core/utils/task_labels.dart';
+import 'widgets/task_card.dart';
+import 'widgets/task_list_header.dart';
 
 class MyTasksPage extends StatefulWidget {
   final Map<String, dynamic> user;
-  final VoidCallback? onMenuTap;
-  const MyTasksPage({super.key, required this.user, this.onMenuTap});
+  const MyTasksPage({super.key, required this.user});
   @override
   State<MyTasksPage> createState() => MyTasksPageState();
 }
 
 class MyTasksPageState extends State<MyTasksPage> {
-  Map<String, dynamic>? _stats;
   List<dynamic> _myTasks = [];
   bool _isLoading = true;
   String? _loadError;
   String _filter = 'همه';
+  String _searchQuery = '';
+  final _searchController = TextEditingController();
   List<dynamic> _groups = [];
   int? _selectedGroupId;
 
   static const _primary = Color(0xFF6D28D9);
-  static const _ink = Color(0xFF1A1A2E);
   static const _bg = Color(0xFFF7F7FB);
 
   @override
@@ -34,27 +34,32 @@ class MyTasksPageState extends State<MyTasksPage> {
     _loadData();
   }
 
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
   // متد عمومی برای refresh از بیرون (مثلاً بعد از ساخت کار)
   void reload() => _loadData();
 
+  // 🔧 اصلاح سرعت: «کارها» و «گروه‌ها» دو درخواست کاملاً مستقل‌اند —
+  // قبلاً پشت‌سرهم (sequential) گرفته می‌شدند (و حتی یک درخواست سوم،
+  // stats.php، هم می‌گرفتیم که اصلاً جایی در این صفحه نمایش داده
+  // نمی‌شد — کاملاً حذف شد). حالا هم‌زمان (parallel) گرفته می‌شوند تا
+  // زمان لود تقریباً برابر با کندترینِ این دو باشد، نه مجموعشان.
   Future<void> _loadData() async {
     setState(() {
       _isLoading = true;
       _loadError = null;
     });
 
-    // ── ۱) آمار (مستقل) ──
-    try {
-      final statsRes = await ApiClient.dio.get('/api/tasks/stats.php');
-      if (statsRes.data['success'] == true) {
-        _stats = statsRes.data['stats'];
-      }
-    } catch (_) {
-      // خطای آمار نباید بقیه را متوقف کند
-    }
+    await Future.wait([_fetchTasks(), _fetchGroups()]);
 
-    // ── ۲) کارهای من (مهم‌ترین — مستقل) ──
-    // ── ۲) کارهای من ──
+    if (mounted) setState(() => _isLoading = false);
+  }
+
+  Future<void> _fetchTasks() async {
     try {
       final tasksRes = await ApiClient.dio.get('/api/tasks/my-tasks.php');
       final data = ApiClient.parseResponse(tasksRes.data);
@@ -67,8 +72,11 @@ class MyTasksPageState extends State<MyTasksPage> {
     } catch (e) {
       _loadError = 'خطا در اتصال به سرور';
     }
+  }
 
-    // ── ۳) گروه‌ها (فقط برای مدیران — اگر خطا داد مهم نیست) ──
+  Future<void> _fetchGroups() async {
+    // فقط برای مدیران — اگر خطا داد مهم نیست (کاربر عادی به گروه‌ها
+    // دسترسی ندارد و این طبیعی است)
     try {
       final groupsRes = await ApiClient.dio.get(
         '/api/task-groups/list-all.php',
@@ -83,11 +91,8 @@ class MyTasksPageState extends State<MyTasksPage> {
         }).toList();
       }
     } catch (_) {
-      // کاربر عادی به گروه‌ها دسترسی ندارد — طبیعی است
       _groups = [];
     }
-
-    if (mounted) setState(() => _isLoading = false);
   }
 
   String _getShamsiDate() {
@@ -149,6 +154,11 @@ class MyTasksPageState extends State<MyTasksPage> {
           .toList();
     }
 
+    // 🔧 اصلاح ۴: جستجو بر اساس شناسه، عنوان یا توضیحات (چندکلمه‌ای)
+    if (_searchQuery.trim().isNotEmpty) {
+      list = list.where((t) => taskMatchesQuery(t, _searchQuery)).toList();
+    }
+
     list.sort((a, b) {
       final aDone = a['status'] == 'completed' || a['status'] == 'approved';
       final bDone = b['status'] == 'completed' || b['status'] == 'approved';
@@ -178,15 +188,25 @@ class MyTasksPageState extends State<MyTasksPage> {
                   slivers: [
                     SliverPadding(
                       padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
-                      sliver: SliverToBoxAdapter(child: _buildTopBar()),
-                    ),
-                    SliverPadding(
-                      padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
-                      sliver: SliverToBoxAdapter(child: _buildTitle()),
-                    ),
-                    SliverPadding(
-                      padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
-                      sliver: SliverToBoxAdapter(child: _buildFilters()),
+                      sliver: SliverToBoxAdapter(
+                        // 🔧 هدر مشترک: عنوان + جستجو + فیلترها
+                        // (دقیقاً همان چیزی که در صفحه‌ی کارهای واگذارشده استفاده می‌شود)
+                        child: TaskListHeader(
+                          title: 'کارهای من',
+                          subtitle: _getShamsiDate(),
+                          searchController: _searchController,
+                          onSearchChanged: (v) =>
+                              setState(() => _searchQuery = v),
+                          filters: const [
+                            'همه',
+                            'امروز',
+                            'عقب افتاده',
+                            'انجام شده',
+                          ],
+                          selectedFilter: _filter,
+                          onFilterChanged: (f) => setState(() => _filter = f),
+                        ),
+                      ),
                     ),
                     if (_groups.isNotEmpty)
                       SliverPadding(
@@ -201,58 +221,6 @@ class MyTasksPageState extends State<MyTasksPage> {
                 ),
               ),
             ),
-    );
-  }
-
-  Widget _buildTopBar() {
-    final first = widget.user['first_name'] ?? 'U';
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        IconButton(
-          onPressed: widget.onMenuTap,
-          icon: const Icon(Icons.menu_rounded, size: 26, color: _ink),
-          padding: EdgeInsets.zero,
-          constraints: const BoxConstraints(),
-        ),
-        GestureDetector(
-          onTap: () => Get.to(() => ProfilePage(user: widget.user)),
-          child: CircleAvatar(
-            radius: 20,
-            backgroundColor: _primary.withValues(alpha: 0.15),
-            child: Text(
-              first.toString().isNotEmpty ? first.toString()[0] : 'U',
-              style: const TextStyle(
-                color: _primary,
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildTitle() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'کارهای من',
-          style: TextStyle(
-            fontSize: 32,
-            fontWeight: FontWeight.bold,
-            color: _ink,
-            height: 1.1,
-          ),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          _getShamsiDate(),
-          style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
-        ),
-      ],
     );
   }
 
@@ -332,41 +300,46 @@ class MyTasksPageState extends State<MyTasksPage> {
     );
   }
 
-  Widget _buildFilters() {
-    final filters = ['همه', 'امروز', 'عقب افتاده', 'انجام شده'];
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: filters.map((f) {
-          final selected = _filter == f;
-          return GestureDetector(
-            onTap: () => setState(() => _filter = f),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              margin: const EdgeInsets.only(left: 10),
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
-              decoration: BoxDecoration(
-                color: selected
-                    ? _primary.withValues(alpha: 0.12)
-                    : Colors.transparent,
-                borderRadius: BorderRadius.circular(24),
-              ),
-              child: Text(
-                f,
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: selected ? FontWeight.bold : FontWeight.w500,
-                  color: selected ? _primary : Colors.grey.shade500,
-                ),
-              ),
-            ),
-          );
-        }).toList(),
-      ),
-    );
-  }
-
   Widget _buildTaskSliver() {
+    if (_loadError != null) {
+      return SliverToBoxAdapter(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(40),
+            child: Column(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEF4444).withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.wifi_off_rounded,
+                    size: 36,
+                    color: Color(0xFFEF4444),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  _loadError!,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
+                ),
+                const SizedBox(height: 12),
+                TextButton.icon(
+                  onPressed: _loadData,
+                  icon: const Icon(Icons.refresh_rounded, size: 18),
+                  label: const Text('تلاش مجدد'),
+                  style: TextButton.styleFrom(foregroundColor: _primary),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     final tasks = _filteredTasks;
     if (tasks.isEmpty) {
       return SliverToBoxAdapter(
@@ -400,133 +373,20 @@ class MyTasksPageState extends State<MyTasksPage> {
     }
     return SliverList(
       delegate: SliverChildBuilderDelegate(
-        (ctx, i) => _buildTaskCard(tasks[i]),
+        (ctx, i) => TaskCard(
+          task: tasks[i],
+          showAssignee: false,
+          onTap: () async {
+            final result = await Get.to(
+              () => TaskDetailPage(
+                taskId: tasks[i]['id'],
+                currentUserId: widget.user['id'],
+              ),
+            );
+            if (result == true) _loadData();
+          },
+        ),
         childCount: tasks.length,
-      ),
-    );
-  }
-
-  Widget _buildTaskCard(Map<String, dynamic> task) {
-    final status = task['status'] as String? ?? '';
-    final priority = task['priority'] as String? ?? '';
-    final isDone = status == 'completed' || status == 'approved';
-    final statusLbl = TaskLabels.statusLabel(status);
-    final statusClr = TaskLabels.statusColor(status);
-
-    return GestureDetector(
-      onTap: () async {
-        final result = await Get.to(
-          () => TaskDetailPage(
-            taskId: task['id'],
-            currentUserId: widget.user['id'],
-          ),
-        );
-        if (result == true) _loadData();
-      },
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-        decoration: BoxDecoration(
-          color: isDone ? const Color(0xFFF0EFF7) : Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          boxShadow: isDone
-              ? []
-              : [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.03),
-                    blurRadius: 10,
-                    offset: const Offset(0, 3),
-                  ),
-                ],
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 24,
-              height: 24,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: isDone ? _primary : Colors.transparent,
-                border: isDone
-                    ? null
-                    : Border.all(color: Colors.grey.shade300, width: 2),
-              ),
-              child: isDone
-                  ? const Icon(Icons.check, color: Colors.white, size: 14)
-                  : null,
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    task['title'] ?? '',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 15,
-                      color: isDone ? Colors.grey.shade400 : _ink,
-                      decoration: isDone ? TextDecoration.lineThrough : null,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 6),
-                  Row(
-                    children: [
-                      Container(
-                        width: 8,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          color: statusClr,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        statusLbl,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey.shade500,
-                        ),
-                      ),
-                      if ((task['group_name'] ?? '').toString().isNotEmpty) ...[
-                        const SizedBox(width: 8),
-                        Text(
-                          '•',
-                          style: TextStyle(color: Colors.grey.shade300),
-                        ),
-                        const SizedBox(width: 8),
-                        Icon(
-                          Icons.folder_outlined,
-                          size: 12,
-                          color: Colors.grey.shade400,
-                        ),
-                        const SizedBox(width: 3),
-                        Flexible(
-                          child: Text(
-                            task['group_name'],
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.grey.shade400,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            Icon(
-              Icons.flag_rounded,
-              color: TaskLabels.priorityColor(priority),
-              size: 22,
-            ),
-          ],
-        ),
       ),
     );
   }

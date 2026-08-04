@@ -55,6 +55,14 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
 
+# 🔧 تنظیمات flutter_launcher_icons — بعد از باز شدن دسترسی به pub.dev:
+#   1) flutter pub add dev:flutter_launcher_icons
+#   2) dart run flutter_launcher_icons
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/images/app_icon.png"
+
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 
