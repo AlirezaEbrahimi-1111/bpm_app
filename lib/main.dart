@@ -2,19 +2,29 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
+import 'core/widgets/app_snack.dart';
 import 'features/auth/auth_service.dart';
 import 'features/shell/main_shell.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:persian_datetime_picker/persian_datetime_picker.dart';
 import 'core/network/api_client.dart';
+import 'core/network/connectivity_service.dart';
+import 'core/theme/theme_controller.dart';
+import 'core/theme/notification_bar_preference.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await ApiClient.init();
   ApiClient.onSessionExpired = _handleSessionExpired;
+  ConnectivityService.instance.start();
   // اگر «مرا به خاطر بسپار» فعال بوده، مستقیم کاربر را وارد می‌کنیم
   final autoUser = await ApiClient.getAutoLoginUser();
   runApp(BpmApp(initialUser: autoUser));
+  // 🔧 اگر کاربر قبلاً از سوییچ تمِ داخل دراور، تم را دستی انتخاب کرده
+  // بود، همان انتخاب را اعمال کن (بعد از runApp چون به GetMaterialApp
+  // نیاز دارد)
+  ThemeController.init();
+  NotificationBarPreference.init();
 }
 
 // ════════════════════════════════════════════════════════
@@ -30,12 +40,7 @@ void _handleSessionExpired() {
   _sessionExpiredHandled = true;
   ApiClient.clearToken().then((_) {
     Get.offAll(() => const LoginPage());
-    Get.snackbar(
-      'نشست شما منقضی شده',
-      'لطفاً دوباره وارد شوید',
-      snackPosition: SnackPosition.BOTTOM,
-      backgroundColor: Colors.orange.shade100,
-    );
+    AppSnack.warning('نشست شما منقضی شده', 'لطفاً دوباره وارد شوید');
   });
   Future.delayed(
     const Duration(seconds: 3),
@@ -50,7 +55,7 @@ class BpmApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GetMaterialApp(
-      title: 'یکتا همراهان ملک',
+      title: 'آوای شرق ملک',
       debugShowCheckedModeBanner: false,
       textDirection: TextDirection.rtl,
       locale: const Locale('fa', 'IR'),
@@ -63,10 +68,30 @@ class BpmApp extends StatelessWidget {
         GlobalCupertinoLocalizations.delegate,
       ],
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF6D28D9)),
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF8E57FE)),
         useMaterial3: true,
         fontFamily: 'Vazir',
       ),
+      // 🔧 اصلاح: زیرساخت تم تاریک — رنگ‌های واقعیِ نسخه‌ی وب
+      // (itmalek.com/assets/css/custom.css). فعلاً فقط پوسته‌ی اصلی و
+      // داشبورد این تم را واقعاً اعمال می‌کنند (مرحله‌ی اول)؛ بقیه‌ی
+      // صفحات در مراحل بعدی بازطراحی می‌شوند. تا آن زمان روی گوشیِ
+      // تاریک، آن صفحات هنوز روشن دیده می‌شوند.
+      darkTheme: ThemeData(
+        brightness: Brightness.dark,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF8E57FE),
+          brightness: Brightness.dark,
+        ),
+        scaffoldBackgroundColor: const Color(0xFF12151F),
+        useMaterial3: true,
+        fontFamily: 'Vazir',
+      ),
+      // 🔧 اصلاح: پیش‌فرضِ اپ همیشه «روشن» است، نه پیرویِ تنظیمات سیستم —
+      // اگر کاربر قبلاً دستی «تاریک» را از دراور انتخاب کرده باشد،
+      // ThemeController.init() (بالاتر در main، بعد از runApp) همان را
+      // اعمال می‌کند.
+      themeMode: ThemeMode.light,
       home: initialUser != null
           ? MainShell(user: initialUser!)
           : const LoginPage(),
@@ -110,20 +135,19 @@ class _LoginPageState extends State<LoginPage> {
   bool get _isPhoneValid =>
       RegExp(r'^09[0-9]{9}$').hasMatch(_usernameController.text.trim());
 
-  @override
-  void initState() {
-    super.initState();
-    // 🔧 اصلاح: بعد از تکمیل ۱۱ رقم شماره موبایل معتبر، خودکار برود
-    // مرحله‌ی بعد (رمز عبور) — دیگر نیازی به ضربه‌ی دستی روی «ادامه» نیست
-    _usernameController.addListener(_onPhoneChanged);
-  }
-
-  void _onPhoneChanged() {
-    if (!mounted) return;
+  // 🔧 اصلاح: بعد از تکمیل ۱۱ رقم شماره موبایل معتبر، خودکار برود مرحله‌ی
+  // بعد (رمز عبور) — دیگر نیازی به ضربه‌ی دستی روی «ادامه» نیست.
+  //
+  // 🐞 قبلاً این با controller.addListener پیاده شده بود که علاوه بر
+  // تغییر متن، با هر تغییر مکان‌نما/انتخاب هم صدا زده می‌شود — یعنی
+  // وقتی کاربر از مرحله‌ی رمز برمی‌گشت تا شماره را ویرایش کند، فقط با
+  // ضربه‌زدن روی فیلد (بدون تایپ چیزی) دوباره فوراً به مرحله‌ی بعد
+  // پرتاب می‌شد و اصلاً فرصت ویرایش پیدا نمی‌کرد. حالا از onChanged
+  // خودِ TextField استفاده می‌شود که فقط با تغییر واقعیِ متن صدا زده
+  // می‌شود، نه با تغییر مکان‌نما.
+  void _onPhoneChanged(String value) {
     setState(() {}); // برای فعال/غیرفعال شدن دکمه‌ی «ادامه»
-    if (_currentStep == 1 &&
-        _usernameController.text.trim().length == 11 &&
-        _isPhoneValid) {
+    if (_currentStep == 1 && value.trim().length == 11 && _isPhoneValid) {
       _goToStep2();
     }
   }
@@ -150,7 +174,6 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   void dispose() {
-    _usernameController.removeListener(_onPhoneChanged);
     _usernameController.dispose();
     _passwordController.dispose();
     _passwordFocusNode.dispose();
@@ -186,7 +209,7 @@ class _LoginPageState extends State<LoginPage> {
 
                   // ── نام شرکت ──
                   const Text(
-                    'یکتا همراهان ملک',
+                    'آوای شرق ملک',
                     style: TextStyle(
                       color: _accent,
                       fontSize: 22,
@@ -366,7 +389,11 @@ class _LoginPageState extends State<LoginPage> {
     return [
       const Text(
         'شماره موبایل',
-        style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: _ink),
+        style: TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.bold,
+          color: _ink,
+        ),
       ),
       const SizedBox(height: 8),
       _inputField(
@@ -375,6 +402,7 @@ class _LoginPageState extends State<LoginPage> {
         icon: Icons.person_outline_rounded,
         keyboardType: TextInputType.number,
         onlyDigits: true,
+        onChanged: _onPhoneChanged,
       ),
       const SizedBox(height: 20),
 
@@ -426,7 +454,11 @@ class _LoginPageState extends State<LoginPage> {
 
       const Text(
         'رمز عبور',
-        style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: _ink),
+        style: TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.bold,
+          color: _ink,
+        ),
       ),
       const SizedBox(height: 8),
       _inputField(
@@ -552,7 +584,11 @@ class _LoginPageState extends State<LoginPage> {
 
       const Text(
         'کد ۶ رقمی را وارد کنید',
-        style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: _ink),
+        style: TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.bold,
+          color: _ink,
+        ),
       ),
       const SizedBox(height: 10),
 
@@ -718,12 +754,7 @@ class _LoginPageState extends State<LoginPage> {
   Future<void> _sendOtp() async {
     final phone = _usernameController.text.trim();
     if (!RegExp(r'^09[0-9]{9}$').hasMatch(phone)) {
-      Get.snackbar(
-        'خطا',
-        'لطفاً شماره موبایل معتبر وارد کنید',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red.shade100,
-      );
+      AppSnack.error('خطا', 'لطفاً شماره موبایل معتبر وارد کنید');
       return;
     }
     setState(() => _isSendingOtp = true);
@@ -737,12 +768,7 @@ class _LoginPageState extends State<LoginPage> {
         (_) => _otpFocusNode.requestFocus(),
       );
     } else {
-      Get.snackbar(
-        'خطا',
-        result['message']?.toString() ?? 'خطا در ارسال کد',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red.shade100,
-      );
+      AppSnack.error('خطا', result['message']?.toString() ?? 'خطا در ارسال کد');
     }
   }
 
@@ -795,16 +821,15 @@ class _LoginPageState extends State<LoginPage> {
     final phone = _usernameController.text.trim();
     final code = _otpController.text;
     if (code.length != 6) {
-      Get.snackbar(
-        'خطا',
-        'کد تأیید ۶ رقمی را کامل وارد کنید',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red.shade100,
-      );
+      AppSnack.error('خطا', 'کد تأیید ۶ رقمی را کامل وارد کنید');
       return;
     }
     setState(() => _isVerifyingOtp = true);
-    final result = await AuthService.verifyOtp(phone, code);
+    final result = await AuthService.verifyOtp(
+      phone,
+      code,
+      rememberMe: _rememberMe,
+    );
     setState(() => _isVerifyingOtp = false);
     if (result['success'] == true) {
       final user = result['user'] as Map<String, dynamic>;
@@ -816,11 +841,9 @@ class _LoginPageState extends State<LoginPage> {
       _resendTimer?.cancel();
       Get.off(() => MainShell(user: user));
     } else {
-      Get.snackbar(
+      AppSnack.error(
         '❌ خطا',
         result['message']?.toString() ?? 'کد تأیید اشتباه است',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red.shade100,
       );
     }
   }
@@ -947,10 +970,12 @@ class _LoginPageState extends State<LoginPage> {
     bool isPassword = false,
     TextInputType? keyboardType,
     bool onlyDigits = false,
+    ValueChanged<String>? onChanged,
   }) {
     return TextField(
       controller: controller,
       focusNode: focusNode,
+      onChanged: onChanged,
       obscureText: isPassword ? _obscurePassword : false,
       keyboardType: keyboardType,
       inputFormatters: onlyDigits
@@ -1001,18 +1026,14 @@ class _LoginPageState extends State<LoginPage> {
 
   void _login() async {
     if (_usernameController.text.isEmpty || _passwordController.text.isEmpty) {
-      Get.snackbar(
-        'خطا',
-        'لطفاً نام کاربری و رمز عبور را وارد کنید',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red.shade100,
-      );
+      AppSnack.error('خطا', 'لطفاً نام کاربری و رمز عبور را وارد کنید');
       return;
     }
     setState(() => _isLoading = true);
     final result = await AuthService.login(
       _usernameController.text.trim(),
       _passwordController.text,
+      rememberMe: _rememberMe,
     );
     setState(() => _isLoading = false);
     if (result['success']) {
@@ -1028,12 +1049,7 @@ class _LoginPageState extends State<LoginPage> {
 
       Get.off(() => MainShell(user: user));
     } else {
-      Get.snackbar(
-        '❌ خطا',
-        result['message'],
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red.shade100,
-      );
+      AppSnack.error('❌ خطا', result['message']);
     }
   }
 }

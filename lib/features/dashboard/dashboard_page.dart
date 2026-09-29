@@ -4,123 +4,283 @@ import 'package:shamsi_date/shamsi_date.dart';
 import '../../core/network/api_client.dart';
 import '../../core/utils/persian_number.dart';
 import '../tasks/task_detail_page.dart';
-import '../../core/utils/task_labels.dart';
+import '../../core/network/connectivity_service.dart';
+import '../../core/theme/app_colors.dart';
+import '../tasks/widgets/task_badges.dart';
+import '../tasks/widgets/task_quick_actions_sheet.dart';
+import '../shell/widgets/nav_bar_metrics.dart';
+import 'widgets/plan_modals.dart';
 
 class DashboardPage extends StatefulWidget {
   final Map<String, dynamic> user;
-  const DashboardPage({super.key, required this.user});
+  // 🔧 برای دکمه‌ی «مشاهده همه کارها» در مودال‌های برنامه‌ی فردا/هفته/ماه
+  // — پوسته‌ی اصلی این را برای جابه‌جایی به تبِ «کارها» پاس می‌دهد
+  final VoidCallback? onSeeAllTasks;
+  const DashboardPage({super.key, required this.user, this.onSeeAllTasks});
   @override
   State<DashboardPage> createState() => DashboardPageState();
 }
 
 class DashboardPageState extends State<DashboardPage> {
-  Map<String, dynamic>? _stats;
-  List<dynamic> _activities = [];
+  List<dynamic> _tasks = [];
   bool _isLoading = true;
-  bool _activitiesExpanded = false; // آکاردئون فعالیت‌ها — پیش‌فرض بسته
+  // 🔧 null یعنی هیچ‌کدام از فیلترهای همه/امروز/عقب‌افتاده فعال نیست
+  // (چون یک روزِ خاص از نوارِ تقویم انتخاب شده)
+  String? _filter = 'همه';
 
-  static const _primary = Color(0xFF6D28D9);
-  static const _primaryLight = Color(0xFF8B5CF6);
-  static const _ink = Color(0xFF1A1A2E);
-  static const _bg = Color(0xFFF7F7FB);
+  // 🔧 روزِ انتخاب‌شده از نوارِ تقویم — null یعنی هیچ روزی به‌طورِ خاص
+  // انتخاب نشده و فیلترِ همه/امروز/عقب‌افتاده حاکم است
+  DateTime? _selectedDay;
+  // 🔧 طبق درخواست: نوارِ تقویم حالا شبیهِ یک چرخِ تاریخ است — همیشه
+  // دقیقاً ۵ روز دیده می‌شود (۲ قبل + وسط + ۲ بعد)، با اسکرول روزِ
+  // وسط عوض می‌شود و بزرگ/پررنگ می‌ماند؛ PageViewِ با viewportFraction
+  // ۰.۲ دقیقاً همین جلوه را می‌سازد (صفحه‌ی جاری همیشه در وسطِ‌ویوپورت)
+  late final PageController _dayPageController;
+  double _dayPageValue = _dayWindowRadius.toDouble();
+  static const _dayWindowRadius = 60; // ۶۰ روز قبل تا ۶۰ روز بعد
+
+  // 🔧 آفلاین سبک: وقتی اینترنت نیست، آخرین داده‌ی ذخیره‌شده نمایش داده می‌شود
+  bool _isOfflineData = false;
+
+  static const _weekdays = [
+    'شنبه',
+    'یکشنبه',
+    'دوشنبه',
+    'سه‌شنبه',
+    'چهارشنبه',
+    'پنجشنبه',
+    'جمعه',
+  ];
+  static const _months = [
+    'فروردین',
+    'اردیبهشت',
+    'خرداد',
+    'تیر',
+    'مرداد',
+    'شهریور',
+    'مهر',
+    'آبان',
+    'آذر',
+    'دی',
+    'بهمن',
+    'اسفند',
+  ];
 
   @override
   void initState() {
     super.initState();
     _loadData();
+    // 🔧 با viewportFraction=۰.۲ (=۱/۵)، صفحه‌ی جاری همیشه خودش در
+    // وسطِ ویوپورت می‌نشیند — یعنی «امروز» از همان اول، وسطِ ۵تایی است
+    _dayPageController = PageController(
+      viewportFraction: 0.2,
+      initialPage: _dayWindowRadius,
+    );
+    _dayPageController.addListener(_onDayPageScroll);
+  }
+
+  @override
+  void dispose() {
+    _dayPageController.removeListener(_onDayPageScroll);
+    _dayPageController.dispose();
+    super.dispose();
+  }
+
+  void _onDayPageScroll() {
+    final page = _dayPageController.page;
+    if (page == null) return;
+    setState(() => _dayPageValue = page);
   }
 
   void reload() => _loadData();
 
-  // 🔧 اصلاح سرعت: این دو درخواست از هم مستقل‌اند (آمار و فعالیت‌های
-  // اخیر) — قبلاً پشت‌سرهم (sequential) گرفته می‌شدند که یعنی زمان لود
-  // برابر با مجموع زمان دو درخواست بود. حالا هم‌زمان (parallel) گرفته
-  // می‌شوند تا زمان لود تقریباً برابر با کندترینِ آن‌ها باشد، نه مجموعشان.
-  Future<void> _loadData() async {
-    setState(() => _isLoading = true);
-    final results = await Future.wait([_fetchStats(), _fetchActivities()]);
-    if (mounted) {
-      setState(() {
-        _stats = results[0] as Map<String, dynamic>?;
-        _activities = results[1] as List<dynamic>;
-        _isLoading = false;
-      });
+  void _goToTasksTab() => widget.onSeeAllTasks?.call();
+
+  // 🔧 طبق درخواست: انتخابِ یک روز از مودالِ هفته/ماه، هم لیستِ کارها
+  // را فیلتر می‌کند (قبلاً بود) و هم خودِ چرخِ تقویمِ بالای داشبورد را
+  // به همان روز می‌برد (قبلاً فقط لیست تغییر می‌کرد، چرخ ثابت می‌ماند)
+  void _selectDay(DateTime day) {
+    final base = DateTime.now();
+    final baseMidnight = DateTime(base.year, base.month, base.day);
+    final dayMidnight = DateTime(day.year, day.month, day.day);
+    final offset = dayMidnight.difference(baseMidnight).inDays;
+    final index = (_dayWindowRadius + offset).clamp(0, _dayWindowRadius * 2);
+    setState(() {
+      _selectedDay = dayMidnight;
+      _filter = null;
+    });
+    if (_dayPageController.hasClients) {
+      _dayPageController.animateToPage(
+        index,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
     }
   }
 
-  Future<Map<String, dynamic>?> _fetchStats() async {
+  Future<void> _loadData() async {
+    setState(() => _isLoading = true);
     try {
-      final res = await ApiClient.dio.get('/api/tasks/stats.php');
-      if (res.data['success'] == true) return res.data['stats'];
-    } catch (_) {}
-    return null;
-  }
-
-  Future<List<dynamic>> _fetchActivities() async {
-    try {
-      final res = await ApiClient.dio.get(
-        '/api/tasks/recent-activities.php',
-        queryParameters: {'limit': 8},
-      );
+      final res = await ApiClient.dio.get('/api/tasks/my-tasks.php');
       final data = ApiClient.parseResponse(res.data);
-      if (data['success'] == true) return data['activities'] ?? [];
-    } catch (_) {}
-    return [];
+      if (data['success'] != true) {
+        throw Exception(data['message']?.toString() ?? 'خطا در دریافت کارها');
+      }
+      final list = data['data']?['tasks'];
+      final tasks = list is List ? List<dynamic>.from(list) : [];
+      if (mounted) {
+        setState(() {
+          _tasks = tasks;
+          _isOfflineData = false;
+          _isLoading = false;
+        });
+      }
+      // 🔧 آفلاین سبک: کش آخرین لیست موفق، فقط برای مشاهده وقتی
+      // بعداً اینترنت نبود
+      ApiClient.saveOfflineCache('dashboard', {'tasks': tasks});
+    } catch (_) {
+      final cached = await ApiClient.readOfflineCache('dashboard');
+      if (!mounted) return;
+      if (cached != null && cached['data'] is Map) {
+        final data = cached['data'] as Map;
+        setState(() {
+          _tasks = data['tasks'] ?? [];
+          _isOfflineData = true;
+          _isLoading = false;
+        });
+      } else {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
-  String _getShamsiDate() {
-    final now = Jalali.now();
-    const wd = [
-      'شنبه',
-      'یکشنبه',
-      'دوشنبه',
-      'سه‌شنبه',
-      'چهارشنبه',
-      'پنجشنبه',
-      'جمعه',
-    ];
-    const mo = [
-      'فروردین',
-      'اردیبهشت',
-      'خرداد',
-      'تیر',
-      'مرداد',
-      'شهریور',
-      'مهر',
-      'آبان',
-      'آذر',
-      'دی',
-      'بهمن',
-      'اسفند',
-    ];
-    return toPersianDigits(
-      '${wd[now.weekDay - 1]}، ${now.day} ${mo[now.month - 1]} ${now.year}',
+  // ── کمکی‌های تاریخ ──────────────────────────────────────────
+
+  int? _daysRemaining(dynamic task) {
+    final v = task['days_remaining'];
+    if (v == null) return null;
+    return v is int ? v : int.tryParse(v.toString());
+  }
+
+  bool _isDone(dynamic task) =>
+      task['status'] == 'completed' || task['status'] == 'approved';
+
+  DateTime? _dueDateOf(dynamic task) {
+    final days = _daysRemaining(task);
+    if (days == null) return null;
+    final d = DateTime.now().add(Duration(days: days));
+    return DateTime(d.year, d.month, d.day);
+  }
+
+  // 🔧 بازه‌ی روزهایِ نوارِ تقویمِ اسکرول‌شونده: ۶۰ روز قبل تا ۶۰ روز بعد از امروز
+  List<DateTime> _dayWindow() {
+    final today = DateTime.now();
+    final base = DateTime(today.year, today.month, today.day);
+    return List.generate(
+      _dayWindowRadius * 2 + 1,
+      (i) => base.add(Duration(days: i - _dayWindowRadius)),
     );
+  }
+
+  int _countThisMonth() {
+    final todayJ = Jalali.now();
+    return _tasks.where((t) {
+      if (_isDone(t)) return false;
+      final days = _daysRemaining(t);
+      if (days == null) return false;
+      final due = Jalali.fromDateTime(DateTime.now().add(Duration(days: days)));
+      return due.year == todayJ.year && due.month == todayJ.month;
+    }).length;
+  }
+
+  int _countThisWeek() {
+    final today = DateTime.now();
+    final todayJ = Jalali.fromDateTime(today);
+    final weekStart = DateTime(
+      today.year,
+      today.month,
+      today.day,
+    ).subtract(Duration(days: todayJ.weekDay - 1));
+    final weekEnd = weekStart.add(const Duration(days: 6));
+    return _tasks.where((t) {
+      if (_isDone(t)) return false;
+      final days = _daysRemaining(t);
+      if (days == null) return false;
+      final due = DateTime.now().add(Duration(days: days));
+      final dd = DateTime(due.year, due.month, due.day);
+      return !dd.isBefore(weekStart) && !dd.isAfter(weekEnd);
+    }).length;
+  }
+
+  int _countTomorrow() {
+    return _tasks.where((t) {
+      if (_isDone(t)) return false;
+      return _daysRemaining(t) == 1;
+    }).length;
+  }
+
+  List<dynamic> get _filteredTasks {
+    // 🔧 وقتی روزی از نوارِ تقویم انتخاب شده، اولویت با همان روز است —
+    // فیلترهای همه/امروز/عقب‌افتاده در این حالت غیرفعال (خاموش) می‌شوند
+    if (_selectedDay != null) {
+      final sel = _selectedDay!;
+      return _tasks.where((t) {
+        final due = _dueDateOf(t);
+        return due != null &&
+            due.year == sel.year &&
+            due.month == sel.month &&
+            due.day == sel.day;
+      }).toList();
+    }
+    if (_filter == 'امروز') {
+      return _tasks.where((t) => taskIsDueToday(t)).toList();
+    }
+    if (_filter == 'عقب افتاده') {
+      return _tasks.where((t) => taskIsOverdue(t)).toList();
+    }
+    return List.from(_tasks);
   }
 
   @override
   Widget build(BuildContext context) {
+    final c = AppColors.of(context);
     return Container(
-      color: _bg,
+      color: c.bgPage,
       child: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: _primary))
+          ? Center(child: CircularProgressIndicator(color: c.primary))
           : SafeArea(
               bottom: false,
               child: RefreshIndicator(
-                color: _primary,
+                color: c.primary,
                 onRefresh: _loadData,
                 child: SingleChildScrollView(
                   physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 100),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildWelcomeCard(),
-                      const SizedBox(height: 20),
-                      _buildStatsGrid(),
-                      const SizedBox(height: 24),
-                      _buildActivitiesAccordion(),
-                    ],
+                  padding: EdgeInsets.fromLTRB(
+                    20,
+                    4,
+                    20,
+                    bottomNavClearance(context),
+                  ),
+                  child: ValueListenableBuilder<bool>(
+                    valueListenable: ConnectivityService.instance.isOnline,
+                    builder: (context, online, _) {
+                      final hasNothingToShow =
+                          !online && !_isOfflineData && _tasks.isEmpty;
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: hasNothingToShow
+                            ? [_buildOfflineEmptyState(c)]
+                            : [
+                                _buildCalendarStrip(c),
+                                const SizedBox(height: 24),
+                                _buildScheduleCards(c),
+                                const SizedBox(height: 24),
+                                _buildTaskListHeader(c),
+                                const SizedBox(height: 14),
+                                ..._buildTaskList(c),
+                              ],
+                      );
+                    },
                   ),
                 ),
               ),
@@ -128,324 +288,252 @@ class DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  // ── کارت خوش‌آمد گرادیان ──
-  Widget _buildWelcomeCard() {
-    final name =
-        '${widget.user['first_name'] ?? ''} ${widget.user['last_name'] ?? ''}'
-            .trim();
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(22),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [_primaryLight, _primary],
-          begin: Alignment.topRight,
-          end: Alignment.bottomLeft,
-        ),
-        borderRadius: BorderRadius.circular(22),
-        boxShadow: [
-          BoxShadow(
-            color: _primary.withValues(alpha: 0.3),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text(
-                'خوش آمدید، ${name.isEmpty ? 'کاربر' : name}',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
+  // ── حالتی که هنوز هیچ کشی نداریم و آفلاین هم هستیم ──
+  Widget _buildOfflineEmptyState(AppColors c) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 60),
+      child: Center(
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: c.borderSoft,
+                shape: BoxShape.circle,
               ),
-              const SizedBox(width: 6),
-              const Text('👋', style: TextStyle(fontSize: 18)),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'امروز: ${_getShamsiDate()}',
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.9),
-              fontSize: 13,
+              child: Icon(Icons.wifi_off_rounded, size: 36, color: c.textMuted),
             ),
-          ),
-        ],
+            const SizedBox(height: 12),
+            Text(
+              'شما آفلاین هستید',
+              style: TextStyle(
+                color: c.textStrong,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'هنوز داده‌ای برای نمایش آفلاین ذخیره نشده',
+              style: TextStyle(color: c.textMuted, fontSize: 12),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  // ── گرید آماری ۲×۲ ──
-  Widget _buildStatsGrid() {
-    final total = _stats?['total'] ?? 0;
-    final overdue = _stats?['overdue'] ?? 0;
-    final completed = _stats?['completed'] ?? 0;
-    final today = _stats?['today'] ?? 0;
-
+  // ── نوار تقویم بالای صفحه — طبق عکسِ ارسالی: همیشه ۵ روز دیده
+  // می‌شود (۲ قبل + وسط + ۲ بعد)، با اسکرول روزِ وسط عوض/بزرگ می‌شود؛
+  // با ضربه یا تسویه‌شدنِ اسکرول روی یک روز، لیستِ کارها بر همان روز
+  // فیلتر می‌شود ──
+  Widget _buildCalendarStrip(AppColors c) {
+    final days = _dayWindow();
+    final centerIndex = _dayPageValue.round().clamp(0, days.length - 1);
+    final centerJ = Jalali.fromDateTime(days[centerIndex]);
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: _statCard(
-                value: total,
-                label: 'کل کارها',
-                icon: Icons.list_alt_rounded,
-                color: _primary,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _statCard(
-                value: overdue,
-                label: 'عقب‌افتاده',
-                icon: Icons.warning_amber_rounded,
-                color: const Color(0xFFEF4444),
-              ),
-            ),
-          ],
+        Text(
+          toPersianDigits('${_months[centerJ.month - 1]} ${centerJ.year}'),
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: c.textMuted,
+          ),
         ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: _statCard(
-                value: completed,
-                label: 'انجام‌شده',
-                icon: Icons.check_circle_outline_rounded,
-                color: const Color(0xFF10B981),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _statCard(
-                value: today,
-                label: 'امروز',
-                icon: Icons.today_rounded,
-                color: const Color(0xFF3B82F6),
-              ),
-            ),
-          ],
+        // const SizedBox(height: 10),
+        SizedBox(
+          height: 66,
+          child: PageView.builder(
+            controller: _dayPageController,
+            itemCount: days.length,
+            onPageChanged: (page) => setState(() {
+              _selectedDay = days[page];
+              _filter = null;
+            }),
+            itemBuilder: (context, i) {
+              final d = days[i];
+              final j = Jalali.fromDateTime(d);
+              final now = DateTime.now();
+              final isToday =
+                  d.year == now.year &&
+                  d.month == now.month &&
+                  d.day == now.day;
+              // 🔧 فاصله‌ی زنده از مرکزِ ویوپورت (۰ = دقیقاً وسط) — برایِ
+              // انیمیشنِ نرمِ بزرگ/کوچک‌شدن حین خودِ اسکرول (نه فقط بعد از تسویه)
+              final distance = (i - _dayPageValue).abs().clamp(0.0, 1.0);
+              final numberSize = 26 - (26 - 15) * distance;
+              final weekdaySize = 12 - (12 - 10) * distance;
+              final isCenter = distance < 0.05;
+              return GestureDetector(
+                onTap: () => _dayPageController.animateToPage(
+                  i,
+                  duration: const Duration(milliseconds: 250),
+                  curve: Curves.easeOut,
+                ),
+                behavior: HitTestBehavior.opaque,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      toPersianDigits(j.day),
+                      style: TextStyle(
+                        fontSize: numberSize,
+                        fontWeight: isCenter
+                            ? FontWeight.bold
+                            : FontWeight.w500,
+                        color: isCenter
+                            ? c.textStrong
+                            : c.textMuted.withValues(alpha: 0.55),
+                      ),
+                    ),
+                    // const SizedBox(height: 1),
+                    Text(
+                      _weekdays[j.weekDay - 1],
+                      style: TextStyle(
+                        fontSize: weekdaySize,
+                        fontWeight: isCenter
+                            ? FontWeight.w600
+                            : FontWeight.normal,
+                        color: isCenter
+                            ? (isToday ? c.primary : c.textStrong)
+                            : c.textMuted.withValues(alpha: 0.5),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
         ),
       ],
     );
   }
 
-  Widget _statCard({
-    required int value,
-    required String label,
-    required IconData icon,
-    required Color color,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, color: color, size: 22),
-          ),
-          const SizedBox(width: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                toPersianDigits(value),
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: color,
-                ),
-              ),
-              Text(
-                label,
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ── آکاردئون فعالیت‌های اخیر (هدر قابل کلیک + محتوای بازشو) ──
-  Widget _buildActivitiesAccordion() {
-    final count = _activities.length;
+  // ── ردیف «برنامه کاری» (این ماه/این هفته/فردا) ──
+  Widget _buildScheduleCards(AppColors c) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // هدر قابل کلیک
-        GestureDetector(
-          onTap: () =>
-              setState(() => _activitiesExpanded = !_activitiesExpanded),
-          behavior: HitTestBehavior.opaque,
-          child: Row(
-            children: [
-              const Text(
-                'فعالیت‌های اخیر',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: _ink,
-                ),
-              ),
-              const SizedBox(width: 8),
-
-              // شمارنده تعداد
-              const Spacer(),
-              // فلش چرخشی
-              AnimatedRotation(
-                turns: _activitiesExpanded ? 0.5 : 0,
-                duration: const Duration(milliseconds: 250),
-                child: Icon(
-                  Icons.keyboard_arrow_down_rounded,
-                  color: Colors.grey.shade500,
-                  size: 26,
-                ),
-              ),
-            ],
+        Text(
+          'برنامه کاری',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: c.textStrong,
           ),
         ),
-        // محتوای بازشو
-        AnimatedCrossFade(
-          firstChild: const SizedBox(width: double.infinity),
-          secondChild: Padding(
-            padding: const EdgeInsets.only(top: 12),
-            child: _buildActivitiesList(),
-          ),
-          crossFadeState: _activitiesExpanded
-              ? CrossFadeState.showSecond
-              : CrossFadeState.showFirst,
-          duration: const Duration(milliseconds: 250),
+        const SizedBox(height: 12),
+        // 🔧 اصلاح: جای «این ماه» و «فردا» عوض شد
+        // 🔧 طبق درخواست: این ۳ کارت حالا قابل‌کلیک‌اند و مودالِ
+        // برنامه‌ی مربوطه را باز می‌کنند
+        Row(
+          children: [
+            Expanded(
+              child: _scheduleCard(
+                c: c,
+                count: _countTomorrow(),
+                label: 'فردا',
+                color: c.primary,
+                onTap: () => showTomorrowPlanModal(
+                  context,
+                  tasks: _tasks,
+                  onSeeAll: _goToTasksTab,
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _scheduleCard(
+                c: c,
+                count: _countThisWeek(),
+                label: 'این هفته',
+                color: const Color(0xFFF59E0B),
+                onTap: () => showWeekPlanModal(
+                  context,
+                  tasks: _tasks,
+                  onSeeAll: _goToTasksTab,
+                  onDaySelected: _selectDay,
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _scheduleCard(
+                c: c,
+                count: _countThisMonth(),
+                label: 'این ماه',
+                color: const Color(0xFF3B82F6),
+                onTap: () => showMonthPlanModal(
+                  context,
+                  tasks: _tasks,
+                  onSeeAll: _goToTasksTab,
+                  onDaySelected: _selectDay,
+                ),
+              ),
+            ),
+          ],
         ),
       ],
     );
   }
 
-  Widget _buildActivitiesList() {
-    if (_activities.isEmpty) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(32),
+  Widget _scheduleCard({
+    required AppColors c,
+    required int count,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
+          color: c.surface,
+          borderRadius: BorderRadius.circular(16),
         ),
-        child: Center(
-          child: Text(
-            'فعالیتی ثبت نشده',
-            style: TextStyle(color: Colors.grey.shade400, fontSize: 13),
-          ),
-        ),
-      );
-    }
-
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Column(
-        children: List.generate(_activities.length, (i) {
-          final isLast = i == _activities.length - 1;
-          return _activityItem(_activities[i], isLast);
-        }),
-      ),
-    );
-  }
-
-  Widget _activityItem(Map<String, dynamic> act, bool isLast) {
-    final action = act['action'] as String? ?? '';
-    final actionLbl = TaskLabels.actionLabel(action);
-    final actionClr = TaskLabels.actionColor(action);
-    final actionIco = TaskLabels.actionIcon(action);
-    final taskTitle = act['task_title'] ?? 'کار';
-    final fromName = (act['from_user_name'] ?? '').toString().trim();
-    final taskId = int.tryParse(act['task_id']?.toString() ?? '');
-
-    return InkWell(
-      onTap: taskId == null
-          ? null
-          : () async {
-              await Get.to(
-                () => TaskDetailPage(
-                  taskId: taskId,
-                  currentUserId: widget.user['id'],
-                ),
-              );
-              _loadData();
-            },
-      borderRadius: BorderRadius.circular(10),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Column(
           children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: actionClr.withValues(alpha: 0.12),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(actionIco, color: actionClr, size: 15),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  RichText(
-                    text: TextSpan(
+            Stack(
+              alignment: Alignment.center,
+              clipBehavior: Clip.none,
+              children: [
+                Icon(Icons.calendar_month_rounded, color: color, size: 30),
+                Positioned(
+                  top: -8,
+                  right: -8,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 1,
+                    ),
+                    constraints: const BoxConstraints(minWidth: 20),
+                    decoration: BoxDecoration(
+                      color: color,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      toPersianDigits(count),
+                      textAlign: TextAlign.center,
                       style: const TextStyle(
-                        fontSize: 13,
-                        color: _ink,
-                        fontFamily: 'Vazir',
-                        height: 1.5,
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
                       ),
-                      children: [
-                        TextSpan(
-                          text: 'کار «$taskTitle» ',
-                          style: const TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                        TextSpan(text: actionLbl),
-                      ],
                     ),
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    toPersianDigits(_timeAgo(act['created_at']?.toString())),
-                    style: TextStyle(fontSize: 11, color: Colors.grey.shade400),
-                  ),
-                ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: c.textStrong,
               ),
             ),
           ],
@@ -454,33 +542,148 @@ class DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  String _timeAgo(String? gregorian) {
-    if (gregorian == null || gregorian.isEmpty) return '';
-    try {
-      final date = DateTime.parse(gregorian);
-      final diff = DateTime.now().difference(date);
-      if (diff.inMinutes < 1) return 'همین الان';
-      if (diff.inMinutes < 60) return '${diff.inMinutes} دقیقه پیش';
-      if (diff.inHours < 24) return '${diff.inHours} ساعت پیش';
-      if (diff.inDays < 7) return '${diff.inDays} روز پیش';
-      final j = Jalali.fromDateTime(date);
-      const mo = [
-        'فروردین',
-        'اردیبهشت',
-        'خرداد',
-        'تیر',
-        'مرداد',
-        'شهریور',
-        'مهر',
-        'آبان',
-        'آذر',
-        'دی',
-        'بهمن',
-        'اسفند',
+  // ── هدر لیست کار: فیلترها + عنوان «همه کارها» ──
+  Widget _buildTaskListHeader(AppColors c) {
+    return Row(
+      children: [
+        Text(
+          'همه کارها',
+          style: TextStyle(
+            fontSize: 17,
+            fontWeight: FontWeight.bold,
+            color: c.textStrong,
+          ),
+        ),
+        const Spacer(),
+        // 🔧 اصلاح طبق درخواست: ترتیب از راست = همه، امروز، عقب‌افتاده
+        _filterChip(c, 'همه'),
+        const SizedBox(width: 8),
+        _filterChip(c, 'امروز'),
+        const SizedBox(width: 8),
+        _filterChip(c, 'عقب افتاده'),
+      ],
+    );
+  }
+
+  Widget _filterChip(AppColors c, String label) {
+    final selected = _filter == label;
+    return GestureDetector(
+      onTap: () => setState(() {
+        _filter = label;
+        // 🔧 انتخابِ یک فیلترِ ثابت، انتخابِ روزِ خاص را لغو می‌کند
+        // (این دو حالت، همدیگر را نقض می‌کنند)
+        _selectedDay = null;
+      }),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        decoration: BoxDecoration(
+          color: selected ? Colors.transparent : Colors.transparent,
+          border: Border.all(
+            color: selected ? c.primary : c.borderSoft,
+            width: 1.3,
+          ),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: selected ? c.primary : c.textMuted,
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── لیست کارها ──
+  List<Widget> _buildTaskList(AppColors c) {
+    final tasks = _filteredTasks;
+    if (tasks.isEmpty) {
+      return [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 40),
+          child: Center(
+            child: Text(
+              'کاری یافت نشد',
+              style: TextStyle(color: c.textMuted, fontSize: 13),
+            ),
+          ),
+        ),
       ];
-      return '${j.day} ${mo[j.month - 1]}';
-    } catch (_) {
-      return '';
     }
+    return tasks.map((t) => _taskRow(c, t)).toList();
+  }
+
+  Widget _taskRow(AppColors c, dynamic task) {
+    final taskId = task['id'];
+    return GestureDetector(
+      onTap: () async {
+        final result = await Get.to(
+          () =>
+              TaskDetailPage(taskId: taskId, currentUserId: widget.user['id']),
+        );
+        if (result == true) _loadData();
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        decoration: BoxDecoration(
+          color: c.surface,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        // 🔧 طبق درخواست: عنوان + نشان‌ها + سه‌نقطه همه در ردیفِ اول؛
+        // موعدِ انجام دقیقاً زیرِ همین ردیف (زیرِ عنوان) می‌آید و با
+        // هیچ‌چیزِ دیگری هم‌ردیف نمی‌شود — دقیقاً هم‌راستا با کارتِ
+        // صفحه‌ی «کارها»
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: Text(
+                    task['title'] ?? '',
+                    textAlign: TextAlign.right,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: c.textStrong,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (final b in badgesForTask(task)) ...[
+                      taskBadgeChip(icon: b.$1, label: b.$2, color: b.$3),
+                      const SizedBox(width: 6),
+                    ],
+                  ],
+                ),
+                GestureDetector(
+                  onTap: () => showTaskQuickActionsSheet(
+                    context,
+                    task: task,
+                    onChanged: _loadData,
+                  ),
+                  child: Icon(
+                    Icons.more_vert_rounded,
+                    color: c.textMuted,
+                    size: 20,
+                  ),
+                ),
+              ],
+            ),
+            taskDueRow(c, task),
+          ],
+        ),
+      ),
+    );
   }
 }

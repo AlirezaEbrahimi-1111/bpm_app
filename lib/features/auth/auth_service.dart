@@ -19,12 +19,19 @@ class AuthService {
 
   static Future<Map<String, dynamic>> login(
     String username,
-    String password,
-  ) async {
+    String password, {
+    bool rememberMe = false,
+  }) async {
     try {
       final response = await ApiClient.dio.post(
         '/api/auth/login.php',
-        data: {'username': username, 'password': password},
+        data: {
+          'username': username,
+          'password': password,
+          // 🔧 اصلاح: تا سرور (بعد از اصلاح login.php) بتواند بر اساس این
+          // پرچم توکن ۳۰ روزه به‌جای ۵ ساعته بسازد
+          'remember_me': rememberMe,
+        },
       );
 
       if (response.data['success'] == true) {
@@ -73,10 +80,7 @@ class AuthService {
         ),
       );
       if (response.data['success'] == true) {
-        return {
-          'success': true,
-          'message': response.data['message'],
-        };
+        return {'success': true, 'message': response.data['message']};
       }
       return {
         'success': false,
@@ -95,12 +99,20 @@ class AuthService {
   // ── تأیید کد یکبارمصرف و ورود ──
   static Future<Map<String, dynamic>> verifyOtp(
     String phone,
-    String code,
-  ) async {
+    String code, {
+    bool rememberMe = false,
+  }) async {
     try {
       final response = await ApiClient.dio.post(
         '/api/auth/login.php',
-        data: {'action': 'verify_otp', 'phone': phone, 'code': code},
+        data: {
+          'action': 'verify_otp',
+          'phone': phone,
+          'code': code,
+          // 🔧 اصلاح: تا سرور (بعد از اصلاح login.php) بتواند بر اساس این
+          // پرچم توکن ۳۰ روزه به‌جای ۳ ساعته بسازد
+          'remember_me': rememberMe,
+        },
         options: Options(
           sendTimeout: const Duration(seconds: 15),
           receiveTimeout: const Duration(seconds: 15),

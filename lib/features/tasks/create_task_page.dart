@@ -1,24 +1,41 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import '../../core/widgets/app_snack.dart';
 import '../../core/network/api_client.dart';
-import 'package:persian_datetime_picker/persian_datetime_picker.dart';
+import 'package:shamsi_date/shamsi_date.dart';
 import 'package:dio/dio.dart' as dio;
 import 'package:file_picker/file_picker.dart';
 import '../../core/utils/persian_number.dart';
+import '../../core/theme/app_colors.dart';
+import '../../core/widgets/app_switch.dart';
 import 'widgets/persian_date_picker_sheet.dart';
+import 'widgets/task_group_management_sheet.dart';
 
+/// صفحه‌ی «تعریف کار جدید» — طبق طرح ارسالی (روشن + تاریک).
+/// 🔧 طبق درخواستِ صریح، ترتیبِ بخش‌ها با خودِ عکس یک تفاوت دارد: چک‌لیست
+/// بلافاصله بعد از «عنوان کار» می‌آید (نه پایینِ فرم مثلِ عکس).
 class CreateTaskPage extends StatefulWidget {
   final String userRole;
   final int? currentUserId;
-  const CreateTaskPage({super.key, this.userRole = '', this.currentUserId});
+  // 🔧 «بازتعریفِ کار» — وقتی از جزئیاتِ یک تسکِ موجود باز می‌شود، این
+  // مپ عنوان/توضیح/نوع/اولویت/گروه/چک‌لیست/پیوست‌هایِ تسکِ اصلی را حمل
+  // می‌کند تا فرم از قبل پر شود؛ در نهایت هنوز همان create.php صدا زده
+  // می‌شود (دقیقاً مثل نسخهٔ دسکتاپ — فیلد ویژه‌ای برایِ «بازتعریف» در
+  // بک‌اند وجود ندارد).
+  final Map<String, dynamic>? redefineFrom;
+  const CreateTaskPage({
+    super.key,
+    this.userRole = '',
+    this.currentUserId,
+    this.redefineFrom,
+  });
 
   @override
   State<CreateTaskPage> createState() => _CreateTaskPageState();
 }
 
 class _CreateTaskPageState extends State<CreateTaskPage> {
-  static const _primary = Color(0xFF6D28D9);
-
   // فیلدهای اصلی
   final _titleController = TextEditingController();
   final _descController = TextEditingController();
@@ -38,7 +55,6 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
   // چک‌لیست
   final List<String> _checklistItems = [];
   final _checklistController = TextEditingController();
-  // لیست همکاران
   // داده‌های assignee
   List<dynamic> _users = [];
   List<dynamic> _sections = [];
@@ -51,11 +67,31 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
   String _assigneeType = 'self';
   dynamic _assigneeValue; // id کاربر یا section_key
   String _assigneeLabel = 'خودم';
+  // 🔧 اشتراکِ تاریخچه با ارجاع‌شوندگان — endpoint از قبل پشتیبانی
+  // می‌کند (share_history)، فقط تا الان در فرمِ موبایل نبود
+  bool _shareHistory = true;
 
   @override
   void initState() {
     super.initState();
     _loadAssigneeData();
+    final rf = widget.redefineFrom;
+    if (rf != null) {
+      _titleController.text = (rf['title'] ?? '').toString();
+      _descController.text = (rf['description'] ?? '').toString();
+      _taskType = (rf['task_type'] ?? 'periodic').toString();
+      _priority = (rf['priority'] ?? 'medium').toString();
+      if (rf['group_id'] != null) {
+        _selectedGroupId = rf['group_id'];
+        _groupLabel = (rf['group_name'] ?? '').toString().isNotEmpty
+            ? rf['group_name'].toString()
+            : 'بدون گروه';
+      }
+      final checklistTitles = (rf['checklist_titles'] as List?) ?? [];
+      _checklistItems.addAll(checklistTitles.map((e) => e.toString()));
+      // 🔧 تاریخ/موعد و مسئولِ انجام عمداً خالی می‌مانند — باید تازه
+      // انتخاب شوند، درست مثلِ رفتارِ «بازتعریف» در نسخهٔ دسکتاپ
+    }
   }
 
   Future<void> _loadAssigneeData() async {
@@ -72,29 +108,34 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       final r = await ApiClient.dio.get('/api/users/list.php');
       if (r.data['success'] == true) {
         final all = r.data['users'] as List? ?? [];
-        // حذف کاربر جاری از لیست
         _users = all.where((u) => u['id'] != widget.currentUserId).toList();
       }
     } catch (_) {}
-    try {
-      final r = await ApiClient.dio.get('/api/task-groups/list-all.php');
-      if (r.data['success'] == true) {
-        final all = r.data['groups'] as List? ?? [];
-        _groups = all.where((g) {
-          if (g['scope'] == 'org') return true;
-          return g['created_by']?.toString() == widget.currentUserId.toString();
-        }).toList();
-      }
-    } catch (_) {}
+    await _loadGroups();
 
     setState(() {});
   }
 
-  // ── تبدیل DateTime به رشته میلادی ─────────────────
+  Future<void> _loadGroups() async {
+    try {
+      // 🔧 list.php (نه list-all.php) — همان قابلِ دسترسِ همه‌ی کاربران
+      final r = await ApiClient.dio.get('/api/task-groups/list.php');
+      if (r.data['success'] == true) {
+        final all = r.data['groups'] as List? ?? [];
+        setState(() {
+          _groups = all.where((g) {
+            if (g['scope'] == 'org') return true;
+            return g['created_by']?.toString() ==
+                widget.currentUserId.toString();
+          }).toList();
+        });
+      }
+    } catch (_) {}
+  }
+
   String _toApiDate(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
-  // ── نمایش تاریخ شمسی ──────────────────────────────
   String _toShamsi(DateTime d) {
     final j = Jalali.fromDateTime(d);
     const mo = [
@@ -114,10 +155,8 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     return toPersianDigits('${j.day} ${mo[j.month - 1]} ${j.year}');
   }
 
-  // ── انتخاب تاریخ ──────────────────────────────────
-  // 🔧 اصلاح: به‌جای پکیج persian_datetime_picker (که گاهی ارقام را
-  // انگلیسی نشان می‌داد)، از انتخابگر اختصاصیِ خودمان استفاده می‌کنیم
-  // که تضمین می‌کند همه‌ی ارقام همیشه فارسی نمایش داده شوند.
+  // 🔧 به‌جای پکیج persian_datetime_picker (که گاهی ارقام را انگلیسی
+  // نشان می‌داد)، انتخابگر اختصاصیِ خودمان استفاده می‌شود
   Future<DateTime?> _pickDate({DateTime? initial}) async {
     return showCustomPersianDatePicker(
       context,
@@ -127,33 +166,17 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     );
   }
 
-  // ── ارسال فرم ─────────────────────────────────────
   Future<void> _submit() async {
     if (_titleController.text.trim().isEmpty) {
-      Get.snackbar(
-        'خطا',
-        'عنوان کار الزامی است',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red.shade100,
-      );
+      AppSnack.error('خطا', 'عنوان کار الزامی است');
       return;
     }
     if (_taskType == 'periodic' && _dueDate == null) {
-      Get.snackbar(
-        'خطا',
-        'تاریخ انجام الزامی است',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red.shade100,
-      );
+      AppSnack.error('خطا', 'تاریخ انجام الزامی است');
       return;
     }
     if (_taskType == 'continuous' && _startDate == null) {
-      Get.snackbar(
-        'خطا',
-        'تاریخ شروع الزامی است',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red.shade100,
-      );
+      AppSnack.error('خطا', 'تاریخ شروع الزامی است');
       return;
     }
 
@@ -163,12 +186,12 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       'title': _titleController.text.trim(),
       'task_type': _taskType,
       'priority': _priority,
+      'share_history': _shareHistory,
     };
 
     if (_descController.text.trim().isNotEmpty) {
       body['description'] = _descController.text.trim();
     }
-
     if (_assigneeType == 'user' && _assigneeValue != null) {
       body['assignee_id'] = _assigneeValue;
     }
@@ -183,6 +206,11 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       if (_endDate != null) body['end_date'] = _toApiDate(_endDate!);
       body['period_type'] = _periodType;
     }
+    final redefineAttachmentIds =
+        widget.redefineFrom?['attachment_ids'] as List?;
+    if (redefineAttachmentIds != null && redefineAttachmentIds.isNotEmpty) {
+      body['copy_attachment_ids'] = redefineAttachmentIds;
+    }
 
     try {
       final res = await ApiClient.dio.post('/api/tasks/create.php', data: body);
@@ -190,41 +218,25 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
 
       if (res.data['success'] == true) {
         final newTaskId = res.data['task_id'];
-        // ذخیره چک‌لیست اگر آیتمی هست
         if (newTaskId != null && _checklistItems.isNotEmpty) {
           await _saveChecklist(newTaskId);
         }
-        // آپلود فایل‌ها اگر هست
         if (newTaskId != null && _pickedFiles.isNotEmpty) {
           await _uploadFiles(newTaskId);
         }
         Get.back(result: true);
-        Get.snackbar(
+        AppSnack.success(
           '✅ موفق',
-          'کار با موفقیت ایجاد شد',
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: Colors.green.shade100,
+          widget.redefineFrom != null
+              ? 'کار بازتعریف شد'
+              : 'کار با موفقیت ایجاد شد',
         );
       } else {
-        Get.snackbar(
-          'خطا',
-          res.data['message'] ?? 'خطا در ایجاد کار',
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: Colors.red.shade100,
-        );
+        AppSnack.error('خطا', res.data['message'] ?? 'خطا در ایجاد کار');
       }
     } catch (e) {
       setState(() => _isLoading = false);
-      print('❌ Create error: $e');
-      if (e is dio.DioException) {
-        print('📋 Response: ${e.response?.data}');
-      }
-      Get.snackbar(
-        'خطا',
-        'خطا در اتصال به سرور',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red.shade100,
-      );
+      AppSnack.error('خطا', 'خطا در اتصال به سرور');
     }
   }
 
@@ -248,12 +260,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
         setState(() => _pickedFiles.add(result.files.first));
       }
     } catch (_) {
-      Get.snackbar(
-        'خطا',
-        'خطا در انتخاب فایل',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red.shade100,
-      );
+      AppSnack.error('خطا', 'خطا در انتخاب فایل');
     }
   }
 
@@ -268,9 +275,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
           '/api/tasks/upload-attachment.php',
           data: formData,
         );
-      } catch (_) {
-        // خطا در یک فایل نباید بقیه را متوقف کند
-      }
+      } catch (_) {}
     }
   }
 
@@ -296,411 +301,242 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
               .toList(),
         },
       );
-    } catch (e) {
-      // خطا در چک‌لیست نباید کل کار را متوقف کند
-    }
+    } catch (_) {}
   }
 
   @override
   Widget build(BuildContext context) {
+    final c = AppColors.of(context);
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F6FA),
+      backgroundColor: c.bgPage,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: c.bgPage,
         elevation: 0,
         centerTitle: true,
-        title: const Text(
-          'کار جدید',
+        iconTheme: IconThemeData(color: c.textStrong),
+        title: Text(
+          widget.redefineFrom != null ? 'بازتعریف کار' : 'تعریف کار جدید',
           style: TextStyle(
-            color: Color(0xFF1A1A2E),
+            color: c.textStrong,
             fontWeight: FontWeight.bold,
             fontSize: 16,
           ),
         ),
         leading: IconButton(
-          icon: const Icon(
-            Icons.arrow_back_ios_rounded,
-            color: Color(0xFF1A1A2E),
-            size: 20,
+          icon: Transform.rotate(
+            angle: math.pi, // 🔧 طبق درخواست: ۱۸۰ درجه چرخید
+            child: const Icon(Icons.arrow_forward_ios_rounded, size: 20),
           ),
           onPressed: () => Get.back(),
         ),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // ── کارت اصلی ──────────────────────────────
-            _card(
-              children: [
-                // عنوان
-                _label('عنوان کار *'),
-                _textField(_titleController, 'مثال: پیگیری قرارداد'),
-                const SizedBox(height: 16),
-
-                // نوع کار
-                _label('نوع کار'),
-                _segmented(),
-                const SizedBox(height: 16),
-
-                // اولویت
-                _label('اولویت'),
-                _prioritySelector(),
-              ],
-            ),
-            const SizedBox(height: 12),
-
-            // ── کارت تاریخ ─────────────────────────────
-            _card(
-              children: [
-                if (_taskType == 'periodic') ...[
-                  _label('تاریخ انجام *'),
-                  _dateTile(
-                    icon: Icons.event_rounded,
-                    value: _dueDate != null ? _toShamsi(_dueDate!) : null,
-                    hint: 'انتخاب تاریخ',
-                    onTap: () async {
-                      final d = await _pickDate();
-                      if (d != null) setState(() => _dueDate = d);
-                    },
-                  ),
-                ] else ...[
-                  // تاریخ شروع و پایان در یک ردیف
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _label('تاریخ شروع *'),
-                            _dateTile(
-                              icon: Icons.play_circle_outline_rounded,
-                              value: _startDate != null
-                                  ? _toShamsi(_startDate!)
-                                  : null,
-                              hint: 'شروع',
-                              onTap: () async {
-                                final d = await _pickDate();
-                                if (d != null) setState(() => _startDate = d);
-                              },
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _label('تاریخ پایان'),
-                            _dateTile(
-                              icon: Icons.event_busy_rounded,
-                              value: _endDate != null
-                                  ? _toShamsi(_endDate!)
-                                  : null,
-                              hint: 'اختیاری',
-                              onTap: () async {
-                                final d = await _pickDate();
-                                if (d != null) setState(() => _endDate = d);
-                              },
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  _label('دوره تکرار'),
-                  _periodSelector(),
-                ],
-              ],
-            ),
-            const SizedBox(height: 12),
-
-            // 🔧 اصلاح: بخش «جزئیات بیشتر» حذف شد — همه‌ی جزئیات
-            // همیشه و یک‌جا نمایش داده می‌شوند (بدون نیاز به باز کردن).
-            _card(
-              children: [
-                // توضیحات
-                _label('توضیحات'),
-                _textField(_descController, 'توضیحات اختیاری...', maxLines: 3),
-                const SizedBox(height: 16),
-
-                // مسئول
-                _label('مسئول کار'),
-                _assigneePicker(),
-                const SizedBox(height: 16),
-                // گروه
-                _label('گروه'),
-                _groupPicker(),
-              ],
-            ),
-            const SizedBox(height: 12),
-            _card(
-              children: [
-                Row(
+            // ── این یک کار روتین است؟ — فعلاً غیرفعال (به‌زودی) ──
+            // 🔧 طبق درخواست: بدونِ آیکن و بدونِ کادر/بکگراند — فقط
+            // سوییچ و برچسب، و طبقِ درخواستِ بعدی: سوییچ بلافاصله پشتِ
+            // متن (نه با فاصله‌ی زیاد تا لبه‌ی مقابل) — هر دو با هم
+            // سمتِ راست بچسبند
+            Opacity(
+              opacity: 0.5,
+              child: IgnorePointer(
+                child: Row(
                   children: [
-                    const Icon(
-                      Icons.checklist_rounded,
-                      size: 18,
-                      color: _primary,
+                    AppSwitch(
+                      value: false,
+                      onChanged: (_) {},
+                      activeColor: c.primary,
                     ),
-                    const SizedBox(width: 8),
-                    const Text(
-                      'چک‌لیست',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF1A1A2E),
-                      ),
-                    ),
-                    const Spacer(),
-                    if (_checklistItems.isNotEmpty)
-                      Text(
-                        '${_checklistItems.length} آیتم',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey.shade500,
-                        ),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-
-                // آیتم‌های اضافه‌شده
-                ..._checklistItems.asMap().entries.map((entry) {
-                  final i = entry.key;
-                  final text = entry.value;
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 10,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF5F6FA),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.radio_button_unchecked,
-                          size: 18,
-                          color: Colors.grey.shade400,
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            text,
-                            style: const TextStyle(fontSize: 13),
-                          ),
-                        ),
-                        GestureDetector(
-                          onTap: () =>
-                              setState(() => _checklistItems.removeAt(i)),
-                          child: Icon(
-                            Icons.close_rounded,
-                            size: 18,
-                            color: Colors.grey.shade400,
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                }),
-
-                // فیلد افزودن آیتم
-                Row(
-                  children: [
+                    const SizedBox(width: 10),
+                    // Expanded (نه Flexible+Spacer که عرض را نصف می‌کرد و متن
+                    // را دو خطی می‌کرد) — متن یک‌خطی و چسبیده به سوییچ
                     Expanded(
-                      child: TextField(
-                        controller: _checklistController,
-                        decoration: InputDecoration(
-                          hintText: 'افزودن آیتم جدید...',
-                          hintStyle: TextStyle(
-                            color: Colors.grey.shade400,
-                            fontSize: 13,
-                          ),
-                          filled: true,
-                          fillColor: const Color(0xFFF5F6FA),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide.none,
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 10,
-                          ),
-                        ),
-                        onSubmitted: (_) => _addChecklistItem(),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    GestureDetector(
-                      onTap: _addChecklistItem,
-                      child: Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: _primary,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Icon(
-                          Icons.add,
-                          color: Colors.white,
-                          size: 20,
-                        ),
+                      child: Text(
+                        'این یک کار روتین است (به‌زودی)',
+                        textAlign: TextAlign.right,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 13, color: c.textStrong),
                       ),
                     ),
                   ],
                 ),
-              ],
+              ),
             ),
-            const SizedBox(height: 12),
-            _card(
-              children: [
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.attach_file_rounded,
-                      size: 18,
-                      color: _primary,
-                    ),
-                    const SizedBox(width: 8),
-                    const Text(
-                      'پیوست فایل',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF1A1A2E),
-                      ),
-                    ),
-                    const Spacer(),
-                    if (_pickedFiles.isNotEmpty)
-                      Text(
-                        '${_pickedFiles.length} فایل',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey.shade500,
-                        ),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 12),
+            const SizedBox(height: 10),
 
-                // فایل‌های انتخاب‌شده
-                ..._pickedFiles.asMap().entries.map((entry) {
-                  final i = entry.key;
-                  final file = entry.value;
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 10,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF5F6FA),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.insert_drive_file_outlined,
-                          size: 18,
-                          color: Colors.grey.shade500,
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            file.name,
-                            style: const TextStyle(fontSize: 13),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        GestureDetector(
-                          onTap: () => setState(() => _pickedFiles.removeAt(i)),
-                          child: Icon(
-                            Icons.close_rounded,
-                            size: 18,
-                            color: Colors.grey.shade400,
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                }),
-
-                // دکمه افزودن فایل
-                GestureDetector(
-                  onTap: _pickFile,
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF0EEFF),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: const [
-                        Icon(Icons.add, size: 18, color: _primary),
-                        SizedBox(width: 6),
-                        Text(
-                          'انتخاب فایل',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: _primary,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
+            // 🔧 طبق درخواست: عنوان/برچسبِ هر بخش با فیلد/کنترلِ خودش در
+            // یک خط (به‌جای عنوانِ جدا بالای هر فیلد)
+            _labeledRow(
+              c,
+              icon: Icons.edit_outlined,
+              label: 'عنوان کار',
+              field: _bareTextField(
+                c,
+                controller: _titleController,
+                hint: 'عنوان کار را وارد کنید',
+              ),
             ),
-            const SizedBox(height: 80),
+            const SizedBox(height: 16),
+
+            // 🔧 طبق درخواست: چک‌لیست بلافاصله بعد از عنوان
+            _labeledRow(
+              c,
+              icon: Icons.checklist_rounded,
+              label: 'چک‌لیست',
+              trailing: _checklistItems.isEmpty
+                  ? null
+                  : toPersianDigits('${_checklistItems.length} مورد'),
+              field: _checklistAddField(c),
+            ),
+            if (_checklistItems.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              _checklistItemsList(c),
+            ],
+            const SizedBox(height: 16),
+
+            _groupPicker(c),
+            const SizedBox(height: 16),
+
+            _labeledRow(
+              c,
+              icon: Icons.priority_high_rounded,
+              label: 'اولویت',
+              labelFontSize: 11.5,
+              field: _prioritySelector(c),
+            ),
+            const SizedBox(height: 16),
+
+            _labeledRow(
+              c,
+              icon: Icons.grid_view_rounded,
+              label: 'نوع کار',
+              labelFontSize: 11.5,
+              field: _typeSelector(c),
+            ),
+            const SizedBox(height: 16),
+
+            // 🔧 طبق درخواست: عنوان/برچسبِ «توضیحات» داخلِ خودِ کادر آمد
+            // (نه بالای آن، جدا)
+            _descriptionField(c),
+            const SizedBox(height: 16),
+
+            _assigneePicker(c),
+            const SizedBox(height: 16),
+
+            if (_taskType == 'periodic') ...[
+              _dateTile(
+                c,
+                icon: Icons.calendar_today_outlined,
+                label: 'موعد انجام',
+                value: _dueDate != null ? _toShamsi(_dueDate!) : null,
+                hint: 'انتخاب تاریخ',
+                onTap: () async {
+                  final d = await _pickDate();
+                  if (d != null) setState(() => _dueDate = d);
+                },
+              ),
+            ] else ...[
+              _dateTile(
+                c,
+                icon: Icons.play_circle_outline_rounded,
+                label: 'تاریخ شروع',
+                value: _startDate != null ? _toShamsi(_startDate!) : null,
+                hint: 'انتخاب تاریخ',
+                onTap: () async {
+                  final d = await _pickDate();
+                  if (d != null) setState(() => _startDate = d);
+                },
+              ),
+              const SizedBox(height: 10),
+              _dateTile(
+                c,
+                icon: Icons.event_busy_rounded,
+                label: 'تاریخ پایان (اختیاری)',
+                value: _endDate != null ? _toShamsi(_endDate!) : null,
+                hint: 'نامحدود',
+                onTap: () async {
+                  final d = await _pickDate();
+                  if (d != null) setState(() => _endDate = d);
+                },
+              ),
+              const SizedBox(height: 10),
+              _labeledRow(
+                c,
+                icon: Icons.repeat_rounded,
+                label: 'دوره تکرار',
+                field: _periodSelector(c),
+              ),
+            ],
+            const SizedBox(height: 16),
+
+            // 🔧 طبق درخواست: آیکنِ چشم حذف شد
+            _toggleRow(
+              c,
+              label: 'نمایش تاریخچه کار برای کاربران ارجاع‌شونده',
+              value: _shareHistory,
+              onChanged: (v) => setState(() => _shareHistory = v),
+            ),
+            const SizedBox(height: 16),
+
+            _labeledRow(
+              c,
+              icon: Icons.attach_file_rounded,
+              label: 'فایل‌های پیوست',
+              trailing: _pickedFiles.isEmpty
+                  ? null
+                  : toPersianDigits('${_pickedFiles.length} فایل'),
+              field: _attachmentsAddField(c),
+            ),
+            if (_pickedFiles.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              _attachmentsList(c),
+            ],
           ],
         ),
       ),
-
-      // ── دکمه ثبت ───────────────────────────────────
-      bottomNavigationBar: Container(
-        color: Colors.white,
-        child: SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-            child: SizedBox(
-              height: 52,
-              child: ElevatedButton(
-                onPressed: _isLoading ? null : _submit,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _primary,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  elevation: 0,
+      // 🔧 طبق درخواست: دکمه‌ی ذخیره دیگر داخل اسکرول نیست — ثابت،
+      // چسبیده به بالای نوار/دکمه‌های سیستمِ گوشی
+      bottomNavigationBar: SafeArea(
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+          decoration: BoxDecoration(
+            color: c.bgPage,
+            border: Border(top: BorderSide(color: c.borderSoft)),
+          ),
+          child: SizedBox(
+            height: 52,
+            child: ElevatedButton(
+              onPressed: _isLoading ? null : _submit,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: c.primary,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
                 ),
-                child: _isLoading
-                    ? const SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2,
-                        ),
-                      )
-                    : const Text(
-                        'ثبت کار',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
               ),
+              child: _isLoading
+                  ? const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2,
+                      ),
+                    )
+                  : Text(
+                      widget.redefineFrom != null
+                          ? 'بازتعریف کار'
+                          : 'ذخیره کار',
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
             ),
           ),
         ),
@@ -710,84 +546,241 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
 
   // ── ویجت‌های کمکی ─────────────────────────────────
 
-  Widget _card({required List<Widget> children}) => Container(
-    padding: const EdgeInsets.all(16),
+  Widget _rowContainer(
+    AppColors c, {
+    required Widget child,
+    EdgeInsetsGeometry? padding,
+  }) => Container(
+    padding:
+        padding ?? const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
     decoration: BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(16),
-      boxShadow: [
-        BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 8),
-      ],
+      color: c.surface,
+      borderRadius: BorderRadius.circular(14),
+      border: Border.all(color: c.borderSoft),
     ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: children,
-    ),
+    child: child,
   );
 
-  Widget _label(String text) => Padding(
-    padding: const EdgeInsets.only(bottom: 8),
-    child: Text(
-      text,
-      style: const TextStyle(
-        fontSize: 13,
-        fontWeight: FontWeight.w600,
-        color: Color(0xFF555570),
+  // 🔧 طبق درخواست: عنوانِ هر بخش دیگر ردیفِ جداگانه‌ی بالای فیلد
+  // نیست — همه در یک خط (آیکن+برچسب سمتِ راست، خودِ فیلد/کنترل
+  // سمتِ چپ و Expanded)
+  Widget _labeledRow(
+    AppColors c, {
+    required IconData icon,
+    required String label,
+    String? trailing,
+    required Widget field,
+    double labelFontSize = 13,
+  }) {
+    return _rowContainer(
+      c,
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: c.textMuted),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: labelFontSize,
+              fontWeight: FontWeight.w600,
+              color: c.textStrong,
+            ),
+          ),
+          if (trailing != null) ...[
+            const SizedBox(width: 6),
+            Text(trailing, style: TextStyle(fontSize: 11, color: c.textMuted)),
+          ],
+          const SizedBox(width: 10),
+          Expanded(child: field),
+        ],
       ),
-    ),
-  );
+    );
+  }
 
-  Widget _textField(TextEditingController c, String hint, {int maxLines = 1}) =>
-      TextField(
-        controller: c,
-        maxLines: maxLines,
-        decoration: InputDecoration(
-          hintText: hint,
-          hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 13),
-          filled: true,
-          fillColor: const Color(0xFFF5F6FA),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide.none,
+  Widget _bareTextField(
+    AppColors c, {
+    required TextEditingController controller,
+    required String hint,
+  }) {
+    return TextField(
+      controller: controller,
+      textAlign: TextAlign.right,
+      style: TextStyle(fontSize: 13.5, color: c.textStrong),
+      decoration: InputDecoration(
+        hintText: hint,
+        hintStyle: TextStyle(color: c.textMuted, fontSize: 13),
+        isDense: true,
+        contentPadding: EdgeInsets.zero,
+        border: InputBorder.none,
+      ),
+    );
+  }
+
+  // 🔧 طبق درخواست: برچسبِ «توضیحات» داخلِ خودِ کادر (به‌عنوانِ یک
+  // سرتیترِ کوچک بالای فیلد)، نه جدا و بیرون از آن
+  Widget _descriptionField(AppColors c) {
+    return _rowContainer(
+      c,
+      // 🔧 طبق درخواست: متنِ راهنمای «توضیحات کار را وارد کنید» جلوی
+      // برچسبِ «توضیحات» (همان ردیف) آمد و ارتفاعِ کادر حدود ۵۰٪ کمتر شد
+      // (قبلاً ۲۰+۱۰+۴۵ = ۷۵؛ حالا ۳۶). فیلد همچنان چندخطی است و اسکرول می‌خورد.
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Icon(Icons.notes_rounded, size: 18, color: c.textMuted),
           ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: _primary, width: 1.5),
+          const SizedBox(width: 8),
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Text(
+              'توضیحات',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: c.textStrong,
+              ),
+            ),
           ),
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 14,
-            vertical: 12,
+          const SizedBox(width: 10),
+          Expanded(
+            child: SizedBox(
+              height: 36,
+              child: TextField(
+                controller: _descController,
+                maxLines: null,
+                minLines: null,
+                expands: true,
+                textAlign: TextAlign.right,
+                textAlignVertical: TextAlignVertical.top,
+                style: TextStyle(fontSize: 13.5, color: c.textStrong),
+                decoration: InputDecoration(
+                  hintText: 'توضیحات کار را وارد کنید',
+                  hintStyle: TextStyle(color: c.textMuted, fontSize: 13),
+                  isDense: true,
+                  // عددِ top را کمتر/منفی‌نزدیک به صفر کنید تا متن بالاتر برود
+                  contentPadding: EdgeInsets.zero,
+                  border: InputBorder.none,
+                ),
+              ),
+            ),
           ),
+        ],
+      ),
+    );
+  }
+
+  // 🔧 آیکن اختیاری شد — ردیفِ «تاریخچه» دیگر آیکن (چشم) ندارد.
+  // 🔧 طبق درخواست: سوییچ بلافاصله پشتِ متن می‌آید (نه با Expanded که
+  // آن را تا لبه‌ی مقابل می‌کشید) — با Flexible+Spacer هر دو با هم
+  // سمتِ راست می‌چسبند
+  Widget _toggleRow(
+    AppColors c, {
+    IconData? icon,
+    required String label,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
+    return _rowContainer(
+      c,
+      child: Row(
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 18, color: c.textMuted),
+            const SizedBox(width: 10),
+          ],
+          // Expanded: متن یک‌خطی و سوییچ تا لبه‌ی چپِ کادر می‌رود
+          Expanded(
+            child: Text(
+              label,
+              textAlign: TextAlign.right,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 13, color: c.textStrong),
+            ),
+          ),
+          const SizedBox(width: 10),
+          // سوییچِ کوچک‌شده هنوز جای اصلیِ خود را در Row اشغال می‌کند و
+          // ~۹ پیکسل فاصله‌ی اضافه از لبه می‌سازد؛ با ۱۱- پیکسل جابه‌جایی
+          // فاصله‌ی چپ نصف می‌شود (عدد را کم/زیاد کنید تا تنظیم شود)
+          Transform.translate(
+            offset: const Offset(-11, 0),
+            child: AppSwitch(
+              value: value,
+              onChanged: onChanged,
+              activeColor: c.primary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _dateTile(
+    AppColors c, {
+    required IconData icon,
+    required String label,
+    String? value,
+    required String hint,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: _labeledRow(
+        c,
+        icon: icon,
+        label: label,
+        field: Row(
+          children: [
+            Expanded(
+              child: Text(
+                value ?? hint,
+                textAlign: TextAlign.right,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: value != null ? c.textStrong : c.textMuted,
+                ),
+              ),
+            ),
+            if (value != null)
+              Icon(Icons.check_circle_rounded, color: c.primary, size: 15),
+          ],
         ),
-      );
+      ),
+    );
+  }
 
-  Widget _segmented() => Row(
+  Widget _prioritySelector(AppColors c) => Row(
     children: [
-      _typeBtn('مقطعی', 'periodic', Icons.event_note_rounded),
-      const SizedBox(width: 10),
-      _typeBtn('دوره‌ای', 'continuous', Icons.repeat_rounded),
+      _prioBtn(c, 'بالا', 'high', c.danger),
+      const SizedBox(width: 8),
+      _prioBtn(c, 'متوسط', 'medium', c.warning),
+      const SizedBox(width: 8),
+      _prioBtn(c, 'پایین', 'low', c.success),
     ],
   );
 
-  Widget _typeBtn(String label, String val, IconData icon) {
-    final selected = _taskType == val;
+  Widget _prioBtn(AppColors c, String label, String val, Color color) {
+    final selected = _priority == val;
     return Expanded(
       child: GestureDetector(
-        onTap: () => setState(() => _taskType = val),
+        onTap: () => setState(() => _priority = val),
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(vertical: 10),
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.symmetric(vertical: 11),
           decoration: BoxDecoration(
-            color: selected ? _primary : const Color(0xFFF5F6FA),
+            color: selected ? color.withValues(alpha: 0.14) : c.surface,
             borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: selected ? color : c.borderSoft),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                icon,
-                size: 16,
-                color: selected ? Colors.white : Colors.grey.shade500,
+              Container(
+                width: 7,
+                height: 7,
+                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
               ),
               const SizedBox(width: 6),
               Text(
@@ -795,7 +788,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
-                  color: selected ? Colors.white : Colors.grey.shade500,
+                  color: selected ? color : c.textMuted,
                 ),
               ),
             ],
@@ -805,69 +798,73 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     );
   }
 
-  Widget _prioritySelector() => Row(
+  Widget _typeSelector(AppColors c) => Row(
     children: [
-      _prioBtn('بالا', 'high', const Color(0xFFEF4444)),
-      const SizedBox(width: 8),
-      _prioBtn('متوسط', 'medium', const Color(0xFFF59E0B)),
-      const SizedBox(width: 8),
-      _prioBtn('پایین', 'low', const Color(0xFF22C55E)),
+      _typeBtn(c, 'مقطعی', 'periodic', Icons.event_note_rounded),
+      const SizedBox(width: 10),
+      _typeBtn(c, 'دوره‌ای', 'continuous', Icons.repeat_rounded),
     ],
   );
 
-  Widget _prioBtn(String label, String val, Color color) {
-    final selected = _priority == val;
+  Widget _typeBtn(AppColors c, String label, String val, IconData icon) {
+    final selected = _taskType == val;
     return Expanded(
       child: GestureDetector(
-        onTap: () => setState(() => _priority = val),
+        onTap: () => setState(() => _taskType = val),
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(vertical: 9),
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.symmetric(vertical: 11),
           decoration: BoxDecoration(
-            color: selected
-                ? color.withValues(alpha: 0.12)
-                : const Color(0xFFF5F6FA),
+            color: selected ? c.primary : c.surface,
             borderRadius: BorderRadius.circular(12),
-            border: selected ? Border.all(color: color, width: 1.5) : null,
+            border: Border.all(color: selected ? c.primary : c.borderSoft),
           ),
-          child: Text(
-            label,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: selected ? color : Colors.grey.shade400,
-            ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                size: 16,
+                color: selected ? Colors.white : c.textMuted,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w600,
+                  color: selected ? Colors.white : c.textMuted,
+                ),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
 
-  Widget _periodSelector() => Row(
+  Widget _periodSelector(AppColors c) => Row(
     children: [
-      _periodBtn('روزانه', 'daily'),
+      _periodBtn(c, 'روزانه', 'daily'),
       const SizedBox(width: 8),
-      _periodBtn('هفتگی', 'weekly'),
+      _periodBtn(c, 'هفتگی', 'weekly'),
       const SizedBox(width: 8),
-      _periodBtn('ماهانه', 'monthly'),
+      _periodBtn(c, 'ماهانه', 'monthly'),
     ],
   );
 
-  Widget _periodBtn(String label, String val) {
+  Widget _periodBtn(AppColors c, String label, String val) {
     final selected = _periodType == val;
     return Expanded(
       child: GestureDetector(
         onTap: () => setState(() => _periodType = val),
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
+          duration: const Duration(milliseconds: 150),
           padding: const EdgeInsets.symmetric(vertical: 9),
           decoration: BoxDecoration(
-            color: selected
-                ? _primary.withValues(alpha: 0.1)
-                : const Color(0xFFF5F6FA),
+            color: selected ? c.primary.withValues(alpha: 0.12) : c.surface,
             borderRadius: BorderRadius.circular(12),
-            border: selected ? Border.all(color: _primary, width: 1.5) : null,
+            border: Border.all(color: selected ? c.primary : c.borderSoft),
           ),
           child: Text(
             label,
@@ -875,7 +872,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
-              color: selected ? _primary : Colors.grey.shade400,
+              color: selected ? c.primary : c.textMuted,
             ),
           ),
         ),
@@ -883,137 +880,71 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     );
   }
 
-  Widget _dateTile({
-    required IconData icon,
-    String? value,
-    required String hint,
-    required VoidCallback onTap,
-  }) => GestureDetector(
-    onTap: onTap,
-    child: Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF5F6FA),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            icon,
-            color: value != null ? _primary : Colors.grey.shade400,
-            size: 20,
-          ),
-          const SizedBox(width: 10),
-          Text(
-            value ?? hint,
-            style: TextStyle(
-              fontSize: 13,
-              color: value != null
-                  ? const Color(0xFF1A1A2E)
-                  : Colors.grey.shade400,
-            ),
-          ),
-          const Spacer(),
-          if (value != null)
-            Icon(Icons.check_circle_rounded, color: _primary, size: 18),
-        ],
-      ),
-    ),
-  );
-  Color _parseGroupColor(String? hex) {
-    if (hex == null || hex.isEmpty) return _primary;
+  Color _parseGroupColor(AppColors c, String? hex) {
+    if (hex == null || hex.isEmpty) return c.primary;
     try {
       return Color(int.parse('FF${hex.replaceAll('#', '')}', radix: 16));
     } catch (_) {
-      return _primary;
+      return c.primary;
     }
   }
 
-  Widget _groupPicker() {
+  Widget _groupPicker(AppColors c) {
     final hasSelection = _selectedGroupId != null;
-    // رنگ گروه انتخاب‌شده
-    Color dotColor = Colors.grey.shade400;
+    Color dotColor = c.textMuted;
     if (hasSelection) {
       final g = _groups.firstWhere(
         (e) => e['id'] == _selectedGroupId,
         orElse: () => null,
       );
-      if (g != null) dotColor = _parseGroupColor(g['color']);
+      if (g != null) dotColor = _parseGroupColor(c, g['color']);
     }
-
     return GestureDetector(
-      onTap: _showGroupSheet,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF5F6FA),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
+      onTap: () => _showGroupSheet(c),
+      child: _labeledRow(
+        c,
+        icon: Icons.folder_outlined,
+        label: 'گروه کار',
+        field: Row(
           children: [
-            if (hasSelection)
+            if (hasSelection) ...[
               Container(
-                width: 14,
-                height: 14,
+                width: 10,
+                height: 10,
                 decoration: BoxDecoration(
                   color: dotColor,
                   shape: BoxShape.circle,
                 ),
-              )
-            else
-              Icon(
-                Icons.folder_outlined,
-                color: Colors.grey.shade400,
-                size: 20,
               ),
-            const SizedBox(width: 10),
+              const SizedBox(width: 6),
+            ],
             Expanded(
               child: Text(
                 _groupLabel,
-                style: const TextStyle(fontSize: 13, color: Color(0xFF1A1A2E)),
+                textAlign: TextAlign.right,
+                style: TextStyle(fontSize: 13, color: c.textStrong),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            if (hasSelection)
-              GestureDetector(
-                onTap: () => setState(() {
-                  _selectedGroupId = null;
-                  _groupLabel = 'بدون گروه';
-                }),
-                child: Icon(
-                  Icons.close_rounded,
-                  color: Colors.grey.shade400,
-                  size: 18,
-                ),
-              )
-            else
-              Icon(
-                Icons.expand_more_rounded,
-                color: Colors.grey.shade400,
-                size: 20,
-              ),
+            Icon(
+              hasSelection ? Icons.close_rounded : Icons.expand_more_rounded,
+              color: c.textMuted,
+              size: 16,
+            ),
           ],
         ),
       ),
     );
   }
 
-  void _showGroupSheet() {
-    if (_groups.isEmpty) {
-      Get.snackbar(
-        'توجه',
-        'گروهی تعریف نشده است',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.orange.shade100,
-      );
-      return;
-    }
+  void _showGroupSheet(AppColors c) {
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
+      backgroundColor: c.surfaceContainerLow,
       builder: (_) => Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -1022,14 +953,18 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
             width: 40,
             height: 4,
             decoration: BoxDecoration(
-              color: Colors.grey.shade300,
+              color: c.borderSoft,
               borderRadius: BorderRadius.circular(2),
             ),
           ),
           const SizedBox(height: 16),
-          const Text(
+          Text(
             'انتخاب گروه',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+              color: c.textStrong,
+            ),
           ),
           const SizedBox(height: 8),
           Flexible(
@@ -1037,12 +972,11 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
               shrinkWrap: true,
               children: [
                 ListTile(
-                  leading: Icon(
-                    Icons.block,
-                    color: Colors.grey.shade400,
-                    size: 20,
+                  leading: Icon(Icons.block, color: c.textMuted, size: 20),
+                  title: Text(
+                    'بدون گروه',
+                    style: TextStyle(color: c.textStrong),
                   ),
-                  title: const Text('بدون گروه'),
                   onTap: () {
                     setState(() {
                       _selectedGroupId = null;
@@ -1052,7 +986,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
                   },
                 ),
                 ..._groups.map((g) {
-                  final color = _parseGroupColor(g['color']);
+                  final color = _parseGroupColor(c, g['color']);
                   return ListTile(
                     leading: Container(
                       width: 16,
@@ -1062,7 +996,10 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
                         shape: BoxShape.circle,
                       ),
                     ),
-                    title: Text(g['name'] ?? ''),
+                    title: Text(
+                      g['name'] ?? '',
+                      style: TextStyle(color: c.textStrong),
+                    ),
                     onTap: () {
                       setState(() {
                         _selectedGroupId = g['id'];
@@ -1072,6 +1009,25 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
                     },
                   );
                 }),
+                Divider(height: 12, color: c.borderSoft),
+                ListTile(
+                  leading: Icon(
+                    Icons.settings_outlined,
+                    color: c.primary,
+                    size: 20,
+                  ),
+                  title: Text(
+                    'مدیریت گروه‌ها',
+                    style: TextStyle(color: c.primary),
+                  ),
+                  onTap: () {
+                    Get.back();
+                    showTaskGroupManagementSheet(
+                      context,
+                      onChanged: _loadGroups,
+                    );
+                  },
+                ),
               ],
             ),
           ),
@@ -1081,48 +1037,40 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     );
   }
 
-  Widget _assigneePicker() {
+  Widget _assigneePicker(AppColors c) {
     final hasSelection = _assigneeType != 'self';
     return GestureDetector(
-      onTap: _showAssigneeSheet,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF5F6FA),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
+      onTap: () => _showAssigneeSheet(c),
+      child: _labeledRow(
+        c,
+        icon: Icons.person_outline_rounded,
+        label: 'واگذاری به',
+        field: Row(
           children: [
-            Icon(
-              Icons.person_outline_rounded,
-              color: hasSelection ? _primary : Colors.grey.shade400,
-              size: 20,
-            ),
-            const SizedBox(width: 10),
             Expanded(
               child: Text(
                 _assigneeLabel,
-                style: TextStyle(fontSize: 13, color: const Color(0xFF1A1A2E)),
+                textAlign: TextAlign.right,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: hasSelection ? c.primary : c.textStrong,
+                ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            Icon(
-              Icons.expand_more_rounded,
-              color: Colors.grey.shade400,
-              size: 20,
-            ),
+            Icon(Icons.expand_more_rounded, color: c.textMuted, size: 16),
           ],
         ),
       ),
     );
   }
 
-  // 🔧 اصلاح: حالا این مودال یک ویجت جدا با قابلیت جستجوست
-  void _showAssigneeSheet() {
+  void _showAssigneeSheet(AppColors c) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      backgroundColor: c.surfaceContainerLow,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -1141,15 +1089,160 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       _assigneeValue = value;
       _assigneeLabel = label;
     });
-    // 🔧 توجه: بستنِ مودال حالا داخل خودِ _AssigneeSelectSheet انجام می‌شود
-    // (Navigator.pop) — اینجا دیگر آن را نمی‌بندیم تا دوبار بسته نشود.
+  }
+
+  // 🔧 طبق درخواست: فقط ردیفِ «افزودنِ آیتمِ جدید» کنارِ برچسبِ
+  // «چک‌لیست» در یک خط می‌آید؛ آیتم‌هایِ از قبل اضافه‌شده در فهرستِ
+  // جدا (زیرش) می‌مانند
+  Widget _checklistAddField(AppColors c) {
+    return Row(
+      children: [
+        GestureDetector(
+          onTap: _addChecklistItem,
+          child: Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: c.primary,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(Icons.add, color: Colors.white, size: 16),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: TextField(
+            controller: _checklistController,
+            textAlign: TextAlign.right,
+            style: TextStyle(fontSize: 13, color: c.textStrong),
+            decoration: InputDecoration(
+              hintText: 'افزودن آیتم جدید...',
+              hintStyle: TextStyle(color: c.textMuted, fontSize: 12.5),
+              isDense: true,
+              contentPadding: EdgeInsets.zero,
+              border: InputBorder.none,
+            ),
+            onSubmitted: (_) => _addChecklistItem(),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _checklistItemsList(AppColors c) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: _checklistItems.asMap().entries.map((entry) {
+        final i = entry.key;
+        final text = entry.value;
+        return Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: c.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(
+            children: [
+              GestureDetector(
+                onTap: () => setState(() => _checklistItems.removeAt(i)),
+                child: Icon(Icons.close_rounded, size: 18, color: c.textMuted),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  text,
+                  textAlign: TextAlign.right,
+                  style: TextStyle(fontSize: 13, color: c.textStrong),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Icon(Icons.radio_button_unchecked, size: 18, color: c.textMuted),
+            ],
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  // 🔧 طبق درخواست: به‌جای کادرِ بزرگِ «انتخاب/آپلود»، فقط یک دکمه‌ی
+  // «+» کنارِ برچسبِ «فایل‌های پیوست» در یک خط
+  Widget _attachmentsAddField(AppColors c) {
+    return Row(
+      children: [
+        // 🔧 طبق درخواست: بعد از انتخابِ فایل، متنِ «برای افزودنِ فایلِ
+        // دیگر…» نمایش داده نمی‌شود (دکمه‌ی + سرِ جایش می‌ماند)
+        Expanded(
+          child: _pickedFiles.isEmpty
+              ? Text(
+                  'فایلی انتخاب نشده',
+                  textAlign: TextAlign.right,
+                  style: TextStyle(fontSize: 12, color: c.textMuted),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                )
+              : const SizedBox.shrink(),
+        ),
+        const SizedBox(width: 8),
+        GestureDetector(
+          onTap: _pickFile,
+          child: Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: c.primary,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(Icons.add, color: Colors.white, size: 16),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _attachmentsList(AppColors c) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: _pickedFiles.asMap().entries.map((entry) {
+        final i = entry.key;
+        final file = entry.value;
+        return Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: c.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(
+            children: [
+              GestureDetector(
+                onTap: () => setState(() => _pickedFiles.removeAt(i)),
+                child: Icon(Icons.close_rounded, size: 18, color: c.textMuted),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  file.name,
+                  textAlign: TextAlign.right,
+                  style: TextStyle(fontSize: 13, color: c.textStrong),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Icon(
+                Icons.insert_drive_file_outlined,
+                size: 18,
+                color: c.textMuted,
+              ),
+            ],
+          ),
+        );
+      }).toList(),
+    );
   }
 }
 
 // ════════════════════════════════════════════════════════════
-// 🔧 اصلاح: مودالِ انتخابِ مسئول، حالا با قابلیتِ جستجو
-// این ویجت جدا شده تا بتواند وضعیتِ متنِ جستجو را نگه دارد و با
-// هر تایپ، لیست را فوراً فیلتر کند.
+// مودالِ انتخابِ مسئول، با قابلیتِ جستجو
 // ════════════════════════════════════════════════════════════
 class _AssigneeSelectSheet extends StatefulWidget {
   final List<dynamic> users;
@@ -1169,8 +1262,6 @@ class _AssigneeSelectSheet extends StatefulWidget {
 }
 
 class _AssigneeSelectSheetState extends State<_AssigneeSelectSheet> {
-  static const _primary = Color(0xFF6D28D9);
-
   final _searchController = TextEditingController();
   String _query = '';
 
@@ -1187,6 +1278,7 @@ class _AssigneeSelectSheetState extends State<_AssigneeSelectSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final c = AppColors.of(context);
     final q = _query.trim().toLowerCase();
 
     final filteredSections = q.isEmpty
@@ -1207,7 +1299,7 @@ class _AssigneeSelectSheetState extends State<_AssigneeSelectSheet> {
           }).toList();
 
     final showSelfOption = q.isEmpty || 'خودم'.contains(q);
-    final showGroupOptions = q.isEmpty; // گزینه‌های «همه...» فقط بدون جستجو
+    final showGroupOptions = q.isEmpty;
 
     return DraggableScrollableSheet(
       initialChildSize: 0.75,
@@ -1221,36 +1313,39 @@ class _AssigneeSelectSheetState extends State<_AssigneeSelectSheet> {
             width: 40,
             height: 4,
             decoration: BoxDecoration(
-              color: Colors.grey.shade300,
+              color: c.borderSoft,
               borderRadius: BorderRadius.circular(2),
             ),
           ),
           const SizedBox(height: 16),
-          const Text(
+          Text(
             'انتخاب مسئول',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+              color: c.textStrong,
+            ),
           ),
           const SizedBox(height: 12),
-
-          // 🔧 فیلد جستجو
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: TextField(
               controller: _searchController,
               onChanged: (v) => setState(() => _query = v),
+              style: TextStyle(color: c.textStrong, fontSize: 13),
               decoration: InputDecoration(
                 hintText: 'جستجوی نام یا واحد...',
-                hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 13),
+                hintStyle: TextStyle(color: c.textMuted, fontSize: 13),
                 prefixIcon: Icon(
                   Icons.search_rounded,
-                  color: Colors.grey.shade400,
+                  color: c.textMuted,
                   size: 20,
                 ),
                 suffixIcon: _query.isNotEmpty
                     ? IconButton(
                         icon: Icon(
                           Icons.close_rounded,
-                          color: Colors.grey.shade400,
+                          color: c.textMuted,
                           size: 18,
                         ),
                         onPressed: () {
@@ -1260,17 +1355,16 @@ class _AssigneeSelectSheetState extends State<_AssigneeSelectSheet> {
                       )
                     : null,
                 filled: true,
-                fillColor: const Color(0xFFF5F6FA),
+                fillColor: c.surface,
                 contentPadding: const EdgeInsets.symmetric(vertical: 4),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
+                  borderSide: BorderSide(color: c.borderSoft),
                 ),
               ),
             ),
           ),
           const SizedBox(height: 8),
-
           Expanded(
             child:
                 (filteredSections.isEmpty &&
@@ -1279,10 +1373,7 @@ class _AssigneeSelectSheetState extends State<_AssigneeSelectSheet> {
                 ? Center(
                     child: Text(
                       'نتیجه‌ای یافت نشد',
-                      style: TextStyle(
-                        color: Colors.grey.shade400,
-                        fontSize: 13,
-                      ),
+                      style: TextStyle(color: c.textMuted, fontSize: 13),
                     ),
                   )
                 : ListView(
@@ -1290,18 +1381,19 @@ class _AssigneeSelectSheetState extends State<_AssigneeSelectSheet> {
                     children: [
                       if (showSelfOption)
                         _tile(
+                          c,
                           icon: Icons.person,
-                          color: Colors.grey,
+                          color: c.textMuted,
                           label: 'خودم',
                           onTap: () => _select('self', null, 'خودم'),
                         ),
-
                       if (filteredSections.isNotEmpty) ...[
-                        _header('📁 واحدها'),
+                        _header(c, 'واحدها'),
                         if (widget.isSupervisor && showGroupOptions)
                           _tile(
+                            c,
                             icon: Icons.groups,
-                            color: const Color(0xFF6B21A8),
+                            color: c.primary,
                             label: 'همه واحدها',
                             meta:
                                 '${widget.users.length} نفر — یک تسک برای هر نفر',
@@ -1318,21 +1410,22 @@ class _AssigneeSelectSheetState extends State<_AssigneeSelectSheet> {
                               .where((u) => u['activity_section'] == key)
                               .length;
                           return _tile(
+                            c,
                             icon: Icons.folder_outlined,
-                            color: const Color(0xFF854D0E),
+                            color: c.warning,
                             label: label,
                             meta: count > 0 ? '$count نفر' : 'بدون عضو',
                             onTap: () => _select('section', key, label),
                           );
                         }),
                       ],
-
                       if (filteredUsers.isNotEmpty || showGroupOptions) ...[
-                        _header('👤 کاربران'),
+                        _header(c, 'کاربران'),
                         if (widget.isSupervisor && showGroupOptions)
                           _tile(
+                            c,
                             icon: Icons.people,
-                            color: const Color(0xFF6B21A8),
+                            color: c.primary,
                             label: 'همه کاربران',
                             meta:
                                 '${widget.users.length} نفر — یک تسک برای هر نفر',
@@ -1345,6 +1438,7 @@ class _AssigneeSelectSheetState extends State<_AssigneeSelectSheet> {
                         ...filteredUsers.map((u) {
                           final display = _userLabel(u);
                           return _tile(
+                            c,
                             avatar: display.isNotEmpty ? display[0] : '?',
                             label: display,
                             onTap: () => _select('user', u['id'], display),
@@ -1365,21 +1459,22 @@ class _AssigneeSelectSheetState extends State<_AssigneeSelectSheet> {
     Navigator.of(context).pop();
   }
 
-  Widget _header(String text) => Container(
+  Widget _header(AppColors c, String text) => Container(
     width: double.infinity,
     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-    color: const Color(0xFFF5F6FA),
+    color: c.surfaceContainerLow,
     child: Text(
       text,
       style: TextStyle(
         fontSize: 12,
         fontWeight: FontWeight.w600,
-        color: Colors.grey.shade600,
+        color: c.textMuted,
       ),
     ),
   );
 
-  Widget _tile({
+  Widget _tile(
+    AppColors c, {
     IconData? icon,
     Color? color,
     String? avatar,
@@ -1391,23 +1486,20 @@ class _AssigneeSelectSheetState extends State<_AssigneeSelectSheet> {
       leading: avatar != null
           ? CircleAvatar(
               radius: 16,
-              backgroundColor: _primary.withValues(alpha: 0.1),
+              backgroundColor: c.primary.withValues(alpha: 0.1),
               child: Text(
                 avatar,
-                style: const TextStyle(color: _primary, fontSize: 13),
+                style: TextStyle(color: c.primary, fontSize: 13),
               ),
             )
           : CircleAvatar(
               radius: 16,
-              backgroundColor: (color ?? Colors.grey).withValues(alpha: 0.15),
+              backgroundColor: (color ?? c.textMuted).withValues(alpha: 0.15),
               child: Icon(icon, color: color, size: 18),
             ),
-      title: Text(label, style: const TextStyle(fontSize: 14)),
+      title: Text(label, style: TextStyle(fontSize: 14, color: c.textStrong)),
       subtitle: meta != null
-          ? Text(
-              meta,
-              style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
-            )
+          ? Text(meta, style: TextStyle(fontSize: 11, color: c.textMuted))
           : null,
       onTap: onTap,
     );

@@ -31,11 +31,9 @@ bool taskMatchesQuery(Map task, String query) {
   final trimmed = query.trim();
   if (trimmed.isEmpty) return true;
 
-  final words = _normalizeDigits(trimmed)
-      .toLowerCase()
-      .split(RegExp(r'\s+'))
-      .where((w) => w.isNotEmpty)
-      .toList();
+  final words = _normalizeDigits(
+    trimmed,
+  ).toLowerCase().split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
   if (words.isEmpty) return true;
 
   final id = (task['id'] ?? '').toString();

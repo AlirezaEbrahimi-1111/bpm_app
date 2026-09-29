@@ -3,7 +3,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'dart:convert';
 
 class ApiClient {
-  static const String baseUrl = 'https://bpm.computeryekta.com';
+  static const String baseUrl = 'https://bpm.itmalek.com';
   static const _storage = FlutterSecureStorage();
 
   // ════════════════════════════════════════════════════════
@@ -168,6 +168,44 @@ class ApiClient {
     }
   }
 
+  // ════════════════════════════════════════════════════════
+  // «آفلاین سبک» — کش آخرین داده‌ی موفق هر صفحه، فقط برای مشاهده وقتی
+  // اینترنت نیست. هیچ نوشتنی (تکمیل کار، ارجاع و...) آفلاین ذخیره
+  // نمی‌شود؛ این فقط حالت مشاهده‌ی آخرین اطلاعات است.
+  // ════════════════════════════════════════════════════════
+  static Future<void> saveOfflineCache(String key, dynamic data) async {
+    try {
+      await _storage.write(
+        key: 'offline_cache_$key',
+        value: jsonEncode({
+          'data': data,
+          'cached_at': DateTime.now().toIso8601String(),
+        }),
+      );
+    } catch (_) {
+      // خطای کش نباید کل اپ را مختل کند
+    }
+  }
+
+  /// اگر کشی برای این کلید وجود داشته باشد، {'data':..., 'cachedAt':...}
+  /// برمی‌گرداند؛ وگرنه null.
+  static Future<Map<String, dynamic>?> readOfflineCache(String key) async {
+    try {
+      final raw = await _storage.read(key: 'offline_cache_$key');
+      if (raw == null) return null;
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) {
+        return {
+          'data': decoded['data'],
+          'cachedAt': DateTime.tryParse(decoded['cached_at']?.toString() ?? ''),
+        };
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   // ── پاک کردن کامل جلسه (خروج) ──
   static Future<void> clearToken() async {
     _cachedToken = null;
@@ -176,5 +214,15 @@ class ApiClient {
     await _storage.delete(key: 'remember_me');
     await _storage.delete(key: 'remember_me_expiry');
     await _storage.delete(key: 'cached_user');
+    // کش‌های آفلاین هم پاک شوند — کاربر بعدی روی همین گوشی نباید
+    // اطلاعات کاربر قبلی را (حتی به‌صورت آفلاین) ببیند
+    for (final key in [
+      'dashboard',
+      'my_tasks',
+      'delegated_tasks',
+      'notifications',
+    ]) {
+      await _storage.delete(key: 'offline_cache_$key');
+    }
   }
 }

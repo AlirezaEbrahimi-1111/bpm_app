@@ -1,9 +1,13 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:dio/dio.dart';
 import '../../core/network/api_client.dart';
+import '../../core/theme/app_colors.dart';
 import 'task_detail_page.dart';
-import '../../core/utils/task_labels.dart';
 import '../../core/utils/task_search.dart';
+import '../../core/utils/task_preload.dart';
+import 'widgets/task_list_card.dart';
 
 class DelegatedTasksPage extends StatefulWidget {
   const DelegatedTasksPage({super.key});
@@ -13,9 +17,6 @@ class DelegatedTasksPage extends StatefulWidget {
 }
 
 class _DelegatedTasksPageState extends State<DelegatedTasksPage> {
-  static const _primary = Color(0xFF6D28D9);
-  static const _ink = Color(0xFF1A1A2E);
-
   List<dynamic> _tasks = [];
   bool _isLoading = true;
   String? _loadError;
@@ -41,11 +42,24 @@ class _DelegatedTasksPageState extends State<DelegatedTasksPage> {
       if (data['success'] == true) {
         final list = data['tasks'];
         _tasks = list is List ? List<dynamic>.from(list) : [];
+        // 🔧 آفلاین سبک: کش آخرین لیست موفق، فقط برای مشاهده وقتی
+        // بعداً اینترنت نبود
+        ApiClient.saveOfflineCache('delegated_tasks', _tasks);
+        // 🔧 آفلاین سبک: جزئیات کامل هر کار هم در پس‌زمینه کش شود — بدون
+        // await، تا لود لیست منتظرش نماند
+        preloadTaskDetails(_tasks);
       } else {
         _loadError = data['message']?.toString() ?? 'خطا در دریافت کارها';
       }
     } catch (e) {
-      _loadError = 'خطا در اتصال به سرور';
+      final cached = await ApiClient.readOfflineCache('delegated_tasks');
+      if (cached != null && cached['data'] is List) {
+        _tasks = List<dynamic>.from(cached['data']);
+      } else {
+        _loadError = (e is DioException && e.response == null)
+            ? 'اینترنت ندارید و هنوز داده‌ای برای نمایش آفلاین ذخیره نشده'
+            : 'خطا در اتصال به سرور';
+      }
     }
     if (mounted) setState(() => _isLoading = false);
   }
@@ -75,142 +89,161 @@ class _DelegatedTasksPageState extends State<DelegatedTasksPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      color: const Color(0xFFF7F7FB),
-      child: SafeArea(
-        bottom: false,
-        child: _isLoading
-            ? const Center(child: CircularProgressIndicator(color: _primary))
-            : Column(
-                children: [
-                  // عنوان صفحه
-                  const Padding(
-                    padding: EdgeInsets.fromLTRB(24, 16, 24, 0),
-                    child: Align(
-                      alignment: Alignment.centerRight,
-                      child: Text(
-                        'کارهای واگذارشده',
-                        style: TextStyle(
-                          fontSize: 26,
-                          fontWeight: FontWeight.bold,
-                          color: _ink,
-                        ),
-                      ),
-                    ),
-                  ),
-                  // جستجو
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-                    child: TextField(
-                      controller: _searchController,
-                      onChanged: (v) => setState(() => _searchQuery = v),
-                      decoration: InputDecoration(
-                        hintText: 'جستجو در عنوان یا نام مسئول...',
-                        hintStyle: TextStyle(
-                          color: Colors.grey.shade400,
-                          fontSize: 14,
-                        ),
-                        prefixIcon: Icon(
-                          Icons.search_rounded,
-                          color: Colors.grey.shade400,
-                          size: 22,
-                        ),
-                        suffixIcon: _searchQuery.isNotEmpty
-                            ? IconButton(
-                                icon: Icon(
-                                  Icons.close_rounded,
-                                  color: Colors.grey.shade400,
-                                  size: 20,
-                                ),
-                                onPressed: () {
-                                  _searchController.clear();
-                                  setState(() => _searchQuery = '');
-                                },
-                              )
-                            : null,
-                        filled: true,
-                        fillColor: Colors.white,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          borderSide: BorderSide.none,
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 12,
-                        ),
-                      ),
-                    ),
-                  ),
-                  // فیلترها
-                  SizedBox(
-                    height: 40,
-                    child: ListView(
-                      scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      children: ['همه', 'در جریان', 'منتظر تأیید', 'تکمیل شده']
-                          .map((f) {
-                            final selected = _filter == f;
-                            return Padding(
-                              padding: const EdgeInsets.only(left: 8),
-                              child: GestureDetector(
-                                onTap: () => setState(() => _filter = f),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: 8,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: selected ? _primary : Colors.white,
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  child: Text(
-                                    f,
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600,
-                                      color: selected
-                                          ? Colors.white
-                                          : Colors.grey.shade500,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            );
-                          })
-                          .toList(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  // لیست
-                  Expanded(
-                    child: RefreshIndicator(
-                      color: _primary,
-                      onRefresh: _loadTasks,
-                      child: _loadError != null
-                          ? _buildErrorView()
-                          : _filteredTasks.isEmpty
-                          ? _buildEmpty()
-                          : ListView.builder(
-                              physics: const AlwaysScrollableScrollPhysics(),
-                              padding: const EdgeInsets.fromLTRB(
-                                20,
-                                0,
-                                20,
-                                100,
-                              ),
-                              itemCount: _filteredTasks.length,
-                              itemBuilder: (ctx, i) =>
-                                  _buildTaskCard(_filteredTasks[i]),
-                            ),
-                    ),
-                  ),
-                ],
-              ),
+    final c = AppColors.of(context);
+    // 🔧 رفعِ باگ: این صفحه از دراور به‌صورت push باز می‌شود، ولی
+    // Scaffold/AppBar (و در نتیجه دکمه‌ی برگشت) نداشت — کاربر فقط با
+    // اشاره/دکمه‌ی سیستمی می‌توانست برگردد. حالا مثلِ بقیه‌ی صفحاتِ
+    // push‌شده (پروفایل/تنظیمات/...) هدرِ خودش را دارد و کاملاً با
+    // AppColors هماهنگ (تمِ روشن/تاریک) است.
+    return Scaffold(
+      backgroundColor: c.bgPage,
+      appBar: AppBar(
+        backgroundColor: c.bgPage,
+        elevation: 0,
+        centerTitle: true,
+        iconTheme: IconThemeData(color: c.textStrong),
+        title: Text(
+          'کارهای واگذارشده',
+          style: TextStyle(
+            color: c.textStrong,
+            fontWeight: FontWeight.bold,
+            fontSize: 16,
+          ),
+        ),
+        leading: IconButton(
+          // 🔧 طبق درخواست: فلش ۱۸۰ درجه چرخید
+          icon: Transform.rotate(
+            angle: math.pi,
+            child: const Icon(Icons.arrow_forward_ios_rounded, size: 20),
+          ),
+          onPressed: () => Get.back(),
+        ),
       ),
+      body: _isLoading
+          ? Center(child: CircularProgressIndicator(color: c.primary))
+          : Column(
+              children: [
+                // جستجو
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+                  child: TextField(
+                    controller: _searchController,
+                    onChanged: (v) => setState(() => _searchQuery = v),
+                    style: TextStyle(color: c.textStrong, fontSize: 14),
+                    decoration: InputDecoration(
+                      hintText: 'جستجو در عنوان یا نام مسئول...',
+                      hintStyle: TextStyle(color: c.textMuted, fontSize: 14),
+                      prefixIcon: Icon(
+                        Icons.search_rounded,
+                        color: c.textMuted,
+                        size: 22,
+                      ),
+                      suffixIcon: _searchQuery.isNotEmpty
+                          ? IconButton(
+                              icon: Icon(
+                                Icons.close_rounded,
+                                color: c.textMuted,
+                                size: 20,
+                              ),
+                              onPressed: () {
+                                _searchController.clear();
+                                setState(() => _searchQuery = '');
+                              },
+                            )
+                          : null,
+                      filled: true,
+                      fillColor: c.surface,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: BorderSide(color: c.borderSoft),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: BorderSide(color: c.borderSoft),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: BorderSide(color: c.primary, width: 1.5),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                    ),
+                  ),
+                ),
+                // فیلترها
+                SizedBox(
+                  height: 40,
+                  child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    children: ['همه', 'در جریان', 'منتظر تأیید', 'تکمیل شده']
+                        .map((f) {
+                          final selected = _filter == f;
+                          return Padding(
+                            padding: const EdgeInsets.only(left: 8),
+                            child: GestureDetector(
+                              onTap: () => setState(() => _filter = f),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 8,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: selected ? c.primary : c.surface,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: selected ? c.primary : c.borderSoft,
+                                  ),
+                                ),
+                                child: Text(
+                                  f,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: selected
+                                        ? Colors.white
+                                        : c.textMuted,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        })
+                        .toList(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                // لیست
+                Expanded(
+                  child: RefreshIndicator(
+                    color: c.primary,
+                    onRefresh: _loadTasks,
+                    child: _loadError != null
+                        ? _buildErrorView(c)
+                        : _filteredTasks.isEmpty
+                        ? _buildEmpty(c)
+                        : ListView.builder(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            padding: EdgeInsets.fromLTRB(
+                              20,
+                              0,
+                              20,
+                              20 + MediaQuery.of(context).padding.bottom,
+                            ),
+                            itemCount: _filteredTasks.length,
+                            itemBuilder: (ctx, i) =>
+                                _buildTaskCard(c, _filteredTasks[i]),
+                          ),
+                  ),
+                ),
+              ],
+            ),
     );
   }
 
-  Widget _buildErrorView() => ListView(
+  Widget _buildErrorView(AppColors c) => ListView(
     children: [
       SizedBox(height: MediaQuery.of(context).size.height * 0.25),
       Center(
@@ -219,19 +252,15 @@ class _DelegatedTasksPageState extends State<DelegatedTasksPage> {
             Container(
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                color: const Color(0xFFEF4444).withValues(alpha: 0.1),
+                color: c.danger.withValues(alpha: 0.1),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(
-                Icons.wifi_off_rounded,
-                size: 48,
-                color: Color(0xFFEF4444),
-              ),
+              child: Icon(Icons.wifi_off_rounded, size: 48, color: c.danger),
             ),
             const SizedBox(height: 16),
             Text(
               _loadError ?? 'خطا',
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 15),
+              style: TextStyle(color: c.textMuted, fontSize: 15),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 16),
@@ -239,14 +268,15 @@ class _DelegatedTasksPageState extends State<DelegatedTasksPage> {
               onPressed: _loadTasks,
               icon: const Icon(Icons.refresh_rounded, size: 18),
               label: const Text('تلاش مجدد'),
-              style: TextButton.styleFrom(foregroundColor: _primary),
+              style: TextButton.styleFrom(foregroundColor: c.primary),
             ),
           ],
         ),
       ),
     ],
   );
-  Widget _buildEmpty() => ListView(
+
+  Widget _buildEmpty(AppColors c) => ListView(
     children: [
       SizedBox(height: MediaQuery.of(context).size.height * 0.25),
       Center(
@@ -254,16 +284,16 @@ class _DelegatedTasksPageState extends State<DelegatedTasksPage> {
           children: [
             Container(
               padding: const EdgeInsets.all(24),
-              decoration: const BoxDecoration(
-                color: Color(0xFFF0EEFF),
+              decoration: BoxDecoration(
+                color: c.primary.withValues(alpha: 0.1),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.send_outlined, size: 48, color: _primary),
+              child: Icon(Icons.send_outlined, size: 48, color: c.primary),
             ),
             const SizedBox(height: 16),
             Text(
               'کار واگذارشده‌ای وجود ندارد',
-              style: TextStyle(color: Colors.grey.shade500, fontSize: 15),
+              style: TextStyle(color: c.textMuted, fontSize: 15),
             ),
           ],
         ),
@@ -271,106 +301,15 @@ class _DelegatedTasksPageState extends State<DelegatedTasksPage> {
     ],
   );
 
-  Widget _buildTaskCard(Map<String, dynamic> task) {
-    final status = task['status'] as String? ?? '';
-    final priority = task['priority'] as String? ?? '';
-    final statusLbl = TaskLabels.statusLabel(status);
-    final statusClr = TaskLabels.statusColor(status);
-    final assigneeName = (task['assignee_name'] ?? '').toString().trim();
-
-    return GestureDetector(
+  Widget _buildTaskCard(AppColors c, Map<String, dynamic> task) {
+    // 🔧 طبق درخواست: دقیقاً همان کارتِ صفحه‌ی «کارها»
+    return TaskListCard(
+      task: task,
+      onChanged: _loadTasks,
       onTap: () async {
         final result = await Get.to(() => TaskDetailPage(taskId: task['id']));
         if (result == true) _loadTasks();
       },
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 8,
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 4,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: statusClr,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    task['title'] ?? '',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 15,
-                      color: _ink,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                Icon(
-                  Icons.flag_rounded,
-                  color: TaskLabels.priorityColor(priority),
-                  size: 20,
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Icon(
-                  Icons.person_outline_rounded,
-                  size: 16,
-                  color: Colors.grey.shade400,
-                ),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(
-                    assigneeName.isEmpty ? 'بدون مسئول' : assigneeName,
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                _chip(statusLbl, statusClr),
-              ],
-            ),
-          ],
-        ),
-      ),
     );
   }
-
-  Widget _chip(String label, Color color) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-    decoration: BoxDecoration(
-      color: color.withValues(alpha: 0.12),
-      borderRadius: BorderRadius.circular(20),
-    ),
-    child: Text(
-      label,
-      style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w600),
-    ),
-  );
-
-  Color _priorityColor(String p) => switch (p) {
-    'high' => const Color(0xFFEF4444),
-    'medium' => const Color(0xFFF59E0B),
-    'low' => const Color(0xFF22C55E),
-    _ => Colors.grey.shade300,
-  };
 }

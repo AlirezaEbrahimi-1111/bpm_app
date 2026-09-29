@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import '../../core/widgets/app_snack.dart';
+import 'package:dio/dio.dart';
 import 'package:shamsi_date/shamsi_date.dart';
 import '../../core/network/api_client.dart';
 import '../../core/utils/persian_number.dart';
+import '../../core/theme/app_colors.dart';
 import '../tasks/task_detail_page.dart';
+import '../shell/widgets/nav_bar_metrics.dart';
 
 class NotificationsPage extends StatefulWidget {
   // 🔧 اصلاح: با این callback، هر وقت تعداد اعلان‌های نخوانده تغییر کند
@@ -18,15 +22,20 @@ class NotificationsPage extends StatefulWidget {
 }
 
 class _NotificationsPageState extends State<NotificationsPage> {
-  static const _primary = Color(0xFF6D28D9);
-  static const _ink = Color(0xFF1A1A2E);
-
   List<dynamic> _notifications = [];
   int _unreadCount = 0;
   bool _isLoading = true;
   String _searchQuery = '';
-  String _timeFilter = 'همه';
+  // 🔧 اصلاح: فیلتر زمانی قبلی (امروز/هفته جاری) با فیلتر
+  // خوانده‌نشده/همه جایگزین شد؛ گروه‌بندی بر اساس روز حالا جدا (همیشه
+  // فعال) و به‌صورت سرتیترهای «امروز»/«دیروز»/تاریخ انجام می‌شود.
+  String _readFilter = 'همه';
   final _searchController = TextEditingController();
+
+  // 🔧 آفلاین سبک: آفلاین هستیم ولی هنوز هیچ کشی از قبل نداریم — نوار
+  // «بدون اینترنت» خودش سطح بالاتر (در MainShell) نمایش داده می‌شود؛
+  // این پرچم فقط برای توضیح این‌جا که چرا لیست خالی است لازم است.
+  bool _offlineNoCache = false;
 
   @override
   void initState() {
@@ -34,29 +43,19 @@ class _NotificationsPageState extends State<NotificationsPage> {
     _loadNotifications();
   }
 
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
   List<dynamic> get _filteredNotifications {
     var list = List<dynamic>.from(_notifications);
 
-    if (_timeFilter != 'همه') {
-      final now = DateTime.now();
-      list = list.where((n) {
-        final dateStr = n['created_at']?.toString();
-        if (dateStr == null) return false;
-        try {
-          final date = DateTime.parse(dateStr);
-          if (_timeFilter == 'امروز') {
-            return date.year == now.year &&
-                date.month == now.month &&
-                date.day == now.day;
-          } else if (_timeFilter == 'هفته جاری') {
-            final diff = now.difference(date).inDays;
-            return diff < 7;
-          }
-        } catch (_) {
-          return false;
-        }
-        return true;
-      }).toList();
+    if (_readFilter == 'خوانده‌نشده') {
+      list = list
+          .where((n) => !(n['is_read'] == 1 || n['is_read'] == true))
+          .toList();
     }
 
     if (_searchQuery.trim().isNotEmpty) {
@@ -71,23 +70,97 @@ class _NotificationsPageState extends State<NotificationsPage> {
     return list;
   }
 
+  // 🔧 گروه‌بندی بر اساس روز — امروز/دیروز/تاریخ شمسی
+  List<(String, List<dynamic>)> get _groupedNotifications {
+    final list = _filteredNotifications;
+    final now = DateTime.now();
+    final groups = <String, List<dynamic>>{};
+
+    for (final n in list) {
+      final dateStr = n['created_at']?.toString();
+      String label = '';
+      if (dateStr != null) {
+        try {
+          final d = DateTime.parse(dateStr);
+          final today = DateTime(now.year, now.month, now.day);
+          final that = DateTime(d.year, d.month, d.day);
+          final diff = today.difference(that).inDays;
+          if (diff == 0) {
+            label = 'امروز';
+          } else if (diff == 1) {
+            label = 'دیروز';
+          } else {
+            final j = Jalali.fromDateTime(d);
+            const mo = [
+              'فروردین',
+              'اردیبهشت',
+              'خرداد',
+              'تیر',
+              'مرداد',
+              'شهریور',
+              'مهر',
+              'آبان',
+              'آذر',
+              'دی',
+              'بهمن',
+              'اسفند',
+            ];
+            label = toPersianDigits('${j.day} ${mo[j.month - 1]}');
+          }
+        } catch (_) {
+          label = 'قدیمی‌تر';
+        }
+      } else {
+        label = 'قدیمی‌تر';
+      }
+      groups.putIfAbsent(label, () => []).add(n);
+    }
+    return groups.entries.map((e) => (e.key, e.value)).toList();
+  }
+
   Future<void> _loadNotifications() async {
     setState(() => _isLoading = true);
     try {
       final res = await ApiClient.dio.get('/api/notifications/list.php');
       final data = ApiClient.parseResponse(res.data);
       if (data['success'] == true) {
+        final notifications = data['notifications'] ?? [];
+        final unreadCount = data['unread_count'] ?? 0;
         setState(() {
-          _notifications = data['notifications'] ?? [];
-          _unreadCount = data['unread_count'] ?? 0;
+          _notifications = notifications;
+          _unreadCount = unreadCount;
+          _offlineNoCache = false;
           _isLoading = false;
         });
         widget.onUnreadCountChanged?.call(_unreadCount);
+        // 🔧 آفلاین سبک: کش آخرین اعلان‌های موفق، فقط برای مشاهده وقتی
+        // بعداً اینترنت نبود
+        ApiClient.saveOfflineCache('notifications', {
+          'notifications': notifications,
+          'unread_count': unreadCount,
+        });
       } else {
         setState(() => _isLoading = false);
       }
     } catch (e) {
-      setState(() => _isLoading = false);
+      final cached = await ApiClient.readOfflineCache('notifications');
+      if (mounted) {
+        if (cached != null && cached['data'] is Map) {
+          final data = cached['data'] as Map;
+          setState(() {
+            _notifications = data['notifications'] ?? [];
+            _unreadCount = data['unread_count'] ?? 0;
+            _offlineNoCache = false;
+            _isLoading = false;
+          });
+          widget.onUnreadCountChanged?.call(_unreadCount);
+        } else {
+          setState(() {
+            _isLoading = false;
+            _offlineNoCache = e is DioException && e.response == null;
+          });
+        }
+      }
     }
   }
 
@@ -108,20 +181,10 @@ class _NotificationsPageState extends State<NotificationsPage> {
       final data = ApiClient.parseResponse(res.data);
       if (data['success'] == true) {
         _loadNotifications();
-        Get.snackbar(
-          '✅ موفق',
-          'همه اعلان‌ها خوانده شد',
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: Colors.green.shade100,
-        );
+        AppSnack.success('✅ موفق', 'همه اعلان‌ها خوانده شد');
       }
     } catch (e) {
-      Get.snackbar(
-        'خطا',
-        'خطا در اتصال به سرور',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red.shade100,
-      );
+      AppSnack.error('خطا', 'خطا در اتصال به سرور');
     }
   }
 
@@ -176,61 +239,49 @@ class _NotificationsPageState extends State<NotificationsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final c = AppColors.of(context);
     return Container(
-      color: const Color(0xFFF7F7FB),
+      color: c.bgPage,
       child: SafeArea(
         bottom: false,
         child: _isLoading
-            ? const Center(child: CircularProgressIndicator(color: _primary))
+            ? Center(child: CircularProgressIndicator(color: c.primary))
             : Column(
                 children: [
-                  // عنوان + خواندن همه
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 16, 20, 0),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'اعلان‌ها',
-                          style: TextStyle(
-                            fontSize: 26,
-                            fontWeight: FontWeight.bold,
-                            color: _ink,
-                          ),
+                    padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        'اعلان‌ها',
+                        style: TextStyle(
+                          fontSize: 26,
+                          fontWeight: FontWeight.bold,
+                          color: c.textStrong,
                         ),
-                        if (_unreadCount > 0)
-                          TextButton(
-                            onPressed: _markAllRead,
-                            child: const Text(
-                              'خواندن همه',
-                              style: TextStyle(color: _primary, fontSize: 13),
-                            ),
-                          ),
-                      ],
+                      ),
                     ),
                   ),
                   // جستجو
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
                     child: TextField(
                       controller: _searchController,
                       onChanged: (v) => setState(() => _searchQuery = v),
+                      style: TextStyle(color: c.textStrong, fontSize: 14),
                       decoration: InputDecoration(
                         hintText: 'جستجو در اعلان‌ها...',
-                        hintStyle: TextStyle(
-                          color: Colors.grey.shade400,
-                          fontSize: 14,
-                        ),
+                        hintStyle: TextStyle(color: c.textMuted, fontSize: 14),
                         prefixIcon: Icon(
                           Icons.search_rounded,
-                          color: Colors.grey.shade400,
+                          color: c.textMuted,
                           size: 22,
                         ),
                         suffixIcon: _searchQuery.isNotEmpty
                             ? IconButton(
                                 icon: Icon(
                                   Icons.close_rounded,
-                                  color: Colors.grey.shade400,
+                                  color: c.textMuted,
                                   size: 20,
                                 ),
                                 onPressed: () {
@@ -240,10 +291,18 @@ class _NotificationsPageState extends State<NotificationsPage> {
                               )
                             : null,
                         filled: true,
-                        fillColor: Colors.white,
+                        fillColor: c.surface,
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(14),
-                          borderSide: BorderSide.none,
+                          borderSide: BorderSide(color: c.borderSoft),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                          borderSide: BorderSide(color: c.borderSoft),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                          borderSide: BorderSide(color: c.primary, width: 1.5),
                         ),
                         contentPadding: const EdgeInsets.symmetric(
                           horizontal: 16,
@@ -252,34 +311,40 @@ class _NotificationsPageState extends State<NotificationsPage> {
                       ),
                     ),
                   ),
-                  // فیلترهای زمانی
+                  // فیلتر خوانده‌نشده/همه
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 20),
                     child: Row(
-                      children: ['همه', 'امروز', 'هفته جاری'].map((f) {
-                        final selected = _timeFilter == f;
-                        return Padding(
-                          padding: const EdgeInsets.only(left: 8),
-                          child: GestureDetector(
-                            onTap: () => setState(() => _timeFilter = f),
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 200),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 8,
-                              ),
-                              decoration: BoxDecoration(
-                                color: selected ? _primary : Colors.white,
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Text(
-                                f,
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                  color: selected
-                                      ? Colors.white
-                                      : Colors.grey.shade500,
+                      children: ['همه', 'خوانده‌نشده'].map((f) {
+                        final selected = _readFilter == f;
+                        return Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.only(left: 8),
+                            child: GestureDetector(
+                              onTap: () => setState(() => _readFilter = f),
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 200),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 10,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: c.surface,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: selected
+                                        ? c.primary
+                                        : Colors.transparent,
+                                    width: 1.3,
+                                  ),
+                                ),
+                                child: Text(
+                                  f,
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: selected ? c.primary : c.textMuted,
+                                  ),
                                 ),
                               ),
                             ),
@@ -289,25 +354,14 @@ class _NotificationsPageState extends State<NotificationsPage> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  // لیست
+                  // لیست گروه‌بندی‌شده بر اساس روز
                   Expanded(
                     child: RefreshIndicator(
-                      color: _primary,
+                      color: c.primary,
                       onRefresh: _loadNotifications,
                       child: _filteredNotifications.isEmpty
-                          ? _buildEmpty()
-                          : ListView.builder(
-                              physics: const AlwaysScrollableScrollPhysics(),
-                              padding: const EdgeInsets.fromLTRB(
-                                20,
-                                8,
-                                20,
-                                100,
-                              ),
-                              itemCount: _filteredNotifications.length,
-                              itemBuilder: (ctx, i) =>
-                                  _buildNotifCard(_filteredNotifications[i]),
-                            ),
+                          ? _buildEmpty(c)
+                          : _buildGroupedList(c),
                     ),
                   ),
                 ],
@@ -316,7 +370,68 @@ class _NotificationsPageState extends State<NotificationsPage> {
     );
   }
 
-  Widget _buildEmpty() => ListView(
+  Widget _buildGroupedList(AppColors c) {
+    final groups = _groupedNotifications;
+    return ListView.builder(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: EdgeInsets.fromLTRB(20, 8, 20, bottomNavClearance(context)),
+      itemCount: groups.length,
+      itemBuilder: (ctx, gi) {
+        final (label, items) = groups[gi];
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 8, bottom: 10),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: c.textStrong,
+                    ),
+                  ),
+                  // 🔧 «خواندن همه» فقط کنار اولین سرتیتر (نه هر گروه)
+                  if (gi == 0 && _unreadCount > 0)
+                    GestureDetector(
+                      onTap: _markAllRead,
+                      child: Row(
+                        children: [
+                          Text(
+                            'خواندن همه',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w600,
+                              color: c.primary,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Container(
+                            width: 5,
+                            height: 5,
+                            decoration: BoxDecoration(
+                              color: c.primary,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            ...items.map((n) => _buildNotifCard(c, n)),
+            const SizedBox(height: 4),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildEmpty(AppColors c) => ListView(
     children: [
       SizedBox(height: MediaQuery.of(context).size.height * 0.3),
       Center(
@@ -324,20 +439,26 @@ class _NotificationsPageState extends State<NotificationsPage> {
           children: [
             Container(
               padding: const EdgeInsets.all(24),
-              decoration: const BoxDecoration(
-                color: Color(0xFFF0EEFF),
+              decoration: BoxDecoration(
+                color: _offlineNoCache
+                    ? c.borderSoft.withValues(alpha: 0.4)
+                    : c.primary.withValues(alpha: 0.12),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(
-                Icons.notifications_none_rounded,
+              child: Icon(
+                _offlineNoCache
+                    ? Icons.wifi_off_rounded
+                    : Icons.notifications_none_rounded,
                 size: 48,
-                color: _primary,
+                color: _offlineNoCache ? c.textMuted : c.primary,
               ),
             ),
             const SizedBox(height: 16),
             Text(
-              'اعلانی وجود ندارد',
-              style: TextStyle(color: Colors.grey.shade500, fontSize: 15),
+              _offlineNoCache
+                  ? 'هنوز داده‌ای برای نمایش آفلاین ذخیره نشده'
+                  : 'اعلانی وجود ندارد',
+              style: TextStyle(color: c.textMuted, fontSize: 15),
             ),
           ],
         ),
@@ -345,10 +466,9 @@ class _NotificationsPageState extends State<NotificationsPage> {
     ],
   );
 
-  Widget _buildNotifCard(Map<String, dynamic> notif) {
+  Widget _buildNotifCard(AppColors c, Map<String, dynamic> notif) {
     final isRead = notif['is_read'] == 1 || notif['is_read'] == true;
-    final type = notif['type'] as String? ?? 'info';
-    final ti = _typeInfo(type);
+    final icon = _iconFor(notif);
 
     return GestureDetector(
       onTap: () => _onNotificationTap(notif),
@@ -356,72 +476,75 @@ class _NotificationsPageState extends State<NotificationsPage> {
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: isRead ? Colors.white : const Color(0xFFF0EEFF),
-          borderRadius: BorderRadius.circular(14),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.03),
-              blurRadius: 8,
-            ),
-          ],
+          color: c.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isRead
+                ? Colors.transparent
+                : c.primary.withValues(alpha: 0.35),
+          ),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // 🔧 آیکون گرد بنفش — سمت راست (بدون سایه)
             Container(
-              padding: const EdgeInsets.all(9),
+              width: 40,
+              height: 40,
               decoration: BoxDecoration(
-                color: ti.$1.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(12),
+                color: c.primary,
+                shape: BoxShape.circle,
               ),
-              child: Icon(ti.$2, color: ti.$1, size: 20),
+              child: Icon(icon, color: Colors.white, size: 18),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 10),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          notif['title'] ?? '',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: isRead
-                                ? FontWeight.w600
-                                : FontWeight.bold,
-                            color: _ink,
-                          ),
-                        ),
-                      ),
-                      if (!isRead)
-                        Container(
-                          width: 8,
-                          height: 8,
-                          decoration: const BoxDecoration(
-                            color: _primary,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                    ],
+                  Text(
+                    notif['title'] ?? '',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: isRead ? FontWeight.w600 : FontWeight.bold,
+                      color: c.textStrong,
+                    ),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     notif['message'] ?? '',
                     style: TextStyle(
                       fontSize: 13,
-                      color: Colors.grey.shade600,
+                      color: c.textMuted,
                       height: 1.5,
                     ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 6),
                   Text(
                     toPersianDigits(_timeAgo(notif['created_at']?.toString())),
-                    style: TextStyle(fontSize: 11, color: Colors.grey.shade400),
+                    style: TextStyle(fontSize: 11, color: c.textMuted),
                   ),
                 ],
               ),
+            ),
+            // نقطه‌ی نخوانده — سمت چپ
+            SizedBox(
+              width: 14,
+              child: !isRead
+                  ? Padding(
+                      padding: const EdgeInsets.only(top: 5),
+                      child: Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: c.primary,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    )
+                  : null,
             ),
           ],
         ),
@@ -429,10 +552,29 @@ class _NotificationsPageState extends State<NotificationsPage> {
     );
   }
 
-  (Color, IconData) _typeInfo(String type) => switch (type) {
-    'success' => (const Color(0xFF22C55E), Icons.check_circle_outline),
-    'warning' => (const Color(0xFFF59E0B), Icons.warning_amber_rounded),
-    'error' => (const Color(0xFFEF4444), Icons.error_outline),
-    _ => (const Color(0xFF6D28D9), Icons.info_outline),
-  };
+  // 🔧 انتخاب آیکون بر اساس کلیدواژه‌های عنوان/متن اعلان — چون فیلد
+  // دقیقِ دسته‌بندی (مثل sms_pattern) در پاسخ API فعلاً در دسترس نیست؛
+  // تلاشِ منطقی برای تطبیق با ظاهر طرح (کلیپ‌بورد/ساعت/فرآیند/سند)
+  IconData _iconFor(Map<String, dynamic> notif) {
+    final text = '${notif['title'] ?? ''} ${notif['message'] ?? ''}';
+    if (text.contains('واگذار') || text.contains('ارجاع')) {
+      return Icons.assignment_turned_in_outlined;
+    }
+    if (text.contains('مهلت') ||
+        text.contains('موعد') ||
+        text.contains('تمدید')) {
+      return Icons.access_time_rounded;
+    }
+    if (text.contains('فرآیند') ||
+        text.contains('مرحله') ||
+        text.contains('روتین')) {
+      return Icons.swap_horiz_rounded;
+    }
+    if (text.contains('تأیید') ||
+        text.contains('درخواست') ||
+        text.contains('رد شد')) {
+      return Icons.fact_check_outlined;
+    }
+    return Icons.notifications_rounded;
+  }
 }
