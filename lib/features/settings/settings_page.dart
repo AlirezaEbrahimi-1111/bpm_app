@@ -4,16 +4,16 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/theme_controller.dart';
 import '../../core/theme/notification_bar_preference.dart';
+import '../../core/theme/font_size_preference.dart';
 import '../../core/utils/persian_number.dart';
 import '../../core/widgets/app_switch.dart';
 import '../shell/widgets/about_sheet.dart';
 
 /// صفحه‌ی «تنظیمات» — طبق طرح ارسالی (روشن + تاریک).
 ///
-/// 🔧 هر ردیف یا به یک قابلیتِ واقعاً موجود در اپ وصل است (تمِ تاریک،
-/// نمایش نوار اعلان، درباره ما)، یا چون زیرساختش هنوز وجود ندارد
-/// (اعلان/زبان/فونت) به‌صورت غیرفعال با برچسبِ «به‌زودی» نشان داده
-/// می‌شود — هیچ سوییچی نمایشی/بی‌اثر نیست.
+/// 🔧 هر ردیف به یک قابلیتِ واقعاً موجود در اپ وصل است: تمِ تاریک،
+/// اندازه‌ی فونت (با MediaQuery.textScaler در main.dart روی کلِ اپ اعمال
+/// می‌شود)، نمایش نوار اعلان، درباره ما. هیچ سوییچی نمایشی/بی‌اثر نیست.
 ///
 /// 🔧 این ویجت Scaffold/AppBarِ خودش را ندارد — چون یکی از تب‌هایِ خودِ
 /// پوسته‌ی اصلی است (هدر/نوارِ پایین مشترک با بقیه‌ی تب‌ها). دراور هم
@@ -49,19 +49,15 @@ class SettingsPage extends StatelessWidget {
                       onTap: () => _showThemeSheet(context, c),
                     ),
                   ),
-                  _row(
-                    c,
-                    icon: Icons.language_rounded,
-                    label: 'زبان',
-                    value: 'فارسی',
-                    enabled: false,
-                  ),
-                  _row(
-                    c,
-                    icon: Icons.text_fields_rounded,
-                    label: 'اندازه فونت',
-                    value: 'متوسط (به‌زودی)',
-                    enabled: false,
+                  ValueListenableBuilder<AppFontSize>(
+                    valueListenable: FontSizePreference.sizeNotifier,
+                    builder: (context, fontSize, _) => _row(
+                      c,
+                      icon: Icons.text_fields_rounded,
+                      label: 'اندازه فونت',
+                      value: fontSize.label,
+                      onTap: () => _showFontSizeSheet(context, c),
+                    ),
                   ),
                   ValueListenableBuilder<bool>(
                     valueListenable:
@@ -74,27 +70,6 @@ class SettingsPage extends StatelessWidget {
                       onChanged: NotificationBarPreference.setEnabled,
                       isLast: true,
                     ),
-                  ),
-                ],
-              ),
-              _sectionTitle(c, 'اعلان و صدا'),
-              _card(
-                c,
-                children: [
-                  _switchRow(
-                    c,
-                    icon: Icons.volume_up_outlined,
-                    label: 'صدای زنگ هشدار (به‌زودی)',
-                    value: false,
-                    onChanged: null,
-                  ),
-                  _row(
-                    c,
-                    icon: Icons.timer_outlined,
-                    label: 'مدت زمان هشدار',
-                    value: 'به‌زودی',
-                    enabled: false,
-                    isLast: true,
                   ),
                 ],
               ),
@@ -116,11 +91,12 @@ class SettingsPage extends StatelessWidget {
                     future: PackageInfo.fromPlatform(),
                     builder: (context, snapshot) {
                       final info = snapshot.data;
+                      // 🔧 طبق درخواست: فقط شماره‌ی نسخه («۱.۰.۱») نمایش
+                      // داده می‌شود، بدونِ پسوندِ «+buildNumber» که برایِ
+                      // کاربرِ نهایی گیج‌کننده بود
                       final value = info == null
                           ? ''
-                          : toPersianDigits(
-                              '${info.version}+${info.buildNumber}',
-                            );
+                          : toPersianDigits(info.version);
                       return _row(
                         c,
                         icon: Icons.numbers_rounded,
@@ -198,7 +174,7 @@ class SettingsPage extends StatelessWidget {
               const SizedBox(width: 8),
             ],
             if (enabled && onTap != null)
-              Icon(Icons.chevron_left_rounded, size: 20, color: c.textMuted),
+              Icon(Icons.chevron_right_rounded, size: 20, color: c.textMuted),
           ],
         ),
       ),
@@ -256,53 +232,119 @@ class SettingsPage extends StatelessWidget {
           borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         ),
         padding: const EdgeInsets.symmetric(vertical: 12),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: c.borderSoft,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Text(
-                'تم ظاهری',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                  color: c.textStrong,
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: c.borderSoft,
+                  borderRadius: BorderRadius.circular(2),
                 ),
               ),
-            ),
-            const SizedBox(height: 8),
-            ListTile(
-              leading: Icon(Icons.light_mode_rounded, color: c.textStrong),
-              title: Text('روشن', style: TextStyle(color: c.textStrong)),
-              trailing: !ThemeController.isDark
-                  ? Icon(Icons.check_rounded, color: c.primary)
-                  : null,
-              onTap: () async {
-                await ThemeController.setDark(false);
-                Get.back();
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.dark_mode_rounded, color: c.textStrong),
-              title: Text('تاریک', style: TextStyle(color: c.textStrong)),
-              trailing: ThemeController.isDark
-                  ? Icon(Icons.check_rounded, color: c.primary)
-                  : null,
-              onTap: () async {
-                await ThemeController.setDark(true);
-                Get.back();
-              },
-            ),
-          ],
+              const SizedBox(height: 12),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Text(
+                  'تم ظاهری',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: c.textStrong,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              ListTile(
+                leading: Icon(Icons.light_mode_rounded, color: c.textStrong),
+                title: Text('روشن', style: TextStyle(color: c.textStrong)),
+                trailing: !ThemeController.isDark
+                    ? Icon(Icons.check_rounded, color: c.primary)
+                    : null,
+                onTap: () async {
+                  await ThemeController.setDark(false);
+                  Get.back();
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.dark_mode_rounded, color: c.textStrong),
+                title: Text('تاریک', style: TextStyle(color: c.textStrong)),
+                trailing: ThemeController.isDark
+                    ? Icon(Icons.check_rounded, color: c.primary)
+                    : null,
+                onTap: () async {
+                  await ThemeController.setDark(true);
+                  Get.back();
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  static const _fontSizeIcons = {
+    AppFontSize.small: Icons.text_decrease_rounded,
+    AppFontSize.medium: Icons.text_fields_rounded,
+    AppFontSize.large: Icons.text_increase_rounded,
+  };
+
+  void _showFontSizeSheet(BuildContext context, AppColors c) {
+    Get.bottomSheet(
+      Container(
+        decoration: BoxDecoration(
+          color: c.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: c.borderSoft,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Text(
+                  'اندازه فونت',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: c.textStrong,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              ...AppFontSize.values.map(
+                (size) => ListTile(
+                  leading: Icon(_fontSizeIcons[size], color: c.textStrong),
+                  title: Text(
+                    size.label,
+                    style: TextStyle(color: c.textStrong),
+                  ),
+                  trailing: FontSizePreference.sizeNotifier.value == size
+                      ? Icon(Icons.check_rounded, color: c.primary)
+                      : null,
+                  onTap: () async {
+                    await FontSizePreference.set(size);
+                    Get.back();
+                  },
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

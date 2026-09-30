@@ -11,6 +11,7 @@ import 'core/network/api_client.dart';
 import 'core/network/connectivity_service.dart';
 import 'core/theme/theme_controller.dart';
 import 'core/theme/notification_bar_preference.dart';
+import 'core/theme/font_size_preference.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -25,6 +26,7 @@ void main() async {
   // نیاز دارد)
   ThemeController.init();
   NotificationBarPreference.init();
+  FontSizePreference.init();
 }
 
 // ════════════════════════════════════════════════════════
@@ -92,6 +94,21 @@ class BpmApp extends StatelessWidget {
       // ThemeController.init() (بالاتر در main، بعد از runApp) همان را
       // اعمال می‌کند.
       themeMode: ThemeMode.light,
+      // 🔧 طبق درخواست: اندازه‌ی فونتِ کلِ اپ (کوچک/متوسط/بزرگ، ±۲۰٪) از
+      // صفحه‌ی تنظیمات قابلِ‌تغییر است — با اعمالِ textScaler دقیقاً همین‌جا
+      // (ریشه‌ی اپ)، همه‌ی fontSizeهایِ هاردکدِ کلِ پروژه خودکار اسکیل می‌شوند
+      builder: (context, child) => ValueListenableBuilder<AppFontSize>(
+        valueListenable: FontSizePreference.sizeNotifier,
+        builder: (context, fontSize, _) {
+          final mq = MediaQuery.of(context);
+          return MediaQuery(
+            data: mq.copyWith(
+              textScaler: TextScaler.linear(fontSize.scale),
+            ),
+            child: child!,
+          );
+        },
+      ),
       home: initialUser != null
           ? MainShell(user: initialUser!)
           : const LoginPage(),
