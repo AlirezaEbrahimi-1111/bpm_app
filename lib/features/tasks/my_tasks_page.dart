@@ -494,7 +494,11 @@ class MyTasksPageState extends State<MyTasksPage> {
           _groupChip(
             c,
             label: 'همه گروه‌ها',
-            color: c.textMuted,
+            // 🔧 رفعِ باگ: c.textMuted در تمِ تاریک سفیدِ کامل است — چون
+            // این چیپ وقتی انتخاب شده پس‌زمینه‌اش رو همین رنگ پر می‌کنه و
+            // متن/نقطه‌اش هم سفیدِ هاردکده، متن رویِ پس‌زمینه‌ی سفید کاملاً
+            // محو می‌شد. یک خاکستریِ ثابت (مستقل از تم) جایگزین شد
+            color: const Color(0xFF64748B),
             selected: _selectedGroupId == null,
             onTap: () => setState(() => _selectedGroupId = null),
           ),

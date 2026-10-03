@@ -2,7 +2,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../core/theme/app_colors.dart';
-import '../../core/widgets/app_snack.dart';
+import 'plan_detail_page.dart';
 
 /// «خرید و ارتقای اشتراک» — طبقِ طرحِ ارسالی (روشن + تاریک).
 ///
@@ -73,7 +73,9 @@ class SubscriptionPage extends StatelessWidget {
               label: 'انتخاب پلن طلایی',
               filled: true,
               accent: c.primary,
-              onTap: () => _comingSoon(),
+              onTap: () => Get.to(
+                () => const PlanDetailPage(plan: SubscriptionPlanType.gold),
+              ),
             ),
           ),
           const SizedBox(height: 8),
@@ -95,7 +97,9 @@ class SubscriptionPage extends StatelessWidget {
               label: 'انتخاب پلن نقره‌ای',
               filled: true,
               accent: c.primary,
-              onTap: () => _comingSoon(),
+              onTap: () => Get.to(
+                () => const PlanDetailPage(plan: SubscriptionPlanType.silver),
+              ),
             ),
           ),
           const SizedBox(height: 8),
@@ -124,10 +128,6 @@ class SubscriptionPage extends StatelessWidget {
         ],
       ),
     );
-  }
-
-  static void _comingSoon() {
-    AppSnack.info('به‌زودی', 'ارتقایِ پلن هنوز فعال نشده است');
   }
 }
 

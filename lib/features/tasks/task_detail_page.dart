@@ -1797,11 +1797,69 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
               onReview: () =>
                   _showTerminationReviewDialog(_terminationRequest!),
             ),
-          // ── چک‌لیست ──
-          // 🔧 قبلاً فقط وقتی آیتمی از قبل بود نمایش داده می‌شد؛ حالا اگر
-          // تعریف‌کننده باشیم، حتی با چک‌لیست خالی هم بخش نشان داده
-          // می‌شود تا بشود اولین آیتم را اضافه کرد
-          if (_checklistTotal > 0 || _canEdit) ...[
+          // 🔧 طبق درخواست: چک‌لیست/بینندگان/پیوست‌ها دیگر کارت‌های جدا
+          // ندارند — همه در یک کارتِ مشترک، با خطِ افقی بینِ بخش‌ها
+          _checklistViewersAttachmentsCard(c),
+          const SizedBox(height: 12),
+          // ── تاریخچه ──
+          // 🔧 طبق درخواست: عنوان دیگر بیرونِ کارت نیست — داخلِ همون کارتی
+          // که آیتم‌هایِ تاریخچه توشن
+          if (_history.isNotEmpty) ...[
+            _card(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      // 🔧 طبق درخواست: آیکن پشتِ (سمتِ راستِ) متن
+                      Icon(Icons.history_rounded, size: 16, color: c.textMuted),
+                      const SizedBox(width: 6),
+                      Text(
+                        'تاریخچه فعالیت‌ها',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          color: c.textStrong,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  ..._history.map((h) => _historyItem(h)),
+                ],
+              ),
+            ),
+          ],
+
+          const SizedBox(height: 20),
+        ],
+      ),
+    );
+  }
+
+  int? _currentUserId;
+  bool _isUpdating = false;
+
+  // 🔧 طبق درخواست: چک‌لیست/بینندگان/پیوست‌ها آکاردئونی و پیش‌فرض بسته
+  bool _checklistOpen = false;
+  bool _viewersOpen = false;
+  bool _attachmentsOpen = false;
+
+  // 🔧 طبق درخواست: چک‌لیست/بینندگان/پیوست‌ها دیگر هرکدام کارتِ جدایِ
+  // خودشان را ندارند — همه در یک کارتِ مشترک، با خطِ افقی (Divider)
+  // بینِ هر بخش. چون بینندگان/چک‌لیست شرطی نمایش داده می‌شوند، لیستِ
+  // بخش‌ها اول جمع‌آوری و بعد بینشان خط گذاشته می‌شود (نه بعدِ آخری)
+  Widget _checklistViewersAttachmentsCard(AppColors c) {
+    final sections = <Widget>[];
+
+    // ── چک‌لیست ──
+    // 🔧 قبلاً فقط وقتی آیتمی از قبل بود نمایش داده می‌شد؛ حالا اگر
+    // تعریف‌کننده باشیم، حتی با چک‌لیست خالی هم بخش نشان داده می‌شود
+    // تا بشود اولین آیتم را اضافه کرد
+    if (_checklistTotal > 0 || _canEdit) {
+      sections.add(
+        Column(
+          children: [
             _sectionHeader(
               c,
               title: 'چک‌لیست',
@@ -1820,7 +1878,8 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
             ),
             _accordionBody(
               _checklistOpen,
-              _card(
+              Padding(
+                padding: const EdgeInsets.fromLTRB(4, 0, 4, 12),
                 child: Column(
                   children: [
                     if (_checklistTotal > 0) ...[
@@ -1849,10 +1908,16 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                 ),
               ),
             ),
-            const SizedBox(height: 12),
           ],
-          // ── بینندگان (فقط تعریف‌کننده مدیریت می‌کند) ──
-          if (_canEdit) ...[
+        ),
+      );
+    }
+
+    // ── بینندگان (فقط تعریف‌کننده مدیریت می‌کند) ──
+    if (_canEdit) {
+      sections.add(
+        Column(
+          children: [
             _sectionHeader(
               c,
               title: 'بینندگان',
@@ -1866,7 +1931,8 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
             ),
             _accordionBody(
               _viewersOpen && _viewers.isNotEmpty,
-              _card(
+              Padding(
+                padding: const EdgeInsets.fromLTRB(4, 0, 4, 12),
                 child: Column(
                   children: _viewers
                       .map(
@@ -1916,9 +1982,15 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                 ),
               ),
             ),
-            const SizedBox(height: 12),
           ],
-          // ── پیوست‌ها ──
+        ),
+      );
+    }
+
+    // ── پیوست‌ها ──
+    sections.add(
+      Column(
+        children: [
           _sectionHeader(
             c,
             title: 'پیوست‌ها',
@@ -1934,9 +2006,10 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
           ),
           _accordionBody(
             _attachmentsOpen,
-            _attachments.isEmpty
-                ? _card(
-                    child: Center(
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 0, 4, 12),
+              child: _attachments.isEmpty
+                  ? Center(
                       child: Padding(
                         padding: const EdgeInsets.all(16),
                         child: Text(
@@ -1944,57 +2017,42 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                           style: TextStyle(color: c.textMuted, fontSize: 13),
                         ),
                       ),
-                    ),
-                  )
-                : _card(
-                    child: Column(
+                    )
+                  : Column(
                       children: _attachments
                           .map((a) => _attachmentItem(a))
                           .toList(),
                     ),
-                  ),
+            ),
           ),
-          const SizedBox(height: 12),
-          // ── تاریخچه ──
-          if (_history.isNotEmpty) ...[
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-              child: Row(
-                children: [
-                  // 🔧 طبق درخواست: آیکن پشتِ (سمتِ راستِ) متن
-                  Icon(Icons.history_rounded, size: 16, color: c.textMuted),
-                  const SizedBox(width: 6),
-                  Text(
-                    'تاریخچه فعالیت‌ها',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                      color: c.textStrong,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            _card(
-              child: Column(
-                children: _history.map((h) => _historyItem(h)).toList(),
-              ),
-            ),
-          ],
-
-          const SizedBox(height: 20),
         ],
       ),
     );
+
+    final withDividers = <Widget>[];
+    for (var i = 0; i < sections.length; i++) {
+      if (i > 0) {
+        withDividers.add(
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Divider(height: 1, color: c.borderSoft),
+          ),
+        );
+      }
+      withDividers.add(sections[i]);
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: c.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: c.borderSoft),
+      ),
+      child: Column(children: withDividers),
+    );
   }
-
-  int? _currentUserId;
-  bool _isUpdating = false;
-
-  // 🔧 طبق درخواست: چک‌لیست/بینندگان/پیوست‌ها آکاردئونی و پیش‌فرض بسته
-  bool _checklistOpen = false;
-  bool _viewersOpen = false;
-  bool _attachmentsOpen = false;
 
   Widget _sectionHeader(
     AppColors c, {
@@ -2026,7 +2084,8 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
             Text(
               title,
               style: TextStyle(
-                fontSize: 15,
+                // 🔧 طبق درخواست: هم‌اندازه‌ی برچسب‌هایِ «سازنده/مسئول/موعد انجام»
+                fontSize: 13,
                 fontWeight: FontWeight.bold,
                 color: c.textStrong,
               ),
@@ -2112,211 +2171,197 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                   const SizedBox(height: 12),
                   Container(
                     width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: c.borderSoft,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: c.borderSoft,
+                      borderRadius: BorderRadius.circular(2),
                     ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'ارجاع کار',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                        color: c.textStrong,
-                      ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'ارجاع کار',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      color: c.textStrong,
                     ),
-                    const SizedBox(height: 12),
+                  ),
+                  const SizedBox(height: 12),
 
-                    // فیلد جستجو — طبق درخواست پررنگ‌تر از قبل (نه خاکستریِ کم‌رنگ)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: TextField(
-                        controller: searchController,
-                        autofocus: false,
-                        onChanged: (v) => setSheetState(() => searchQuery = v),
-                        style: TextStyle(color: c.textStrong, fontSize: 14),
-                        decoration: InputDecoration(
-                          hintText: 'جستجوی نام یا شماره...',
-                          hintStyle: TextStyle(
-                            color: c.textMuted,
-                            fontSize: 13,
-                          ),
-                          prefixIcon: Icon(
-                            Icons.search_rounded,
-                            color: c.textMuted,
-                            size: 20,
-                          ),
-                          suffixIcon: searchQuery.isNotEmpty
-                              ? IconButton(
-                                  icon: Icon(
-                                    Icons.close_rounded,
-                                    color: c.textMuted,
-                                    size: 18,
-                                  ),
-                                  onPressed: () => setSheetState(() {
-                                    searchController.clear();
-                                    searchQuery = '';
-                                  }),
-                                )
-                              : null,
-                          filled: true,
-                          fillColor: c.surface,
-                          contentPadding: const EdgeInsets.symmetric(
-                            vertical: 4,
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(color: c.borderSoft),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(color: c.borderSoft),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(
-                              color: c.primary,
-                              width: 1.5,
-                            ),
-                          ),
+                  // فیلد جستجو — طبق درخواست پررنگ‌تر از قبل (نه خاکستریِ کم‌رنگ)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: TextField(
+                      controller: searchController,
+                      autofocus: false,
+                      onChanged: (v) => setSheetState(() => searchQuery = v),
+                      style: TextStyle(color: c.textStrong, fontSize: 14),
+                      decoration: InputDecoration(
+                        hintText: 'جستجوی نام یا شماره...',
+                        hintStyle: TextStyle(color: c.textMuted, fontSize: 13),
+                        prefixIcon: Icon(
+                          Icons.search_rounded,
+                          color: c.textMuted,
+                          size: 20,
                         ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-
-                    // لیست کاربران — حالا داخلِ یک Expandedِ واقعاً
-                    // محدودشده اسکرول می‌شود (نه شیتِ کل)
-                    Expanded(
-                      child: filteredUsers.isEmpty
-                          ? Center(
-                              child: Text(
-                                'نتیجه‌ای یافت نشد',
-                                style: TextStyle(
+                        suffixIcon: searchQuery.isNotEmpty
+                            ? IconButton(
+                                icon: Icon(
+                                  Icons.close_rounded,
                                   color: c.textMuted,
-                                  fontSize: 13,
+                                  size: 18,
                                 ),
+                                onPressed: () => setSheetState(() {
+                                  searchController.clear();
+                                  searchQuery = '';
+                                }),
+                              )
+                            : null,
+                        filled: true,
+                        fillColor: c.surface,
+                        contentPadding: const EdgeInsets.symmetric(vertical: 4),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: c.borderSoft),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: c.borderSoft),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: c.primary, width: 1.5),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+
+                  // لیست کاربران — حالا داخلِ یک Expandedِ واقعاً
+                  // محدودشده اسکرول می‌شود (نه شیتِ کل)
+                  Expanded(
+                    child: filteredUsers.isEmpty
+                        ? Center(
+                            child: Text(
+                              'نتیجه‌ای یافت نشد',
+                              style: TextStyle(
+                                color: c.textMuted,
+                                fontSize: 13,
                               ),
-                            )
-                          : ListView(
-                              children: filteredUsers.map((u) {
-                                final display = userDisplay(u);
-                                final selected = selectedUserId == u['id'];
-                                return ListTile(
-                                  leading: CircleAvatar(
-                                    radius: 16,
-                                    backgroundColor: selected
-                                        ? c.primary
-                                        : c.primary.withValues(alpha: 0.12),
-                                    child: Text(
-                                      display.toString().isNotEmpty
-                                          ? display.toString()[0]
-                                          : '?',
-                                      style: TextStyle(
-                                        color: selected
-                                            ? Colors.white
-                                            : c.primary,
-                                        fontSize: 13,
-                                      ),
-                                    ),
-                                  ),
-                                  title: Text(
-                                    display,
+                            ),
+                          )
+                        : ListView(
+                            children: filteredUsers.map((u) {
+                              final display = userDisplay(u);
+                              final selected = selectedUserId == u['id'];
+                              return ListTile(
+                                leading: CircleAvatar(
+                                  radius: 16,
+                                  backgroundColor: selected
+                                      ? c.primary
+                                      : c.primary.withValues(alpha: 0.12),
+                                  child: Text(
+                                    display.toString().isNotEmpty
+                                        ? display.toString()[0]
+                                        : '?',
                                     style: TextStyle(
-                                      fontSize: 14,
-                                      color: c.textStrong,
+                                      color: selected
+                                          ? Colors.white
+                                          : c.primary,
+                                      fontSize: 13,
                                     ),
                                   ),
-                                  trailing: selected
-                                      ? Icon(
-                                          Icons.check_circle,
-                                          color: c.primary,
-                                        )
-                                      : null,
-                                  onTap: () => setSheetState(() {
-                                    selectedUserId = u['id'];
-                                    selectedUserName = display;
-                                  }),
+                                ),
+                                title: Text(
+                                  display,
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: c.textStrong,
+                                  ),
+                                ),
+                                trailing: selected
+                                    ? Icon(Icons.check_circle, color: c.primary)
+                                    : null,
+                                onTap: () => setSheetState(() {
+                                  selectedUserId = u['id'];
+                                  selectedUserName = display;
+                                }),
+                              );
+                            }).toList(),
+                          ),
+                  ),
+
+                  // توضیح
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                    child: TextField(
+                      controller: notesController,
+                      style: TextStyle(color: c.textStrong, fontSize: 13.5),
+                      decoration: InputDecoration(
+                        hintText: 'توضیح (اختیاری)...',
+                        hintStyle: TextStyle(color: c.textMuted, fontSize: 13),
+                        filled: true,
+                        fillColor: c.surface,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: c.borderSoft),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 12,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  // دکمه ارجاع — طبق درخواست، دیگر پشتِ دکمه‌های
+                  // ناوبریِ گوشی نمی‌رود
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      16,
+                      12,
+                      16,
+                      12 + MediaQuery.of(ctx).padding.bottom,
+                    ),
+                    child: SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: ElevatedButton(
+                        onPressed: selectedUserId == null
+                            ? null
+                            : () {
+                                Get.back();
+                                _delegateTask(
+                                  selectedUserId!,
+                                  notes: notesController.text.trim(),
                                 );
-                              }).toList(),
-                            ),
-                    ),
-
-                    // توضیح
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                      child: TextField(
-                        controller: notesController,
-                        style: TextStyle(color: c.textStrong, fontSize: 13.5),
-                        decoration: InputDecoration(
-                          hintText: 'توضیح (اختیاری)...',
-                          hintStyle: TextStyle(
-                            color: c.textMuted,
-                            fontSize: 13,
+                              },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: c.primary,
+                          disabledBackgroundColor: c.primary.withValues(
+                            alpha: 0.35,
                           ),
-                          filled: true,
-                          fillColor: c.surface,
-                          border: OutlineInputBorder(
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(color: c.borderSoft),
                           ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 12,
+                        ),
+                        child: Text(
+                          selectedUserName == null
+                              ? 'یک نفر را انتخاب کنید'
+                              : 'ارجاع به $selectedUserName',
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
                       ),
                     ),
-
-                    // دکمه ارجاع — طبق درخواست، دیگر پشتِ دکمه‌های
-                    // ناوبریِ گوشی نمی‌رود
-                    Padding(
-                      padding: EdgeInsets.fromLTRB(
-                        16,
-                        12,
-                        16,
-                        12 + MediaQuery.of(ctx).padding.bottom,
-                      ),
-                      child: SizedBox(
-                        width: double.infinity,
-                        height: 50,
-                        child: ElevatedButton(
-                          onPressed: selectedUserId == null
-                              ? null
-                              : () {
-                                  Get.back();
-                                  _delegateTask(
-                                    selectedUserId!,
-                                    notes: notesController.text.trim(),
-                                  );
-                                },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: c.primary,
-                            disabledBackgroundColor: c.primary.withValues(
-                              alpha: 0.35,
-                            ),
-                            foregroundColor: Colors.white,
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          child: Text(
-                            selectedUserName == null
-                                ? 'یک نفر را انتخاب کنید'
-                                : 'ارجاع به $selectedUserName',
-                            style: const TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
+            ),
           );
         },
       ),

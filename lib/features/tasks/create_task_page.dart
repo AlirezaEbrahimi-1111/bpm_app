@@ -157,7 +157,12 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
 
   // 🔧 به‌جای پکیج persian_datetime_picker (که گاهی ارقام را انگلیسی
   // نشان می‌داد)، انتخابگر اختصاصیِ خودمان استفاده می‌شود
+  // 🔧 فوکوسِ فیلدِ عنوان/توضیحات قبل از بازشدنِ انتخابگر/شیت برداشته می‌شود،
+  // وگرنه بعد از بسته‌شدن (انتخاب یا Back) فوکوس دوباره روی عنوان می‌افتد
+  void _dismissKeyboard() => FocusManager.instance.primaryFocus?.unfocus();
+
   Future<DateTime?> _pickDate({DateTime? initial}) async {
+    _dismissKeyboard();
     return showCustomPersianDatePicker(
       context,
       initialDate: initial,
@@ -939,6 +944,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
   }
 
   void _showGroupSheet(AppColors c) {
+    _dismissKeyboard();
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -1067,6 +1073,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
   }
 
   void _showAssigneeSheet(AppColors c) {
+    _dismissKeyboard();
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,

@@ -44,7 +44,10 @@ class TaskLabels {
   };
 
   /// رنگِ بجِ «عقب افتاده» و «نیازمند تمدید» (وب: .status-overdue / .status-needs_renewal)
-  static const Color overdueColor = Color(0xFFB91C1C);
+  // 🔧 طبق درخواست: همرنگِ بجِ «خروج» در مدیریتِ دستگاه‌ها (c.danger) تا در
+  // تمِ تاریک هم متن و زمینه‌اش خوانا باشد — قبلاً قرمزِ تیره بود و روی سطحِ
+  // تیره کم‌کنتراست می‌شد
+  static const Color overdueColor = Color(0xFFEF4444);
   static const Color needsRenewalColor = Color(0xFF8E57FE);
 
   /// فهرستِ کاملِ کلیدهایِ خامِ وضعیت — طبقِ همان واژگانِ مشترکِ نسخه‌ی

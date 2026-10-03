@@ -53,18 +53,26 @@ bool _sameDay(DateTime? a, DateTime b) =>
 
 // ── چگالیِ کار: ۰=بدون‌وظیفه، ۱-۵=کم‌کار، ۶-۱۰=متوسط، ۱۱+=پرکار ──
 int _densityTier(int n) => n == 0 ? 0 : (n <= 5 ? 1 : (n <= 10 ? 2 : 3));
+// 🔧 طبق درخواست: پس‌زمینه‌ی روزِ «بدون وظیفه» همیشه سفیدِ کامل است —
+// در هر دو تم، نه فقط روشن (قبلاً با c.surface در تمِ تاریک رنگِ سطحِ
+// تیره می‌گرفت)
 const _densityBg = [
-  null,
+  Colors.white,
   Color(0xFFECE3FF),
   Color(0xFFCCB4FF),
   Color(0xFF8E57FE),
 ];
 const _densityLabels = ['بدون وظیفه', 'کم‌کار', 'متوسط', 'پرکار'];
 
-Color _densityBgFor(AppColors c, int tier) => _densityBg[tier] ?? c.surface;
-Color _densityTextFor(AppColors c, int tier) => tier == 3
-    ? Colors.white
-    : (tier == 0 ? c.textMuted : const Color(0xFF3B1D73));
+Color _densityBgFor(AppColors c, int tier) => _densityBg[tier];
+// 🔧 چون پس‌زمینه‌ی تیرِ ۰ همیشه سفید است (در هر دو تم)، متنش هم باید
+// همیشه همون خاکستریِ ملایمِ ثابت باشد تا رویِ سفید خوانا بماند — نه
+// سفیدِ تمامِ تمِ تاریک (که رویِ پس‌زمینه‌ی سفید نامرئی می‌شد)
+Color _densityTextFor(AppColors c, int tier) {
+  if (tier == 3) return Colors.white;
+  if (tier == 0) return const Color(0xFF64748B);
+  return const Color(0xFF3B1D73);
+}
 
 Widget _legendRow(AppColors c) {
   return Wrap(
@@ -438,11 +446,9 @@ class _WeekPlanSheetState extends State<_WeekPlanSheet> {
                 padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
                 child: Row(
                   children: [
-                    Icon(
-                      Icons.calendar_view_week_rounded,
-                      size: 18,
-                      color: c.primary,
-                    ),
+                    // 🔧 طبق درخواست: آیکنِ مناسب‌تر — این مودال یک ردیفِ
+                    // ۷ستونیِ روزها را نشان می‌دهد، نه یک برگه‌ی تقویم
+                    Icon(Icons.view_week_rounded, size: 18, color: c.primary),
                     const SizedBox(width: 8),
                     Text(
                       'برنامه هفتگی',

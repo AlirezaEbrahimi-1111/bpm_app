@@ -302,7 +302,7 @@ class _PersonalInfoPageState extends State<PersonalInfoPage> {
                         side: BorderSide(
                           color: c.primary.withValues(alpha: 0.5),
                         ),
-                        shape: const StadiumBorder(),
+                        shape: const RoundedRectangleBorder(),
                         padding: const EdgeInsets.symmetric(
                           horizontal: 14,
                           vertical: 6,
