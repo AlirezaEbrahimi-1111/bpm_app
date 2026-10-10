@@ -6,6 +6,9 @@ import 'package:get/get.dart';
 import '../../core/widgets/app_snack.dart';
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/plan/plan_access.dart';
+import '../subscription/plan_gate.dart';
+import '../shell/widgets/app_bottom_nav.dart';
 
 /// صفحه‌ی «اطلاعات شخصی» — طبق طرح ارسالی (روشن + تاریک)
 ///
@@ -173,221 +176,243 @@ class _PersonalInfoPageState extends State<PersonalInfoPage> {
     };
     final phone = (widget.user['phone'] ?? '').toString();
 
-    return Scaffold(
-      backgroundColor: c.bgPage,
-      appBar: AppBar(
+    return AppShellOverlays(
+      child: Scaffold(
         backgroundColor: c.bgPage,
-        elevation: 0,
-        centerTitle: true,
-        iconTheme: IconThemeData(color: c.textStrong),
-        title: Text(
-          'اطلاعات شخصی',
-          style: TextStyle(
-            color: c.textStrong,
-            fontWeight: FontWeight.bold,
-            fontSize: 16,
+        appBar: AppBar(
+          backgroundColor: c.bgPage,
+          elevation: 0,
+          centerTitle: true,
+          iconTheme: IconThemeData(color: c.textStrong),
+          title: Text(
+            'اطلاعات شخصی',
+            style: TextStyle(
+              color: c.textStrong,
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+            ),
+          ),
+          leading: IconButton(
+            icon: Transform.rotate(
+              angle: math.pi, // 🔧 طبق درخواست: ۱۸۰ درجه چرخید
+              child: const Icon(Icons.arrow_forward_ios_rounded, size: 20),
+            ),
+            onPressed: () => Get.back(),
           ),
         ),
-        leading: IconButton(
-          icon: Transform.rotate(
-            angle: math.pi, // 🔧 طبق درخواست: ۱۸۰ درجه چرخید
-            child: const Icon(Icons.arrow_forward_ios_rounded, size: 20),
-          ),
-          onPressed: () => Get.back(),
-        ),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // ── کارت آواتار + نام ──
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: c.surface,
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: c.borderSoft),
-              ),
-              // 🔧 طبق عکسِ ارسالی: عکس سمتِ راست، جلوش (سمتِ چپ) نام و
-              // دکمه‌ی تغییرِ تصویر پایین‌چین — با end هر دو ته‌ی هم
-              // تراز می‌شوند؛ border-radius عکس هم خیلی کم (نه دایره‌ای)
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Container(
-                    width: 72,
-                    height: 72,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(
-                        36,
-                      ), // گرد کامل (عرض ۷۲ ÷ ۲)
-                      gradient: (_avatarPath == null || _avatarPath!.isEmpty)
-                          ? LinearGradient(colors: [c.primaryLight, c.primary])
-                          : null,
-                      color: c.borderSoft,
-                      image: (_avatarPath != null && _avatarPath!.isNotEmpty)
-                          ? DecorationImage(
-                              image: NetworkImage(
-                                '${ApiClient.baseUrl}/$_avatarPath',
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // ── کارت آواتار + نام ──
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: c.surface,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: c.borderSoft),
+                ),
+                // 🔧 طبق عکسِ ارسالی: عکس سمتِ راست، جلوش (سمتِ چپ) نام و
+                // دکمه‌ی تغییرِ تصویر پایین‌چین — با end هر دو ته‌ی هم
+                // تراز می‌شوند؛ border-radius عکس هم خیلی کم (نه دایره‌ای)
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Container(
+                      width: 72,
+                      height: 72,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(
+                          36,
+                        ), // گرد کامل (عرض ۷۲ ÷ ۲)
+                        gradient: (_avatarPath == null || _avatarPath!.isEmpty)
+                            ? LinearGradient(
+                                colors: [c.primaryLight, c.primary],
+                              )
+                            : null,
+                        color: c.borderSoft,
+                        image: (_avatarPath != null && _avatarPath!.isNotEmpty)
+                            ? DecorationImage(
+                                image: NetworkImage(
+                                  '${ApiClient.baseUrl}/$_avatarPath',
+                                ),
+                                fit: BoxFit.cover,
+                              )
+                            : null,
+                      ),
+                      child: (_avatarPath == null || _avatarPath!.isEmpty)
+                          ? Center(
+                              child: Text(
+                                firstName.isNotEmpty ? firstName[0] : 'U',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 26,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
-                              fit: BoxFit.cover,
                             )
                           : null,
                     ),
-                    child: (_avatarPath == null || _avatarPath!.isEmpty)
-                        ? Center(
-                            child: Text(
-                              firstName.isNotEmpty ? firstName[0] : 'U',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 26,
-                                fontWeight: FontWeight.bold,
-                              ),
+                    const SizedBox(width: 16),
+                    // 🔧 طبق درخواست: نام کنارِ عکس (بالا) و دکمه‌ی «تغییر تصویر»
+                    // جدا، در گوشه‌ی پایین-چپِ همین کادر و با border-radius زیاد
+                    Expanded(
+                      child: SizedBox(
+                        height: 72,
+                        child: Align(
+                          alignment: AlignmentDirectional
+                              .centerStart, // وسطِ ارتفاعِ عکس
+                          child: Text(
+                            _nameController.text.isEmpty
+                                ? 'کاربر'
+                                : _nameController.text,
+                            style: TextStyle(
+                              color: c.textStrong,
+                              fontSize: 17,
+                              fontWeight: FontWeight.bold,
                             ),
-                          )
-                        : null,
-                  ),
-                  const SizedBox(width: 16),
-                  // 🔧 طبق درخواست: نام کنارِ عکس (بالا) و دکمه‌ی «تغییر تصویر»
-                  // جدا، در گوشه‌ی پایین-چپِ همین کادر و با border-radius زیاد
-                  Expanded(
-                    child: SizedBox(
-                      height: 72,
-                      child: Align(
-                        alignment: AlignmentDirectional
-                            .centerStart, // وسطِ ارتفاعِ عکس
-                        child: Text(
-                          _nameController.text.isEmpty
-                              ? 'کاربر'
-                              : _nameController.text,
-                          style: TextStyle(
-                            color: c.textStrong,
-                            fontSize: 17,
-                            fontWeight: FontWeight.bold,
                           ),
                         ),
                       ),
                     ),
-                  ),
-                  // فاصله‌ی دکمه از چپ/پایینِ کادر: کادر ۲۰ پیکسل padding دارد؛ با
-                  // این جابه‌جایی ۱۰ پیکسل به چپ و ۸ پیکسل به پایین می‌رود (فاصله
-                  // ~۱۰ چپ و ~۱۲ پایین). عددها را کم/زیاد کنید تا تنظیم شود.
-                  Transform.translate(
-                    offset: const Offset(-10, 8),
-                    child: OutlinedButton.icon(
-                      onPressed: _isUploadingAvatar
-                          ? null
-                          : _pickAndUploadAvatar,
-                      icon: _isUploadingAvatar
-                          ? SizedBox(
-                              width: 11,
-                              height: 11,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
+                    // فاصله‌ی دکمه از چپ/پایینِ کادر: کادر ۲۰ پیکسل padding دارد؛ با
+                    // این جابه‌جایی ۱۰ پیکسل به چپ و ۸ پیکسل به پایین می‌رود (فاصله
+                    // ~۱۰ چپ و ~۱۲ پایین). عددها را کم/زیاد کنید تا تنظیم شود.
+                    Transform.translate(
+                      offset: const Offset(-10, 8),
+                      child: OutlinedButton.icon(
+                        onPressed: _isUploadingAvatar
+                            ? null
+                            : _pickAndUploadAvatar,
+                        icon: _isUploadingAvatar
+                            ? SizedBox(
+                                width: 11,
+                                height: 11,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: c.primary,
+                                ),
+                              )
+                            : Icon(
+                                Icons.edit_outlined,
+                                size: 12,
                                 color: c.primary,
                               ),
-                            )
-                          : Icon(
-                              Icons.edit_outlined,
-                              size: 12,
-                              color: c.primary,
-                            ),
-                      label: Text(
-                        'تغییر تصویر',
-                        style: TextStyle(color: c.primary, fontSize: 10.5),
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        side: BorderSide(
-                          color: c.primary.withValues(alpha: 0.5),
+                        label: Text(
+                          'تغییر تصویر',
+                          style: TextStyle(color: c.primary, fontSize: 10.5),
                         ),
-                        shape: const RoundedRectangleBorder(),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 6,
+                        style: OutlinedButton.styleFrom(
+                          side: BorderSide(
+                            color: c.primary.withValues(alpha: 0.5),
+                          ),
+                          shape: const RoundedRectangleBorder(),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 6,
+                          ),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          visualDensity: VisualDensity.standard,
                         ),
-                        minimumSize: Size.zero,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        visualDensity: VisualDensity.standard,
                       ),
                     ),
-                  ),
-                ],
-              ),
-            ),
-
-            _sectionTitle(c, 'مشخصات فردی'),
-            _editableRow(
-              c: c,
-              icon: Icons.person_outline_rounded,
-              label: 'نام و نام خانوادگی',
-              controller: _nameController,
-              focusNode: _nameFocus,
-              keyboardType: TextInputType.name,
-            ),
-            // 🔧 شماره تماس از سمت این endpoint قابل ویرایش نیست
-            _readonlyRow(
-              c: c,
-              icon: Icons.phone_outlined,
-              label: 'شماره تماس',
-              value: phone.isEmpty ? '—' : phone,
-            ),
-            // 🔧 سمت شغلی و نام سازمان توسط مدیر سیستم تعیین می‌شوند،
-            // بنابراین از سمت کاربر قابل ویرایش نیستند (بدون آیکون مداد).
-            _readonlyRow(
-              c: c,
-              icon: Icons.work_outline_rounded,
-              label: 'سمت شغلی',
-              value: roleLabel,
-            ),
-            _readonlyRow(
-              c: c,
-              icon: Icons.apartment_rounded,
-              label: 'نام سازمان',
-              value: 'آوای شرق ملک',
-            ),
-            _readonlyRow(
-              c: c,
-              icon: Icons.business_outlined,
-              label: 'واحد',
-              value: sectionLabel,
-              isLast: true,
-            ),
-
-            const SizedBox(height: 20),
-            SizedBox(
-              height: 52,
-              child: ElevatedButton(
-                onPressed: _isSaving ? null : _saveChanges,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: c.primary,
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
+                  ],
                 ),
-                child: _isSaving
-                    ? const SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2.4,
-                        ),
-                      )
-                    : const Text(
-                        'ذخیره تغییرات',
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
               ),
-            ),
-          ],
+
+              _sectionTitle(c, 'مشخصات فردی'),
+              _editableRow(
+                c: c,
+                icon: Icons.person_outline_rounded,
+                label: 'نام و نام خانوادگی',
+                controller: _nameController,
+                focusNode: _nameFocus,
+                keyboardType: TextInputType.name,
+              ),
+              // 🔧 شماره تماس از سمت این endpoint قابل ویرایش نیست
+              _readonlyRow(
+                c: c,
+                icon: Icons.phone_outlined,
+                label: 'شماره تماس',
+                value: phone.isEmpty ? '—' : phone,
+              ),
+              // 🔧 سمت شغلی و نام سازمان توسط مدیر سیستم تعیین می‌شوند،
+              // بنابراین از سمت کاربر قابل ویرایش نیستند (بدون آیکون مداد).
+              PlanGate(
+                feature: PlanFeature.orgProfileFields,
+                label: 'اطلاعات سازمانی',
+                child: Column(
+                  children: [
+                    _readonlyRow(
+                      c: c,
+                      icon: Icons.work_outline_rounded,
+                      label: 'سمت شغلی',
+                      value: roleLabel,
+                    ),
+                    _readonlyRow(
+                      c: c,
+                      icon: Icons.apartment_rounded,
+                      label: 'نام سازمان',
+                      value:
+                          (widget.user['organization_name'] ?? '')
+                              .toString()
+                              .isEmpty
+                          ? '—'
+                          : widget.user['organization_name'].toString(),
+                    ),
+                    _readonlyRow(
+                      c: c,
+                      icon: Icons.business_outlined,
+                      label: 'واحد',
+                      value: sectionLabel,
+                      isLast: true,
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 20),
+              SizedBox(
+                height: 52,
+                child: ElevatedButton(
+                  onPressed: _isSaving ? null : _saveChanges,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: c.primary,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  child: _isSaving
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2.4,
+                          ),
+                        )
+                      : const Text(
+                          'ذخیره تغییرات',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                ),
+              ),
+            ],
+          ),
         ),
+        // 🔧 طبق درخواست: نوارِ ناوبرییِ پایین در همه‌ی صفحاتِ اپ — چون این صفحه با Get.to باز می‌شود، Scaffoldِ پوسته‌ی اصلی را نمی‌بیند
+        // 🔧 طبق درخواست: دکمهِ شناورِ افزودنِ کار هم مثلِ پوستهِ اصلی
+        floatingActionButton: const AppCreateTaskFab(),
+        floatingActionButtonLocation: const LoweredDockedFabLocation(),
+        bottomNavigationBar: const AppBottomNav(),
       ),
     );
   }

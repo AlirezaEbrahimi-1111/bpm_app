@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'dart:convert';
+import '../plan/plan_access.dart';
 
 class ApiClient {
   static const String baseUrl = 'https://bpm.itmalek.com';
@@ -15,6 +16,15 @@ class ApiClient {
   // شناسه کاربر جاری — سراسری، یک‌بار موقع لاگین ذخیره می‌شود
   // ════════════════════════════════════════════════════════
   static int? currentUserId;
+
+  /// 🔧 کپیِ کاملِ آخرین کاربرِ لاگین‌شده، به‌صورتِ همزمان (sync) در دسترس —
+  /// برایِ ویجت‌هایی مثلِ دکمه‌ی شناورِ «افزودنِ کار» که در صفحاتِ مختلف
+  /// (بدونِ آن‌که user به‌عنوانِ پارامتر بهشان پاس داده شده باشد) هم باید
+  /// نقش/شناسه‌ی کاربر را بدانند
+  static Map<String, dynamic>? currentUser;
+
+  /// پاسخِ 403 با کد PLAN_RESTRICTED؛ UI (شِل) نمایشِ شیتِ ارتقا را تنظیم می‌کند
+  static void Function(String? message)? onPlanRestricted;
 
   // ════════════════════════════════════════════════════════
   // اگر سرور توکن را نامعتبر/منقضی اعلام کند (۴۰۱/۴۰۳)، این callback
@@ -49,6 +59,22 @@ class ApiClient {
     return {'success': false, 'message': 'پاسخ نامعتبر'};
   }
 
+  // 🔧 رفعِ باگِ تکرارشده در چند صفحه: چون Dio به‌صورتِ پیش‌فرض رویِ هر
+  // status code غیرِ ۲xx (۴۰۰/۴۰۳/۴۰۹/۵۰۰...) Exception پرتاب می‌کند،
+  // پیامِ واقعیِ سرور (که در بدنه‌ی JSON پاسخ است) اگر در catch مستقیم
+  // یک پیامِ ثابتِ عمومی نمایش داده شود، هرگز دیده نمی‌شود — حتی وقتی
+  // سرور دقیقاً توضیح داده چرا رد کرده (مثلاً «موعد این کار گذشته است»).
+  // این تابع پیامِ واقعی را (اگر موجود باشد) استخراج می‌کند.
+  static String errorMessage(Object e, String fallback) {
+    if (e is DioException && e.response?.data is Map) {
+      final msg = (e.response!.data as Map)['message'];
+      if (msg != null && msg.toString().trim().isNotEmpty) {
+        return msg.toString();
+      }
+    }
+    return fallback;
+  }
+
   // ════════════════════════════════════════════════════════
   // یک نمونه Dio ثابت (نه getter که هر بار بسازد)
   // ════════════════════════════════════════════════════════
@@ -62,7 +88,7 @@ class ApiClient {
         baseUrl: baseUrl,
         connectTimeout: const Duration(seconds: 20),
         receiveTimeout: const Duration(seconds: 20),
-        headers: {'Content-Type': 'application/json'},
+        headers: {'Content-Type': 'application/json', 'X-Client': 'app'},
         responseType: ResponseType.json,
       ),
     );
@@ -79,8 +105,15 @@ class ApiClient {
         },
         onError: (error, handler) {
           final status = error.response?.statusCode;
-          if (status == 401 || status == 403) {
+          final data = error.response?.data;
+          final isPlanRestricted =
+              data is Map && data['code'] == 'PLAN_RESTRICTED';
+          if (status == 401 || (status == 403 && !isPlanRestricted)) {
             onSessionExpired?.call();
+          }
+          // 🔧 خطای پلن: کاربر خارج نمی‌شود؛ فقط پیامِ سرور نشان داده می‌شود
+          if (isPlanRestricted) {
+            onPlanRestricted?.call(data['message']?.toString());
           }
           return handler.next(error);
         },
@@ -126,6 +159,8 @@ class ApiClient {
   }
 
   static Future<void> saveCachedUser(Map<String, dynamic> user) async {
+    PlanAccess.setFromUser(user);
+    currentUser = user;
     await _storage.write(key: 'cached_user', value: jsonEncode(user));
   }
 
@@ -160,6 +195,8 @@ class ApiClient {
         currentUserId = userMap['id'] is int
             ? userMap['id']
             : int.tryParse(userMap['id']?.toString() ?? '');
+        currentUser = userMap;
+        PlanAccess.setFromUser(userMap);
         return userMap;
       }
       return null;
@@ -210,6 +247,8 @@ class ApiClient {
   static Future<void> clearToken() async {
     _cachedToken = null;
     currentUserId = null; // شناسه کاربر هم پاک شود
+    currentUser = null;
+    PlanAccess.reset();
     await _storage.delete(key: 'access_token');
     await _storage.delete(key: 'remember_me');
     await _storage.delete(key: 'remember_me_expiry');

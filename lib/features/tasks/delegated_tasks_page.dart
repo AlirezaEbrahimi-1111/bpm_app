@@ -8,6 +8,7 @@ import 'task_detail_page.dart';
 import '../../core/utils/task_search.dart';
 import '../../core/utils/task_preload.dart';
 import 'widgets/task_list_card.dart';
+import '../shell/widgets/app_bottom_nav.dart';
 
 class DelegatedTasksPage extends StatefulWidget {
   const DelegatedTasksPage({super.key});
@@ -95,151 +96,160 @@ class _DelegatedTasksPageState extends State<DelegatedTasksPage> {
     // اشاره/دکمه‌ی سیستمی می‌توانست برگردد. حالا مثلِ بقیه‌ی صفحاتِ
     // push‌شده (پروفایل/تنظیمات/...) هدرِ خودش را دارد و کاملاً با
     // AppColors هماهنگ (تمِ روشن/تاریک) است.
-    return Scaffold(
-      backgroundColor: c.bgPage,
-      appBar: AppBar(
+    return AppShellOverlays(
+      child: Scaffold(
         backgroundColor: c.bgPage,
-        elevation: 0,
-        centerTitle: true,
-        iconTheme: IconThemeData(color: c.textStrong),
-        title: Text(
-          'کارهای واگذارشده',
-          style: TextStyle(
-            color: c.textStrong,
-            fontWeight: FontWeight.bold,
-            fontSize: 16,
+        appBar: AppBar(
+          backgroundColor: c.bgPage,
+          elevation: 0,
+          centerTitle: true,
+          iconTheme: IconThemeData(color: c.textStrong),
+          title: Text(
+            'کارهای واگذارشده',
+            style: TextStyle(
+              color: c.textStrong,
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+            ),
+          ),
+          leading: IconButton(
+            // 🔧 طبق درخواست: فلش ۱۸۰ درجه چرخید
+            icon: Transform.rotate(
+              angle: math.pi,
+              child: const Icon(Icons.arrow_forward_ios_rounded, size: 20),
+            ),
+            onPressed: () => Get.back(),
           ),
         ),
-        leading: IconButton(
-          // 🔧 طبق درخواست: فلش ۱۸۰ درجه چرخید
-          icon: Transform.rotate(
-            angle: math.pi,
-            child: const Icon(Icons.arrow_forward_ios_rounded, size: 20),
-          ),
-          onPressed: () => Get.back(),
-        ),
-      ),
-      body: _isLoading
-          ? Center(child: CircularProgressIndicator(color: c.primary))
-          : Column(
-              children: [
-                // جستجو
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
-                  child: TextField(
-                    controller: _searchController,
-                    onChanged: (v) => setState(() => _searchQuery = v),
-                    style: TextStyle(color: c.textStrong, fontSize: 14),
-                    decoration: InputDecoration(
-                      hintText: 'جستجو در عنوان یا نام مسئول...',
-                      hintStyle: TextStyle(color: c.textMuted, fontSize: 14),
-                      prefixIcon: Icon(
-                        Icons.search_rounded,
-                        color: c.textMuted,
-                        size: 22,
-                      ),
-                      suffixIcon: _searchQuery.isNotEmpty
-                          ? IconButton(
-                              icon: Icon(
-                                Icons.close_rounded,
-                                color: c.textMuted,
-                                size: 20,
-                              ),
-                              onPressed: () {
-                                _searchController.clear();
-                                setState(() => _searchQuery = '');
-                              },
-                            )
-                          : null,
-                      filled: true,
-                      fillColor: c.surface,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: BorderSide(color: c.borderSoft),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: BorderSide(color: c.borderSoft),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: BorderSide(color: c.primary, width: 1.5),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
+        body: _isLoading
+            ? Center(child: CircularProgressIndicator(color: c.primary))
+            : Column(
+                children: [
+                  // جستجو
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+                    child: TextField(
+                      controller: _searchController,
+                      onChanged: (v) => setState(() => _searchQuery = v),
+                      style: TextStyle(color: c.textStrong, fontSize: 14),
+                      decoration: InputDecoration(
+                        hintText: 'جستجو در عنوان یا نام مسئول...',
+                        hintStyle: TextStyle(color: c.textMuted, fontSize: 14),
+                        prefixIcon: Icon(
+                          Icons.search_rounded,
+                          color: c.textMuted,
+                          size: 22,
+                        ),
+                        suffixIcon: _searchQuery.isNotEmpty
+                            ? IconButton(
+                                icon: Icon(
+                                  Icons.close_rounded,
+                                  color: c.textMuted,
+                                  size: 20,
+                                ),
+                                onPressed: () {
+                                  _searchController.clear();
+                                  setState(() => _searchQuery = '');
+                                },
+                              )
+                            : null,
+                        filled: true,
+                        fillColor: c.surface,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                          borderSide: BorderSide(color: c.borderSoft),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                          borderSide: BorderSide(color: c.borderSoft),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                          borderSide: BorderSide(color: c.primary, width: 1.5),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
                       ),
                     ),
                   ),
-                ),
-                // فیلترها
-                SizedBox(
-                  height: 40,
-                  child: ListView(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    children: ['همه', 'در جریان', 'منتظر تأیید', 'تکمیل شده']
-                        .map((f) {
-                          final selected = _filter == f;
-                          return Padding(
-                            padding: const EdgeInsets.only(left: 8),
-                            child: GestureDetector(
-                              onTap: () => setState(() => _filter = f),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 8,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: selected ? c.primary : c.surface,
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(
-                                    color: selected ? c.primary : c.borderSoft,
+                  // فیلترها
+                  SizedBox(
+                    height: 40,
+                    child: ListView(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      children: ['همه', 'در جریان', 'منتظر تأیید', 'تکمیل شده']
+                          .map((f) {
+                            final selected = _filter == f;
+                            return Padding(
+                              padding: const EdgeInsets.only(left: 8),
+                              child: GestureDetector(
+                                onTap: () => setState(() => _filter = f),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 8,
                                   ),
-                                ),
-                                child: Text(
-                                  f,
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
-                                    color: selected
-                                        ? Colors.white
-                                        : c.textMuted,
+                                  decoration: BoxDecoration(
+                                    color: selected ? c.primary : c.surface,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: selected
+                                          ? c.primary
+                                          : c.borderSoft,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    f,
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: selected
+                                          ? Colors.white
+                                          : c.textMuted,
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
-                          );
-                        })
-                        .toList(),
+                            );
+                          })
+                          .toList(),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                // لیست
-                Expanded(
-                  child: RefreshIndicator(
-                    color: c.primary,
-                    onRefresh: _loadTasks,
-                    child: _loadError != null
-                        ? _buildErrorView(c)
-                        : _filteredTasks.isEmpty
-                        ? _buildEmpty(c)
-                        : ListView.builder(
-                            physics: const AlwaysScrollableScrollPhysics(),
-                            padding: EdgeInsets.fromLTRB(
-                              20,
-                              0,
-                              20,
-                              20 + MediaQuery.of(context).padding.bottom,
+                  const SizedBox(height: 12),
+                  // لیست
+                  Expanded(
+                    child: RefreshIndicator(
+                      color: c.primary,
+                      onRefresh: _loadTasks,
+                      child: _loadError != null
+                          ? _buildErrorView(c)
+                          : _filteredTasks.isEmpty
+                          ? _buildEmpty(c)
+                          : ListView.builder(
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              padding: EdgeInsets.fromLTRB(
+                                20,
+                                0,
+                                20,
+                                20 + MediaQuery.of(context).padding.bottom,
+                              ),
+                              itemCount: _filteredTasks.length,
+                              itemBuilder: (ctx, i) =>
+                                  _buildTaskCard(c, _filteredTasks[i]),
                             ),
-                            itemCount: _filteredTasks.length,
-                            itemBuilder: (ctx, i) =>
-                                _buildTaskCard(c, _filteredTasks[i]),
-                          ),
+                    ),
                   ),
-                ),
-              ],
-            ),
+                ],
+              ),
+        // 🔧 طبق درخواست: نوارِ ناوبرییِ پایین در همه‌ی صفحاتِ اپ — چون این صفحه با Get.to باز می‌شود، Scaffoldِ پوسته‌ی اصلی را نمی‌بیند
+        // 🔧 طبق درخواست: دکمهِ شناورِ افزودنِ کار هم مثلِ پوستهِ اصلی
+        floatingActionButton: const AppCreateTaskFab(),
+        floatingActionButtonLocation: const LoweredDockedFabLocation(),
+        bottomNavigationBar: const AppBottomNav(),
+      ),
     );
   }
 

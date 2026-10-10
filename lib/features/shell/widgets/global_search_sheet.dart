@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -57,6 +58,16 @@ class _GlobalSearchSheetState extends State<_GlobalSearchSheet> {
   List<dynamic> _tasks = [];
   List<dynamic> _notifications = [];
 
+  // 🔧 اصلاح: جستجویِ کارها — طبقِ وب، باید در کلِ کارهایِ سازمان بگردد
+  // اگر کاربر نقشِ ناظر/مدیر دارد (نه فقط کارهایِ خودش). این را با همان
+  // endpointِ جستجویِ سراسریِ وب (api/search/global.php) انجام می‌دهیم که
+  // دامنه‌ی دسترسی را خودِ سرور (بر اساسِ نقش) تعیین می‌کند — نه با
+  // all-tasks.php، چون آن endpoint طبقِ پلن محدود به طلایی است، ولی خودِ
+  // جستجو باید برایِ همه‌ی پلن‌ها باز بماند.
+  Timer? _searchDebounce;
+  List<dynamic>? _serverTaskResults;
+  bool _serverSearching = false;
+
   @override
   void initState() {
     super.initState();
@@ -67,6 +78,7 @@ class _GlobalSearchSheetState extends State<_GlobalSearchSheet> {
   void dispose() {
     _controller.dispose();
     _scrollController.dispose();
+    _searchDebounce?.cancel();
     super.dispose();
   }
 
@@ -96,6 +108,51 @@ class _GlobalSearchSheetState extends State<_GlobalSearchSheet> {
     return [];
   }
 
+  void _onQueryChanged(String v) {
+    setState(() => _query = v);
+    _searchDebounce?.cancel();
+    final trimmed = v.trim();
+    if (trimmed.length < 2) {
+      // کوتاه‌تر از ۲ حرف: خودِ سرور هم خالی برمی‌گرداند؛ به فهرستِ محلی
+      // (کارهایِ خودم) برمی‌گردیم تا تجربه‌ی تایپِ اول خالی نماند
+      setState(() => _serverTaskResults = null);
+      return;
+    }
+    _searchDebounce = Timer(
+      const Duration(milliseconds: 350),
+      () => _searchTasksOnServer(trimmed),
+    );
+  }
+
+  Future<void> _searchTasksOnServer(String query) async {
+    setState(() => _serverSearching = true);
+    try {
+      final res = await ApiClient.dio.get(
+        '/api/search/global.php',
+        queryParameters: {'q': query, 'types': 'task'},
+      );
+      final data = ApiClient.parseResponse(res.data);
+      if (!mounted || _query.trim() != query) return; // کوئری عوض شده
+      if (data['success'] == true) {
+        final list = data['results'];
+        setState(() {
+          _serverTaskResults = list is List ? list : [];
+          _serverSearching = false;
+        });
+      } else {
+        setState(() => _serverSearching = false);
+      }
+    } catch (_) {
+      // خطای شبکه: به فیلترِ محلیِ کارهایِ خودم برمی‌گردیم (fallback)
+      if (mounted) {
+        setState(() {
+          _serverTaskResults = null;
+          _serverSearching = false;
+        });
+      }
+    }
+  }
+
   Future<List<dynamic>> _fetchNotifications() async {
     try {
       final res = await ApiClient.dio.get('/api/notifications/list.php');
@@ -117,6 +174,10 @@ class _GlobalSearchSheetState extends State<_GlobalSearchSheet> {
   List<dynamic> get _results {
     if (_filter == 'کارها') {
       if (_query.trim().isEmpty) return _tasks.take(5).toList();
+      // 🔧 اگر نتیجه‌ی سرور (کلِ کارهایِ قابل‌دسترسِ کاربر، طبقِ نقش) آماده
+      // باشد، همان استفاده می‌شود؛ وگرنه (هنوز درحالِ بارگذاری یا خطا)
+      // فیلترِ محلیِ قبلی روی کارهایِ خودم به‌عنوانِ fallback باقی می‌ماند
+      if (_serverTaskResults != null) return _serverTaskResults!;
       return _tasks.where((t) => taskMatchesQuery(t, _query)).toList();
     }
     if (_query.trim().isEmpty) return _notifications.take(5).toList();
@@ -201,7 +262,7 @@ class _GlobalSearchSheetState extends State<_GlobalSearchSheet> {
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: TextField(
                       controller: _controller,
-                      onChanged: (v) => setState(() => _query = v),
+                      onChanged: _onQueryChanged,
                       style: TextStyle(color: c.textStrong, fontSize: 14),
                       decoration: InputDecoration(
                         hintText: 'جستجوی وظیفه یا اطلاعیه',
@@ -210,8 +271,21 @@ class _GlobalSearchSheetState extends State<_GlobalSearchSheet> {
                           Icons.search_rounded,
                           color: c.textMuted,
                         ),
-                        suffixIcon: _query.isNotEmpty
-                            ? IconButton(
+                        suffixIcon: _query.isEmpty
+                            ? null
+                            : _serverSearching && _filter == 'کارها'
+                            ? Padding(
+                                padding: const EdgeInsets.all(14),
+                                child: SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: c.primary,
+                                  ),
+                                ),
+                              )
+                            : IconButton(
                                 icon: Icon(
                                   Icons.close_rounded,
                                   color: c.textMuted,
@@ -219,10 +293,13 @@ class _GlobalSearchSheetState extends State<_GlobalSearchSheet> {
                                 ),
                                 onPressed: () {
                                   _controller.clear();
-                                  setState(() => _query = '');
+                                  _searchDebounce?.cancel();
+                                  setState(() {
+                                    _query = '';
+                                    _serverTaskResults = null;
+                                  });
                                 },
-                              )
-                            : null,
+                              ),
                         filled: true,
                         fillColor: c.surface,
                         border: OutlineInputBorder(
@@ -323,7 +400,12 @@ class _GlobalSearchSheetState extends State<_GlobalSearchSheet> {
   }
 
   Widget _taskResultRow(AppColors c, dynamic task) {
-    final subtitle = (task['status'] != null) ? _statusSubtitle(task) : '';
+    // 🔧 نتیجه‌ی سرور وضعیت/اولویت ندارد ولی یک گزیده از توضیحاتِ منطبق
+    // (snippet) می‌دهد؛ نتیجه‌ی محلی (کارهایِ خودم) وضعیت/اولویت دارد
+    final serverSnippet = (task['snippet'] ?? '').toString();
+    final subtitle = task['status'] != null
+        ? _statusSubtitle(task)
+        : serverSnippet;
     return _resultRow(
       c: c,
       icon: Icons.task_alt_rounded,

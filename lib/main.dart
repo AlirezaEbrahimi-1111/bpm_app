@@ -12,6 +12,7 @@ import 'core/network/connectivity_service.dart';
 import 'core/theme/theme_controller.dart';
 import 'core/theme/notification_bar_preference.dart';
 import 'core/theme/font_size_preference.dart';
+import 'core/theme/starred_tasks_preference.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -27,6 +28,7 @@ void main() async {
   ThemeController.init();
   NotificationBarPreference.init();
   FontSizePreference.init();
+  StarredTasksPreference.init();
 }
 
 // ════════════════════════════════════════════════════════
@@ -102,9 +104,7 @@ class BpmApp extends StatelessWidget {
         builder: (context, fontSize, _) {
           final mq = MediaQuery.of(context);
           return MediaQuery(
-            data: mq.copyWith(
-              textScaler: TextScaler.linear(fontSize.scale),
-            ),
+            data: mq.copyWith(textScaler: TextScaler.linear(fontSize.scale)),
             child: child!,
           );
         },

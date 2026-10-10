@@ -7,6 +7,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/utils/persian_number.dart';
 import '../../core/widgets/app_snack.dart';
 import '../tasks/widgets/persian_date_picker_sheet.dart';
+import '../shell/widgets/app_bottom_nav.dart';
 
 // همان ترتیبِ استانداردِ اپ (شنبه=۱ در Jalali.weekDay)
 const _weekdaysFa = [
@@ -169,10 +170,7 @@ class _HolidaysPageState extends State<HolidaysPage> {
                 IconButton(
                   icon: Transform.rotate(
                     angle: math.pi,
-                    child: Icon(
-                      Icons.chevron_right_rounded,
-                      color: c.primary,
-                    ),
+                    child: Icon(Icons.chevron_right_rounded, color: c.primary),
                   ),
                   visualDensity: VisualDensity.compact,
                   onPressed: () => _changeCalMonth(-1),
@@ -242,8 +240,7 @@ class _HolidaysPageState extends State<HolidaysPage> {
                 const spacing = 2.0;
                 final cellSize = (constraints.maxWidth - spacing * 6) / 7;
                 final rows = ((firstWeekDay + daysInMonth) / 7).ceil();
-                final naturalHeight =
-                    rows * cellSize + (rows - 1) * spacing;
+                final naturalHeight = rows * cellSize + (rows - 1) * spacing;
                 const trim = 16.0;
                 final croppedHeight = (naturalHeight - trim).clamp(
                   0.0,
@@ -256,65 +253,72 @@ class _HolidaysPageState extends State<HolidaysPage> {
                         ? croppedHeight / naturalHeight
                         : 1,
                     child: GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 7,
-                mainAxisSpacing: 2,
-                crossAxisSpacing: 2,
-              ),
-              itemCount: firstWeekDay + daysInMonth,
-              itemBuilder: (ctx, index) {
-                if (index < firstWeekDay) return const SizedBox();
-                final day = index - firstWeekDay + 1;
-                final jDate = Jalali(_calMonth.year, _calMonth.month, day);
-                final dateStr = _fmtGregorian(jDate.toDateTime());
-                final holiday = _calHolidays[dateStr];
-                final isFriday = jDate.weekDay == 7;
-                final isToday =
-                    jDate.year == today.year &&
-                    jDate.month == today.month &&
-                    jDate.day == today.day;
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 7,
+                            mainAxisSpacing: 2,
+                            crossAxisSpacing: 2,
+                          ),
+                      itemCount: firstWeekDay + daysInMonth,
+                      itemBuilder: (ctx, index) {
+                        if (index < firstWeekDay) return const SizedBox();
+                        final day = index - firstWeekDay + 1;
+                        final jDate = Jalali(
+                          _calMonth.year,
+                          _calMonth.month,
+                          day,
+                        );
+                        final dateStr = _fmtGregorian(jDate.toDateTime());
+                        final holiday = _calHolidays[dateStr];
+                        final isFriday = jDate.weekDay == 7;
+                        final isToday =
+                            jDate.year == today.year &&
+                            jDate.month == today.month &&
+                            jDate.day == today.day;
 
-                Color? bg;
-                Color textColor = c.textStrong;
-                if (holiday != null) {
-                  bg = c.danger.withValues(alpha: 0.14);
-                  textColor = c.danger;
-                } else if (isFriday) {
-                  bg = c.textMuted.withValues(alpha: 0.08);
-                }
+                        Color? bg;
+                        Color textColor = c.textStrong;
+                        if (holiday != null) {
+                          bg = c.danger.withValues(alpha: 0.14);
+                          textColor = c.danger;
+                        } else if (isFriday) {
+                          bg = c.textMuted.withValues(alpha: 0.08);
+                        }
 
-                return GestureDetector(
-                  onTap: () => _onCalDayTap(jDate),
-                  child: Container(
-                    margin: const EdgeInsets.all(1.5),
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: bg,
-                      shape: BoxShape.circle,
-                      border: isToday
-                          ? Border.all(color: c.primary, width: 1.4)
-                          : null,
-                    ),
-                    child: Text(
-                      toPersianDigits(day.toString()),
-                      style: TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: isToday
-                            ? FontWeight.bold
-                            : FontWeight.normal,
-                        color: textColor,
-                      ),
-                    ),
-                  ),
-                );
-              },
+                        return GestureDetector(
+                          onTap: () => _onCalDayTap(jDate),
+                          child: Container(
+                            margin: const EdgeInsets.all(1.5),
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: bg,
+                              shape: BoxShape.circle,
+                              border: isToday
+                                  ? Border.all(color: c.primary, width: 1.4)
+                                  : null,
+                            ),
+                            child: Text(
+                              toPersianDigits(day.toString()),
+                              style: TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: isToday
+                                    ? FontWeight.bold
+                                    : FontWeight.normal,
+                                color: textColor,
+                              ),
+                            ),
+                          ),
+                        );
+                      },
                     ),
                   ),
                 );
               },
             ),
+            // 🔧 طبق درخواست: فاصله‌ی بیشتر بینِ آخرین ردیفِ روزها و موارد راهنما
+            const SizedBox(height: 26),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -322,12 +326,7 @@ class _HolidaysPageState extends State<HolidaysPage> {
                 const SizedBox(width: 14),
                 _legendDot(c, c.danger, 'تعطیل رسمی'),
                 const SizedBox(width: 14),
-                _legendDot(
-                  c,
-                  Colors.transparent,
-                  'امروز',
-                  border: c.primary,
-                ),
+                _legendDot(c, Colors.transparent, 'امروز', border: c.primary),
               ],
             ),
           ],
@@ -458,204 +457,212 @@ class _HolidaysPageState extends State<HolidaysPage> {
   @override
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
-    return Scaffold(
-      backgroundColor: c.bgPage,
-      appBar: AppBar(
+    // 🔧 اصلاحیه طبق درخواست: هیچ دکمه‌ی جداگانه‌ای برایِ افزودنِ تعطیلی
+    // نیست — همان رفتارِ قبلی کافی‌ست: زدن رویِ یک روزِ خالی در تقویمِ
+    // بالایِ صفحه، شیتِ افزودن را با همان تاریخ باز می‌کند (خطِ ۱۳۷)
+    return AppShellOverlays(
+      child: Scaffold(
         backgroundColor: c.bgPage,
-        elevation: 0,
-        centerTitle: true,
-        iconTheme: IconThemeData(color: c.textStrong),
-        title: Text(
-          'روزهای تعطیل',
-          style: TextStyle(
-            color: c.textStrong,
-            fontWeight: FontWeight.bold,
-            fontSize: 16,
+        appBar: AppBar(
+          backgroundColor: c.bgPage,
+          elevation: 0,
+          centerTitle: true,
+          iconTheme: IconThemeData(color: c.textStrong),
+          title: Text(
+            'روزهای تعطیل',
+            style: TextStyle(
+              color: c.textStrong,
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+            ),
+          ),
+          leading: IconButton(
+            icon: Transform.rotate(
+              angle: math.pi,
+              child: const Icon(Icons.arrow_forward_ios_rounded, size: 20),
+            ),
+            onPressed: () => Get.back(),
           ),
         ),
-        leading: IconButton(
-          icon: Transform.rotate(
-            angle: math.pi,
-            child: const Icon(Icons.arrow_forward_ios_rounded, size: 20),
-          ),
-          onPressed: () => Get.back(),
-        ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _openAddSheet,
-        backgroundColor: c.primary,
-        child: const Icon(Icons.add_rounded, color: Colors.white),
-      ),
-      body: _isLoading
-          ? Center(child: CircularProgressIndicator(color: c.primary))
-          : _error != null
-          ? Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.error_outline_rounded,
-                      size: 48,
-                      color: c.textMuted,
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      _error!,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: c.textMuted),
-                    ),
-                    const SizedBox(height: 16),
-                    TextButton(
-                      onPressed: _load,
-                      child: const Text('تلاش مجدد'),
-                    ),
-                  ],
-                ),
-              ),
-            )
-          : RefreshIndicator(
-              color: c.primary,
-              onRefresh: () async {
-                await Future.wait([_load(), _loadCalendarMonth()]);
-              },
-              child: CustomScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                slivers: [
-                  SliverToBoxAdapter(child: _buildCalendar(c)),
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
-                      child: Text(
-                        'لیستِ تعطیلات',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                          color: c.textStrong,
-                        ),
+        // 🔧 طبق درخواست: دکمه‌ی «+» قبلی مخصوصِ افزودنِ تعطیلی بود، نه
+        // افزودنِ کار — این‌جا دکمه‌ی عمومیِ افزودنِ کار (هم‌مثلِ بقیه‌ی
+        // صفحات) گذاشته شد، و افزودنِ تعطیلی به یک دکمه‌ی بزرگ و ثابت
+        // در پایینِ صفحه منتقل شد (پایین‌تر)
+        floatingActionButton: const AppCreateTaskFab(),
+        floatingActionButtonLocation: const LoweredDockedFabLocation(),
+        body: _isLoading
+            ? Center(child: CircularProgressIndicator(color: c.primary))
+            : _error != null
+            ? Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.error_outline_rounded,
+                        size: 48,
+                        color: c.textMuted,
                       ),
-                    ),
+                      const SizedBox(height: 12),
+                      Text(
+                        _error!,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: c.textMuted),
+                      ),
+                      const SizedBox(height: 16),
+                      TextButton(
+                        onPressed: _load,
+                        child: const Text('تلاش مجدد'),
+                      ),
+                    ],
                   ),
-                  if (_holidays.isEmpty)
+                ),
+              )
+            : RefreshIndicator(
+                color: c.primary,
+                onRefresh: () async {
+                  await Future.wait([_load(), _loadCalendarMonth()]);
+                },
+                child: CustomScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  slivers: [
+                    SliverToBoxAdapter(child: _buildCalendar(c)),
                     SliverToBoxAdapter(
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 40),
-                        child: Center(
-                          child: Text(
-                            'تعطیلی‌ای در این بازه ثبت نشده',
-                            style: TextStyle(color: c.textMuted),
+                        padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
+                        child: Text(
+                          'لیستِ تعطیلات',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                            color: c.textStrong,
                           ),
                         ),
                       ),
-                    )
-                  else
-                    SliverPadding(
-                      padding: EdgeInsets.fromLTRB(
-                        16,
-                        0,
-                        16,
-                        24 + MediaQuery.of(context).padding.bottom,
-                      ),
-                      sliver: SliverList.builder(
-                        itemCount: _holidays.length,
-                        itemBuilder: (ctx, i) {
-                          final h = _holidays[i];
-                          final isWeekly = h['type'] == 'weekly';
-                          final isGlobal = h['is_global'] == true;
-                          final canDelete = h['can_delete'] == true;
-                          return Container(
-                            margin: const EdgeInsets.only(bottom: 10),
-                            padding: const EdgeInsets.all(14),
-                            decoration: BoxDecoration(
-                              color: c.surface,
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: c.borderSoft),
-                            ),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 34,
-                                  height: 34,
-                                  decoration: BoxDecoration(
-                                    color: c.primary.withValues(alpha: 0.12),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Icon(
-                                    isWeekly
-                                        ? Icons.event_repeat_rounded
-                                        : Icons.event_busy_rounded,
-                                    size: 16,
-                                    color: c.primary,
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        (h['title'] ?? '').toString(),
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.w600,
-                                          fontSize: 13.5,
-                                          color: c.textStrong,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 3),
-                                      Text(
-                                        _shamsi(
-                                          (h['holiday_date'] ?? '').toString(),
-                                        ),
-                                        style: TextStyle(
-                                          fontSize: 11.5,
-                                          color: c.textMuted,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                if (isGlobal)
-                                  Container(
-                                    margin: const EdgeInsets.only(left: 6),
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 6,
-                                      vertical: 3,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: c.info.withValues(alpha: 0.12),
-                                      borderRadius: BorderRadius.circular(6),
-                                    ),
-                                    child: Text(
-                                      'سراسری',
-                                      style: TextStyle(
-                                        fontSize: 9.5,
-                                        color: c.info,
-                                      ),
-                                    ),
-                                  ),
-                                if (canDelete)
-                                  GestureDetector(
-                                    onTap: () => _confirmDelete(h),
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(4),
-                                      child: Icon(
-                                        Icons.delete_outline_rounded,
-                                        size: 18,
-                                        color: c.danger,
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
                     ),
-                ],
+                    if (_holidays.isEmpty)
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 40),
+                          child: Center(
+                            child: Text(
+                              'تعطیلی‌ای در این بازه ثبت نشده',
+                              style: TextStyle(color: c.textMuted),
+                            ),
+                          ),
+                        ),
+                      )
+                    else
+                      SliverPadding(
+                        padding: EdgeInsets.fromLTRB(
+                          16,
+                          0,
+                          16,
+                          24 + MediaQuery.of(context).padding.bottom,
+                        ),
+                        sliver: SliverList.builder(
+                          itemCount: _holidays.length,
+                          itemBuilder: (ctx, i) {
+                            final h = _holidays[i];
+                            final isWeekly = h['type'] == 'weekly';
+                            final isGlobal = h['is_global'] == true;
+                            final canDelete = h['can_delete'] == true;
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 10),
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: c.surface,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: c.borderSoft),
+                              ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 34,
+                                    height: 34,
+                                    decoration: BoxDecoration(
+                                      color: c.primary.withValues(alpha: 0.12),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Icon(
+                                      isWeekly
+                                          ? Icons.event_repeat_rounded
+                                          : Icons.event_busy_rounded,
+                                      size: 16,
+                                      color: c.primary,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          (h['title'] ?? '').toString(),
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 13.5,
+                                            color: c.textStrong,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 3),
+                                        Text(
+                                          _shamsi(
+                                            (h['holiday_date'] ?? '')
+                                                .toString(),
+                                          ),
+                                          style: TextStyle(
+                                            fontSize: 11.5,
+                                            color: c.textMuted,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  if (isGlobal)
+                                    Container(
+                                      margin: const EdgeInsets.only(left: 6),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 6,
+                                        vertical: 3,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: c.info.withValues(alpha: 0.12),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Text(
+                                        'سراسری',
+                                        style: TextStyle(
+                                          fontSize: 9.5,
+                                          color: c.info,
+                                        ),
+                                      ),
+                                    ),
+                                  if (canDelete)
+                                    GestureDetector(
+                                      onTap: () => _confirmDelete(h),
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(4),
+                                        child: Icon(
+                                          Icons.delete_outline_rounded,
+                                          size: 18,
+                                          color: c.danger,
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                  ],
+                ),
               ),
-            ),
+        bottomNavigationBar: const AppBottomNav(),
+      ),
     );
   }
 }

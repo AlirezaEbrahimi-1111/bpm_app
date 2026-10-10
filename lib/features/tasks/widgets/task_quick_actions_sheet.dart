@@ -5,6 +5,8 @@ import 'package:shamsi_date/shamsi_date.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/persian_number.dart';
+import '../../../core/plan/plan_access.dart';
+import '../../subscription/plan_gate.dart';
 import 'persian_date_picker_sheet.dart';
 
 /// منوی «عملیات» روی سه‌نقطه‌ی هر ردیفِ کار در لیست‌ها (داشبورد،
@@ -135,12 +137,16 @@ class _QuickActionsSheet extends StatelessWidget {
                   onTap: () => _showReject(context),
                 ),
               if (actions.contains('delegate'))
-                _tile(
-                  context,
-                  icon: Icons.send_outlined,
-                  label: 'ارجاع',
-                  color: c.primary,
-                  onTap: () => _showDelegate(context),
+                PlanGate(
+                  feature: PlanFeature.delegate,
+                  label: 'ارجاع کار',
+                  child: _tile(
+                    context,
+                    icon: Icons.send_outlined,
+                    label: 'ارجاع',
+                    color: c.primary,
+                    onTap: () => _showDelegate(context),
+                  ),
                 ),
               if (actions.contains('extend'))
                 _tile(
@@ -195,8 +201,8 @@ class _QuickActionsSheet extends StatelessWidget {
       } else {
         AppSnack.error('خطا', data['message'] ?? 'خطا در تأیید');
       }
-    } catch (_) {
-      AppSnack.error('خطا', 'خطا در اتصال به سرور');
+    } catch (e) {
+      AppSnack.error('خطا', ApiClient.errorMessage(e, 'خطا در اتصال به سرور'));
     }
   }
 
@@ -238,8 +244,11 @@ class _QuickActionsSheet extends StatelessWidget {
                 } else {
                   AppSnack.error('خطا', data['message'] ?? 'خطا در رد کار');
                 }
-              } catch (_) {
-                AppSnack.error('خطا', 'خطا در اتصال به سرور');
+              } catch (e) {
+                AppSnack.error(
+                  'خطا',
+                  ApiClient.errorMessage(e, 'خطا در اتصال به سرور'),
+                );
               }
             },
             child: Text('رد کردن', style: TextStyle(color: c.danger)),
@@ -250,6 +259,7 @@ class _QuickActionsSheet extends StatelessWidget {
   }
 
   void _showDelegate(BuildContext context) {
+    if (!checkPlanAccess(PlanFeature.delegate, label: 'ارجاع کار')) return;
     Navigator.of(context).pop();
     showModalBottomSheet(
       context: context,
@@ -348,10 +358,10 @@ class _DelegateSheetState extends State<_DelegateSheet> {
       } else {
         AppSnack.error('خطا', data['message'] ?? 'خطا در ارجاع کار');
       }
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
       Navigator.of(context).pop();
-      AppSnack.error('خطا', 'خطا در اتصال به سرور');
+      AppSnack.error('خطا', ApiClient.errorMessage(e, 'خطا در اتصال به سرور'));
     }
   }
 
@@ -565,7 +575,12 @@ class _ExtendSheetState extends State<_ExtendSheet> {
   }
 
   Future<void> _pickDate() async {
-    final d = await showCustomPersianDatePicker(context);
+    // 🔧 موعدِ جدید نباید در گذشته باشد؛ روزهای قبل از امروز خاکستری/
+    // غیرقابل‌انتخاب می‌شوند (هم‌سو با تمدیدِ موعد از جزئیاتِ کار)
+    final d = await showCustomPersianDatePicker(
+      context,
+      firstDate: Jalali.now(),
+    );
     if (d != null) setState(() => _newDate = d);
   }
 
@@ -603,10 +618,10 @@ class _ExtendSheetState extends State<_ExtendSheet> {
       } else {
         AppSnack.error('خطا', data['message'] ?? 'خطا در ثبت درخواست');
       }
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
       Navigator.of(context).pop();
-      AppSnack.error('خطا', 'خطا در اتصال به سرور');
+      AppSnack.error('خطا', ApiClient.errorMessage(e, 'خطا در اتصال به سرور'));
     }
   }
 

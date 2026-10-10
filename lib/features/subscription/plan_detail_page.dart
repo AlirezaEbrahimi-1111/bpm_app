@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/persian_number.dart';
 import '../../core/widgets/app_snack.dart';
+import '../shell/widgets/app_bottom_nav.dart';
 
 enum SubscriptionPlanType { gold, silver }
 
@@ -69,75 +70,82 @@ class _PlanDetailPageState extends State<PlanDetailPage> {
     final fullPrice = _fullPrice(_months);
     final hasDiscount = fullPrice > _price;
 
-    return Scaffold(
-      backgroundColor: c.bgPage,
-      appBar: AppBar(
+    return AppShellOverlays(
+      child: Scaffold(
         backgroundColor: c.bgPage,
-        elevation: 0,
-        centerTitle: true,
-        iconTheme: IconThemeData(color: c.textStrong),
-        title: Text(
-          _isGold ? 'پلن طلایی (سازمانی)' : 'پلن نقره‌ای (تیمی)',
-          style: TextStyle(
-            color: c.textStrong,
-            fontWeight: FontWeight.bold,
-            fontSize: 15,
-          ),
-        ),
-        leading: IconButton(
-          icon: Transform.rotate(
-            angle: math.pi,
-            child: const Icon(Icons.arrow_forward_ios_rounded, size: 20),
-          ),
-          onPressed: () => Get.back(),
-        ),
-        actions: [
-          IconButton(
-            icon: Icon(Icons.share_rounded, color: c.textStrong, size: 20),
-            onPressed: () => AppSnack.info(
-              'به‌زودی',
-              'اشتراک‌گذاریِ پلن هنوز فعال نشده است',
+        appBar: AppBar(
+          backgroundColor: c.bgPage,
+          elevation: 0,
+          centerTitle: true,
+          iconTheme: IconThemeData(color: c.textStrong),
+          title: Text(
+            _isGold ? 'پلن طلایی (سازمانی)' : 'پلن نقره‌ای (تیمی)',
+            style: TextStyle(
+              color: c.textStrong,
+              fontWeight: FontWeight.bold,
+              fontSize: 15,
             ),
           ),
-        ],
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-              children: [
-                _headerCard(c, isDark, accent),
-                // 🔧 طبق درخواست: «تعداد کاربران» و «مدت زمان اشتراک» دوباره
-                // جدا از هم، هرکدام در کارتِ مستقلِ خودش
-                if (_isGold) ...[
+          leading: IconButton(
+            icon: Transform.rotate(
+              angle: math.pi,
+              child: const Icon(Icons.arrow_forward_ios_rounded, size: 20),
+            ),
+            onPressed: () => Get.back(),
+          ),
+          actions: [
+            IconButton(
+              icon: Icon(Icons.share_rounded, color: c.textStrong, size: 20),
+              onPressed: () => AppSnack.info(
+                'به‌زودی',
+                'اشتراک‌گذاریِ پلن هنوز فعال نشده است',
+              ),
+            ),
+          ],
+        ),
+        body: Column(
+          children: [
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                children: [
+                  _headerCard(c, isDark, accent),
+                  // 🔧 طبق درخواست: «تعداد کاربران» و «مدت زمان اشتراک» دوباره
+                  // جدا از هم، هرکدام در کارتِ مستقلِ خودش
+                  if (_isGold) ...[
+                    const SizedBox(height: 8),
+                    _cardSection(
+                      c,
+                      title: 'تعداد کاربران',
+                      icon: Icons.groups_rounded,
+                      child: _userCountRow(c),
+                    ),
+                  ],
                   const SizedBox(height: 8),
                   _cardSection(
                     c,
-                    title: 'تعداد کاربران',
-                    icon: Icons.groups_rounded,
-                    child: _userCountRow(c),
+                    title: 'مدت زمان اشتراک',
+                    icon: Icons.calendar_month_rounded,
+                    child: _durationRow(c, accent),
+                  ),
+                  const SizedBox(height: 8),
+                  _cardSection(
+                    c,
+                    title: 'امکانات و قابلیت‌ها',
+                    icon: Icons.check_circle_outline_rounded,
+                    child: _featuresCard(c),
                   ),
                 ],
-                const SizedBox(height: 8),
-                _cardSection(
-                  c,
-                  title: 'مدت زمان اشتراک',
-                  icon: Icons.calendar_month_rounded,
-                  child: _durationRow(c, accent),
-                ),
-                const SizedBox(height: 8),
-                _cardSection(
-                  c,
-                  title: 'امکانات و قابلیت‌ها',
-                  icon: Icons.check_circle_outline_rounded,
-                  child: _featuresCard(c),
-                ),
-              ],
+              ),
             ),
-          ),
-          _bottomBar(c, accent, fullPrice, hasDiscount),
-        ],
+            _bottomBar(c, accent, fullPrice, hasDiscount),
+          ],
+        ),
+        // 🔧 طبق درخواست: نوارِ ناوبرییِ پایین در همه‌ی صفحاتِ اپ — چون این صفحه با Get.to باز می‌شود، Scaffoldِ پوسته‌ی اصلی را نمی‌بیند
+        // 🔧 طبق درخواست: دکمهِ شناورِ افزودنِ کار هم مثلِ پوستهِ اصلی
+        floatingActionButton: const AppCreateTaskFab(),
+        floatingActionButtonLocation: const LoweredDockedFabLocation(),
+        bottomNavigationBar: const AppBottomNav(),
       ),
     );
   }
@@ -507,7 +515,7 @@ class _PlanDetailPageState extends State<PlanDetailPage> {
         Icons.account_tree_outlined,
         'تعریفِ کارِ روتینِ چندمرحله‌ای (آبشاری، موازی)',
       ),
-      (Icons.send_rounded, 'ارجاعِ بی‌نهایتِ کار به نهایتِ فرد یا واحد'),
+      (Icons.send_rounded, 'ارجاعِ بی‌نهایتِ کار به فرد یا واحد'),
       (Icons.schema_outlined, 'تعریفِ واحدهایِ درون‌سازمانی'),
       (Icons.forum_outlined, 'پیام‌رسانِ درون‌سازمانی'),
       (Icons.description_outlined, 'لاگِ کاملِ مستندات'),
@@ -671,34 +679,8 @@ class _PlanDetailPageState extends State<PlanDetailPage> {
               ),
             ],
           ),
-          const SizedBox(height: 10),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              _trustBadge(
-                c,
-                Icons.verified_user_outlined,
-                'پرداختِ امن با شاپرک',
-              ),
-              _trustBadge(c, Icons.account_balance_wallet_outlined, 'زرین‌پال'),
-              _trustBadge(
-                c,
-                Icons.replay_circle_filled_outlined,
-                'ضمانتِ بازگشتِ وجه',
-              ),
-            ],
-          ),
         ],
       ),
     );
   }
-
-  Widget _trustBadge(AppColors c, IconData icon, String label) => Row(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      Icon(icon, size: 13, color: c.textMuted),
-      const SizedBox(width: 4),
-      Text(label, style: TextStyle(fontSize: 10, color: c.textMuted)),
-    ],
-  );
 }

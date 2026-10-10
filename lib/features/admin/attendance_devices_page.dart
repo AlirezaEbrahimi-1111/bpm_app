@@ -6,6 +6,7 @@ import '../../core/network/api_client.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/persian_number.dart';
 import '../../core/widgets/app_snack.dart';
+import '../shell/widgets/app_bottom_nav.dart';
 
 /// «دستگاه‌های حضور و غیاب» — پورتِ pages/attendance-devices.php برایِ
 /// موبایل. آدرسِ داده دقیقاً همان API نسخه‌ی وب است (سه‌تب):
@@ -46,47 +47,54 @@ class _AttendanceDevicesPageState extends State<AttendanceDevicesPage>
   @override
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
-    return Scaffold(
-      backgroundColor: c.bgPage,
-      appBar: AppBar(
+    return AppShellOverlays(
+      child: Scaffold(
         backgroundColor: c.bgPage,
-        elevation: 0,
-        centerTitle: true,
-        iconTheme: IconThemeData(color: c.textStrong),
-        title: Text(
-          'دستگاه‌های حضور و غیاب',
-          style: TextStyle(
-            color: c.textStrong,
-            fontWeight: FontWeight.bold,
-            fontSize: 15,
+        appBar: AppBar(
+          backgroundColor: c.bgPage,
+          elevation: 0,
+          centerTitle: true,
+          iconTheme: IconThemeData(color: c.textStrong),
+          title: Text(
+            'دستگاه‌های حضور و غیاب',
+            style: TextStyle(
+              color: c.textStrong,
+              fontWeight: FontWeight.bold,
+              fontSize: 15,
+            ),
+          ),
+          leading: IconButton(
+            icon: Transform.rotate(
+              angle: math.pi,
+              child: const Icon(Icons.arrow_forward_ios_rounded, size: 20),
+            ),
+            onPressed: () => Get.back(),
+          ),
+          bottom: TabBar(
+            controller: _tab,
+            labelColor: c.primary,
+            unselectedLabelColor: c.textMuted,
+            indicatorColor: c.primary,
+            labelStyle: const TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+            ),
+            tabs: const [
+              Tab(text: 'دستگاه‌ها'),
+              Tab(text: 'آی‌پی‌های مجاز'),
+              Tab(text: 'تلاش‌های ناموفق'),
+            ],
           ),
         ),
-        leading: IconButton(
-          icon: Transform.rotate(
-            angle: math.pi,
-            child: const Icon(Icons.arrow_forward_ios_rounded, size: 20),
-          ),
-          onPressed: () => Get.back(),
-        ),
-        bottom: TabBar(
+        body: TabBarView(
           controller: _tab,
-          labelColor: c.primary,
-          unselectedLabelColor: c.textMuted,
-          indicatorColor: c.primary,
-          labelStyle: const TextStyle(
-            fontSize: 12.5,
-            fontWeight: FontWeight.w600,
-          ),
-          tabs: const [
-            Tab(text: 'دستگاه‌ها'),
-            Tab(text: 'آی‌پی‌های مجاز'),
-            Tab(text: 'تلاش‌های ناموفق'),
-          ],
+          children: const [_DevicesTab(), _AllowedIpsTab(), _DeniedLogTab()],
         ),
-      ),
-      body: TabBarView(
-        controller: _tab,
-        children: const [_DevicesTab(), _AllowedIpsTab(), _DeniedLogTab()],
+        // 🔧 طبق درخواست: نوارِ ناوبرییِ پایین در همه‌ی صفحاتِ اپ — چون این صفحه با Get.to باز می‌شود، Scaffoldِ پوسته‌ی اصلی را نمی‌بیند
+        // 🔧 طبق درخواست: دکمهِ شناورِ افزودنِ کار هم مثلِ پوستهِ اصلی
+        floatingActionButton: const AppCreateTaskFab(),
+        floatingActionButtonLocation: const LoweredDockedFabLocation(),
+        bottomNavigationBar: const AppBottomNav(),
       ),
     );
   }

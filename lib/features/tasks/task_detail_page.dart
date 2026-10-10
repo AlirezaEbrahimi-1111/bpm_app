@@ -12,8 +12,13 @@ import 'dart:convert';
 import '../../core/utils/task_labels.dart';
 import '../shell/widgets/offline_banner.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/plan/plan_access.dart';
+import '../subscription/plan_gate.dart';
 import '../../core/widgets/scrollable_chip_row.dart';
 import '../../core/theme/theme_controller.dart';
+import '../../core/theme/starred_tasks_preference.dart';
+import '../../core/theme/app_radius.dart';
+import '../shell/widgets/app_bottom_nav.dart';
 import 'widgets/persian_date_picker_sheet.dart';
 import 'widgets/task_group_management_sheet.dart';
 import 'create_task_page.dart';
@@ -26,6 +31,15 @@ class TaskDetailPage extends StatefulWidget {
   @override
   State<TaskDetailPage> createState() => _TaskDetailPageState();
 }
+
+/// یک آیتمِ عملیاتیِ نوارِ پایین که در شیتِ «سایر عملیات» جا می‌شود —
+/// داده‌ی خام (نه ویجتِ آماده) تا هم به‌صورتِ لیست و هم شبکه‌ای قابلِ‌رندر باشد
+typedef _MoreAction = ({
+  IconData icon,
+  String label,
+  Color color,
+  VoidCallback onTap,
+});
 
 class _TaskDetailPageState extends State<TaskDetailPage> {
   static const _primary = Color(0xFF6C63FF);
@@ -61,21 +75,11 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     _loadDetail();
   }
 
-  // 🔧 اصلاح باگ: چون Dio به‌صورت پیش‌فرض روی هر status code غیرِ ۲xx
-  // (مثلاً ۴۰۰/۴۰۳/۴۰۹/۵۰۰ که خیلی از این endpoint ها برمی‌گردانند)
-  // Exception پرتاب می‌کند، پیام واقعی سرور (که PHP در بدنه‌ی JSON
-  // پاسخ گذاشته) هیچ‌وقت به catch نمی‌رسید و قبلاً همیشه پیام عمومیِ
-  // «خطا در اتصال به سرور» نمایش داده می‌شد — حتی وقتی واقعاً سرور
-  // جواب داده بود، فقط با یک پیامِ خطای معنادار. این تابع پیام واقعی
-  // را (اگر موجود باشد) استخراج می‌کند.
-  String _dioErrorMessage(Object e, String fallback) {
-    if (e is dio.DioException && e.response?.data is Map) {
-      final msg = (e.response!.data as Map)['message'];
-      if (msg != null && msg.toString().trim().isNotEmpty)
-        return msg.toString();
-    }
-    return fallback;
-  }
+  // 🔧 حالا فقط پوششی رویِ ApiClient.errorMessage (منطقِ مشترک، چون همین
+  // باگ در فایل‌های دیگر هم تکرار شده بود) — برایِ این‌که ۳۰ جایی که
+  // همین‌جا صدا می‌زنند دست‌نخورده بمانند
+  String _dioErrorMessage(Object e, String fallback) =>
+      ApiClient.errorMessage(e, fallback);
 
   String get _offlineCacheKey => 'task_detail_${widget.taskId}';
 
@@ -181,7 +185,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         print('📋 Status: ${e.response?.statusCode}');
         print('📋 Data: ${e.response?.data}');
       }
-      AppSnack.error('خطا', 'خطا در اتصال به سرور');
+      AppSnack.error('خطا', _dioErrorMessage(e, 'خطا در اتصال به سرور'));
     }
   }
 
@@ -352,7 +356,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         AppSnack.error('خطا', data['message'] ?? 'خطا در حذف');
       }
     } catch (e) {
-      AppSnack.error('خطا', 'خطا در اتصال به سرور');
+      AppSnack.error('خطا', _dioErrorMessage(e, 'خطا در اتصال به سرور'));
     }
   }
 
@@ -519,6 +523,58 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         );
       } else {
         AppSnack.error('خطا', data['message'] ?? 'خطا در ثبت درخواست');
+      }
+    } catch (e) {
+      AppSnack.error('خطا', _dioErrorMessage(e, 'خطا در اتصال به سرور'));
+    }
+  }
+
+  /// حذفِ موعدِ کار — فقط وقتی واقعاً معنی دارد که سرور هم چک می‌کند:
+  /// کارِ مقطعی که سازنده و مسئولِ انجامش یک نفر باشند (خودِ آن شخص)
+  void _confirmClearDueDate() {
+    final c = AppColors.of(context);
+    Get.dialog(
+      AlertDialog(
+        backgroundColor: c.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          'حذف موعد',
+          style: TextStyle(fontSize: 16, color: c.textStrong),
+        ),
+        content: Text(
+          'موعدِ این کار حذف شود؟ این کار دیگر موعدی نخواهد داشت.',
+          style: TextStyle(fontSize: 13, color: c.textMuted),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(),
+            child: Text('انصراف', style: TextStyle(color: c.textMuted)),
+          ),
+          TextButton(
+            onPressed: () {
+              Get.back();
+              _clearDueDate();
+            },
+            child: Text('حذف موعد', style: TextStyle(color: c.danger)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _clearDueDate() async {
+    try {
+      final res = await ApiClient.dio.post(
+        '/api/tasks/clear-due-date.php',
+        data: {'task_id': widget.taskId},
+      );
+      final data = ApiClient.parseResponse(res.data);
+      if (data['success'] == true) {
+        _hasChanges = true;
+        _loadDetail();
+        AppSnack.success('✅ انجام شد', data['message'] ?? 'موعد کار حذف شد');
+      } else {
+        AppSnack.warning('توجه', data['message'] ?? 'خطا در حذفِ موعد');
       }
     } catch (e) {
       AppSnack.error('خطا', _dioErrorMessage(e, 'خطا در اتصال به سرور'));
@@ -951,7 +1007,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         print('📋 Status: ${e.response?.statusCode}');
         print('📋 Data: ${e.response?.data}');
       }
-      AppSnack.error('خطا', 'خطا در اتصال به سرور');
+      AppSnack.error('خطا', _dioErrorMessage(e, 'خطا در اتصال به سرور'));
     }
   }
 
@@ -1122,8 +1178,10 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     );
   }
 
-  String _toShamsiDateTime(String? gregorian) {
-    if (gregorian == null || gregorian.isEmpty) return '';
+  /// تاریخ و ساعتِ یک رویدادِ تاریخچه، در دو خطِ جدا — عیناً مطابقِ وب
+  /// («تاریخ» روی یک خط، «ساعت» زیرش)
+  (String, String) _historyDateParts(String? gregorian) {
+    if (gregorian == null || gregorian.isEmpty) return ('', '');
     try {
       final date = DateTime.parse(gregorian);
       final j = Jalali.fromDateTime(date);
@@ -1143,11 +1201,12 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
       ];
       final h = date.hour.toString().padLeft(2, '0');
       final m = date.minute.toString().padLeft(2, '0');
-      return toPersianDigits(
-        '${j.day} ${mo[j.month - 1]} ${j.year} - ساعت $h:$m',
+      return (
+        toPersianDigits('${j.day} ${mo[j.month - 1]} ${j.year}'),
+        toPersianDigits('$h:$m'),
       );
     } catch (_) {
-      return gregorian;
+      return (gregorian, '');
     }
   }
 
@@ -1180,50 +1239,60 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
   @override
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, result) {
-        if (!didPop) Get.back(result: _hasChanges);
-      },
-      child: Scaffold(
-        backgroundColor: c.bgPage,
-        appBar: AppBar(
+    // 🔧 طبق درخواست: نوارِ ناوبریِ پوسته‌ی اصلی اینجا هم (زیرِ نوارِ
+    // عملیاتِ خودِ این صفحه، نه به‌جایِ آن) نمایش داده می‌شود
+    final actionBar = (_isLoading || _error != null || _task == null)
+        ? null
+        : _buildActionBar();
+    return AppShellOverlays(
+      child: PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, result) {
+          if (!didPop) Get.back(result: _hasChanges);
+        },
+        child: Scaffold(
           backgroundColor: c.bgPage,
-          elevation: 0,
-          centerTitle: true,
-          title: Text(
-            'جزئیات کار',
-            style: TextStyle(
-              color: c.textStrong,
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
-            ),
-          ),
-          leading: IconButton(
-            icon: Transform.rotate(
-              angle: math.pi,
-              child: Icon(
-                Icons.arrow_forward_ios_rounded,
+          appBar: AppBar(
+            backgroundColor: c.bgPage,
+            elevation: 0,
+            centerTitle: true,
+            title: Text(
+              'جزئیات کار',
+              style: TextStyle(
                 color: c.textStrong,
-                size: 20,
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
               ),
             ),
-            onPressed: () => Get.back(result: _hasChanges),
-          ),
-        ),
-        body: _isLoading
-            ? Center(child: CircularProgressIndicator(color: c.primary))
-            : _error != null
-            ? _buildError(c)
-            : Column(
-                children: [
-                  if (_isOfflineData) const OfflineBanner(),
-                  Expanded(child: _buildContent()),
-                ],
+            leading: IconButton(
+              icon: Transform.rotate(
+                angle: math.pi,
+                child: Icon(
+                  Icons.arrow_forward_ios_rounded,
+                  color: c.textStrong,
+                  size: 20,
+                ),
               ),
-        bottomNavigationBar: (_isLoading || _error != null || _task == null)
-            ? null
-            : _buildActionBar(),
+              onPressed: () => Get.back(result: _hasChanges),
+            ),
+          ),
+          body: _isLoading
+              ? Center(child: CircularProgressIndicator(color: c.primary))
+              : _error != null
+              ? _buildError(c)
+              : Column(
+                  children: [
+                    if (_isOfflineData) const OfflineBanner(),
+                    Expanded(child: _buildContent()),
+                  ],
+                ),
+          bottomNavigationBar: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [if (actionBar != null) actionBar, const AppBottomNav()],
+          ),
+          floatingActionButton: const AppCreateTaskFab(),
+          floatingActionButtonLocation: const LoweredDockedFabLocation(),
+        ),
       ),
     );
   }
@@ -1288,20 +1357,23 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         status == 'pending_approval' &&
         (t['is_pending_approval'] == 1 || t['is_pending_approval'] == true);
 
-    // دکمه‌هایی که قرار است نمایش داده شوند
-    final List<Widget> buttons = [];
+    // 🔧 طبق درخواست: نوارِ اصلی حداکثر همین ۴ تا را نشان می‌دهد — درجِ
+    // توضیح، شروع/تکمیل/تأیید، ارجاع، حذفِ کار. هر عملیاتِ دیگری («رد»،
+    // یادآوری، تمدید موعد، رفعِ تأخیر، تمدید/درخواستِ تمدیدِ دوره،
+    // درخواستِ اتمام، اتمامِ دوره، بازتعریف) داخلِ لیستِ «بیشتر» می‌رود و
+    // فقط با یک دکمه‌ی اضافه (که خودش جزوِ این ۴ تا نیست) قابلِ‌دسترسیه
+    final List<Widget> primary = [];
+    final List<_MoreAction> more = [];
 
-    // ── حالت منتظر تأیید: رد / تأیید ──
+    // ── حالت منتظر تأیید: رد (بیشتر) / تأیید (اصلی) ──
     if (isPending && (isCreator || isAssignee)) {
-      buttons.add(
-        _circleAction(
-          icon: Icons.close_rounded,
-          label: 'رد',
-          color: const Color(0xFFEF4444),
-          onTap: _showRejectDialog,
-        ),
-      );
-      buttons.add(
+      more.add((
+        icon: Icons.close_rounded,
+        label: 'رد',
+        color: const Color(0xFFEF4444),
+        onTap: _showRejectDialog,
+      ));
+      primary.add(
         _circleAction(
           icon: Icons.check_rounded,
           label: 'تأیید',
@@ -1316,11 +1388,11 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         ),
       );
     } else if (isAssignee) {
-      // ── شروع / تکمیل ──
+      // ── شروع / تکمیل (هر دو اصلی‌اند، فقط یکی هم‌زمان) ──
       if (status == 'not_started' ||
           status == 'delegated' ||
           status == 'rejected') {
-        buttons.add(
+        primary.add(
           _circleAction(
             icon: Icons.play_arrow_rounded,
             label: 'شروع',
@@ -1329,7 +1401,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
           ),
         );
       } else if (status == 'in_progress') {
-        buttons.add(
+        primary.add(
           _circleAction(
             icon: Icons.check_rounded,
             label: 'تکمیل',
@@ -1337,27 +1409,41 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
             onTap: _showCompleteDialog,
           ),
         );
+        // ── درجِ توضیح — دقیقاً همان شرطِ نمایشِ «تکمیل»، یعنی همیشه
+        // کنارِ هم هستند (مثلِ وب: addDiscBtn همیشه با completeBtn) ──
+        primary.add(
+          _circleAction(
+            icon: Icons.chat_bubble_outline_rounded,
+            label: 'درج توضیح',
+            color: const Color(0xFF0E7490),
+            onTap: _showAddNoteDialog,
+          ),
+        );
       }
 
-      // ── ارجاع ──
+      // ── ارجاع (اصلی) ──
       final canDelegate =
           status != 'completed' &&
           status != 'approved' &&
           status != 'rejected' &&
           !isPending;
       if (canDelegate) {
-        buttons.add(
-          _circleAction(
-            icon: Icons.send_rounded,
-            label: 'ارجاع',
-            color: const Color(0xFFF59E0B),
-            onTap: _showDelegateSheet,
+        primary.add(
+          PlanGate(
+            feature: PlanFeature.delegate,
+            label: 'ارجاع کار',
+            child: _circleAction(
+              icon: Icons.send_rounded,
+              label: 'ارجاع',
+              color: const Color(0xFFF59E0B),
+              onTap: _showDelegateSheet,
+            ),
           ),
         );
       }
     }
 
-    // ── یادآوری (فقط تعریف‌کننده، وقتی خودش مسئولِ انجام نیست) ──
+    // ── یادآوری (بیشتر) ──
     final canRemind =
         isCreator &&
         !isAssignee &&
@@ -1365,17 +1451,15 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         status != 'approved' &&
         status != 'rejected';
     if (canRemind) {
-      buttons.add(
-        _circleAction(
-          icon: Icons.notifications_active_outlined,
-          label: 'یادآوری',
-          color: const Color(0xFF8E57FE),
-          onTap: _showSendReminderDialog,
-        ),
-      );
+      more.add((
+        icon: Icons.notifications_active_outlined,
+        label: 'یادآوری',
+        color: const Color(0xFF8E57FE),
+        onTap: _showSendReminderDialog,
+      ));
     }
 
-    // ── تمدید موعد (فقط مسئولِ فعلی، برای کارِ غیرِ روتین با موعد) ──
+    // ── تمدید موعد (بیشتر) ──
     final canRequestDeadline =
         isAssignee &&
         t['is_workflow_task'] != 1 &&
@@ -1388,17 +1472,15 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         t['has_pending_deadline_request'] != 1 &&
         t['has_pending_deadline_request'] != true;
     if (canRequestDeadline) {
-      buttons.add(
-        _circleAction(
-          icon: Icons.event_repeat_rounded,
-          label: 'تمدید موعد',
-          color: const Color(0xFF3B82F6),
-          onTap: _showRequestDeadlineDialog,
-        ),
-      );
+      more.add((
+        icon: Icons.event_repeat_rounded,
+        label: 'تمدید موعد',
+        color: const Color(0xFF3B82F6),
+        onTap: _showRequestDeadlineDialog,
+      ));
     }
 
-    // ── رفع تأخیرِ دوره‌ای (مسئول یا تعریف‌کننده، فقط کارِ دوره‌ای) ──
+    // ── رفع تأخیرِ دوره‌ای (بیشتر) ──
     final canRequestOverdueClear =
         (isAssignee || isCreator) &&
         t['task_type'] == 'continuous' &&
@@ -1408,17 +1490,15 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         t['has_pending_overdue_request'] != 1 &&
         t['has_pending_overdue_request'] != true;
     if (canRequestOverdueClear) {
-      buttons.add(
-        _circleAction(
-          icon: Icons.history_toggle_off_rounded,
-          label: 'رفع تأخیر',
-          color: const Color(0xFF3B82F6),
-          onTap: _showRequestOverdueClearDialog,
-        ),
-      );
+      more.add((
+        icon: Icons.history_toggle_off_rounded,
+        label: 'رفع تأخیر',
+        color: const Color(0xFF3B82F6),
+        onTap: _showRequestOverdueClearDialog,
+      ));
     }
 
-    // ── تمدید دوره (فقط کارِ دوره‌ای که پایانِ دوره‌اش رسیده) ──
+    // ── تمدید دوره (بیشتر) ──
     final isReadyForRenewal =
         t['task_type'] == 'continuous' &&
         (t['end_date'] ?? '').toString().isNotEmpty &&
@@ -1428,40 +1508,34 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         t['has_pending_renewal_request'] != 1 &&
         t['has_pending_renewal_request'] != true;
     if (isReadyForRenewal && isCreator) {
-      buttons.add(
-        _circleAction(
-          icon: Icons.autorenew_rounded,
-          label: 'تمدید دوره',
-          color: const Color(0xFF3B82F6),
-          onTap: () => _showRenewalDialog(directApply: true),
-        ),
-      );
+      more.add((
+        icon: Icons.autorenew_rounded,
+        label: 'تمدید دوره',
+        color: const Color(0xFF3B82F6),
+        onTap: () => _showRenewalDialog(directApply: true),
+      ));
     } else if (isReadyForRenewal && isAssignee) {
-      buttons.add(
-        _circleAction(
-          icon: Icons.autorenew_rounded,
-          label: 'درخواست تمدید',
-          color: const Color(0xFF3B82F6),
-          onTap: () => _showRenewalDialog(directApply: false),
-        ),
-      );
+      more.add((
+        icon: Icons.autorenew_rounded,
+        label: 'درخواست تمدید',
+        color: const Color(0xFF3B82F6),
+        onTap: () => _showRenewalDialog(directApply: false),
+      ));
     }
 
-    // ── اتمام کار دوره‌ای ──
+    // ── اتمام کار دوره‌ای (بیشتر) ──
     final canRequestTermination =
         isAssignee &&
         !isCreator &&
         t['task_type'] == 'continuous' &&
         (status == 'not_started' || status == 'in_progress');
     if (canRequestTermination) {
-      buttons.add(
-        _circleAction(
-          icon: Icons.flag_outlined,
-          label: 'درخواست اتمام',
-          color: const Color(0xFFF59E0B),
-          onTap: _showRequestTerminationDialog,
-        ),
-      );
+      more.add((
+        icon: Icons.flag_outlined,
+        label: 'درخواست اتمام',
+        color: const Color(0xFFF59E0B),
+        onTap: _showRequestTerminationDialog,
+      ));
     }
     final canTerminateNow =
         isCreator &&
@@ -1469,42 +1543,49 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         status != 'completed' &&
         status != 'approved';
     if (canTerminateNow) {
-      buttons.add(
-        _circleAction(
-          icon: Icons.flag_circle_outlined,
-          label: 'اتمام دوره',
-          color: const Color(0xFFF59E0B),
-          onTap: _confirmTerminatePeriodNow,
-        ),
-      );
+      more.add((
+        icon: Icons.flag_circle_outlined,
+        label: 'اتمام دوره',
+        color: const Color(0xFFF59E0B),
+        onTap: _confirmTerminatePeriodNow,
+      ));
     }
 
-    // ── بازتعریف کار (تعریف‌کننده یا مسئولِ فعلی) ──
+    // ── بازتعریف کار (بیشتر) ──
     if (_canEdit || isAssignee) {
-      buttons.add(
-        _circleAction(
-          icon: Icons.copy_all_outlined,
-          label: 'بازتعریف',
-          color: const Color(0xFF8B5CF6),
-          onTap: _openRedefine,
-        ),
-      );
+      more.add((
+        icon: Icons.copy_all_outlined,
+        label: 'بازتعریف',
+        color: const Color(0xFF8B5CF6),
+        onTap: _openRedefine,
+      ));
     }
 
-    // ── حذف (برای سازنده) — در همین ردیف ──
+    // ── حذفِ کار (اصلی) ──
     if (_canEdit) {
-      buttons.add(
+      primary.add(
         _circleAction(
           icon: Icons.delete_outline_rounded,
-          label: 'حذف',
+          label: 'حذف کار',
           color: const Color(0xFFEF4444),
           onTap: _confirmDelete,
         ),
       );
     }
 
+    if (more.isNotEmpty) {
+      primary.add(
+        _circleAction(
+          icon: Icons.more_horiz_rounded,
+          label: 'بیشتر',
+          color: const Color(0xFF64748B),
+          onTap: () => _showMoreActionsSheet(more),
+        ),
+      );
+    }
+
     // اگر هیچ دکمه‌ای نبود، نوار را نشان نده
-    if (buttons.isEmpty) return null;
+    if (primary.isEmpty) return null;
 
     return SafeArea(
       top: false,
@@ -1514,16 +1595,213 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
       child: Padding(
         padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
         child: _floatingBar(
-          // 🔧 تا ۵ دکمه: یک ردیفِ وسط‌چین؛ بیشتر از ۵: ردیفِ افقیِ اسکرول‌شونده
-          // با فلشِ چپ/راست تا کاربر بداند دکمه‌های بیشتری هست
-          child: buttons.length > 5
-              ? ScrollableChipRow(gap: 22, children: buttons)
+          // 🔧 نوارِ اصلی حالا حداکثر ۵ تاست (۴ + دکمه‌ی بیشتر)، همیشه
+          // در یک ردیفِ وسط‌چین جا می‌شود؛ ScrollableChipRow فقط به‌عنوانِ
+          // محافظِ احتیاطی برایِ حالتِ غیرِمنتظره باقی می‌ماند
+          child: primary.length > 5
+              ? ScrollableChipRow(gap: 22, children: primary)
               : Wrap(
                   alignment: WrapAlignment.center,
                   spacing: 22,
                   runSpacing: 10,
-                  children: buttons,
+                  children: primary,
                 ),
+        ),
+      ),
+    );
+  }
+
+  /// شیتِ «سایر عملیات» — بقیه‌ی دکمه‌هایی که در نوارِ اصلی جا نشدند
+  /// شیتِ «سایر عملیات» — فعلاً به‌صورتِ **لیست** (موقتاً، طبقِ درخواست،
+  /// تا بین این حالت و حالتِ شبکه‌ایِ آیکن‌های دایره‌ای تصمیم گرفته شود)
+  void _showMoreActionsSheet(List<_MoreAction> actions) {
+    final c = AppColors.of(context);
+    Get.bottomSheet(
+      SafeArea(
+        top: false,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
+          decoration: BoxDecoration(
+            color: c.surfaceContainerLow,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: c.borderSoft,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'سایر عملیات',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                  color: c.textStrong,
+                ),
+              ),
+              const SizedBox(height: 18),
+              Wrap(
+                alignment: WrapAlignment.center,
+                spacing: 24,
+                runSpacing: 18,
+                children: [
+                  for (final a in actions)
+                    _circleAction(
+                      icon: a.icon,
+                      label: a.label,
+                      color: a.color,
+                      onTap: a.onTap,
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+      backgroundColor: Colors.transparent,
+    );
+  }
+
+  /// «درج توضیح» — دقیقاً معادلِ addDiscBtn در وب: یادداشتِ تکمیلی روی
+  /// همان وضعیتِ فعلی ثبت می‌شود (بدونِ تغییرِ وضعیت)، با امکانِ پیوستِ
+  /// فایل. برخلافِ وب، متنِ یادداشت به نامِ کاربر پیشوند نمی‌خورد، چون
+  /// تاریخچه‌ی اپ از قبل «توسط X» را جداگانه نشان می‌دهد
+  void _showAddNoteDialog() {
+    final t = _task!;
+    final status = t['status'] as String? ?? '';
+    final notesController = TextEditingController();
+    final c = AppColors.of(context);
+    Get.dialog(
+      StatefulBuilder(
+        builder: (ctx, setDialogState) => Dialog(
+          backgroundColor: c.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF0E7490).withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.chat_bubble_outline_rounded,
+                        color: Color(0xFF0E7490),
+                        size: 22,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Text(
+                      'درج توضیح',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold,
+                        color: c.textStrong,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'توضیحات تکمیلی',
+                  style: TextStyle(fontSize: 13, color: c.textMuted),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: notesController,
+                  maxLines: 3,
+                  style: TextStyle(color: c.textStrong),
+                  decoration: InputDecoration(
+                    hintText: 'توضیحات خود را وارد کنید...',
+                    hintStyle: TextStyle(color: c.textMuted, fontSize: 13),
+                    filled: true,
+                    fillColor: c.surfaceContainerLow,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 12,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                // 🔧 پیوستِ فایل (اختیاری) — از همان آپلودرِ موجودِ کار
+                // استفاده می‌شود (مستقل از ذخیره‌ی خودِ یادداشت)
+                TextButton.icon(
+                  onPressed: _isUploading
+                      ? null
+                      : () async {
+                          await _pickAndUploadFile();
+                          setDialogState(() {});
+                        },
+                  icon: Icon(
+                    Icons.attach_file_rounded,
+                    size: 18,
+                    color: c.primary,
+                  ),
+                  label: Text(
+                    _isUploading ? 'در حالِ آپلود...' : 'پیوستِ فایل (اختیاری)',
+                    style: TextStyle(color: c.primary, fontSize: 12.5),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextButton(
+                        onPressed: () => Get.back(),
+                        child: Text(
+                          'انصراف',
+                          style: TextStyle(color: c.textMuted),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () {
+                          final notes = notesController.text.trim();
+                          if (notes.isEmpty) {
+                            AppSnack.error('خطا', 'لطفاً توضیحات را وارد کنید');
+                            return;
+                          }
+                          Get.back();
+                          _updateStatus(status, notes: notes);
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF0E7490),
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(
+                              AppRadius.button,
+                            ),
+                          ),
+                        ),
+                        child: const Text('درج توضیح'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -1561,37 +1839,46 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
   }
 
   // دکمه دایره‌ای آیکونی + برچسب زیرش
-  // 🔧 اصلاح: عنوان زیر دکمه حذف شد (فقط به‌صورت Tooltip در دسترس
-  // است) و دایره ~۲۰٪ کوچک‌تر شد (۵۲ → ۴۲)
+  // 🔧 طبق درخواست: برچسب دوباره زیرِ دکمه نمایش داده می‌شود (نه فقط
+  // Tooltip) — با عرضِ محدود تا برچسب‌های بلند، دکمه را کش ندهند
   Widget _circleAction({
     required IconData icon,
     required String label,
     required Color color,
     required VoidCallback onTap,
   }) {
-    return Tooltip(
-      message: label,
-      child: GestureDetector(
-        onTap: _isUpdating ? null : onTap,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-              child: _isUpdating
-                  ? const Padding(
-                      padding: EdgeInsets.all(12),
-                      child: CircularProgressIndicator(
-                        color: Colors.white,
-                        strokeWidth: 2,
-                      ),
-                    )
-                  : Icon(icon, color: Colors.white, size: 19),
+    final c = AppColors.of(context);
+    return GestureDetector(
+      onTap: _isUpdating ? null : onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            child: _isUpdating
+                ? const Padding(
+                    padding: EdgeInsets.all(12),
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 2,
+                    ),
+                  )
+                : Icon(icon, color: Colors.white, size: 19),
+          ),
+          const SizedBox(height: 4),
+          SizedBox(
+            width: 44,
+            child: Text(
+              label,
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 9.5, color: c.textMuted, height: 1.2),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -1647,6 +1934,15 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     final priorityLbl = TaskLabels.priorityLabel(priority);
     final priorityClr = TaskLabels.priorityColor(priority);
     final isContinuous = t['task_type'] == 'continuous';
+    final isAssignee =
+        _currentUserId != null &&
+        t['assignee_id']?.toString() == _currentUserId.toString();
+    final isCreator =
+        _currentUserId != null &&
+        t['creator_id']?.toString() == _currentUserId.toString();
+    final isPending =
+        status == 'pending_approval' &&
+        (t['is_pending_approval'] == 1 || t['is_pending_approval'] == true);
     final c = AppColors.of(context);
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -1660,13 +1956,47 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
               children: [
                 // عنوان — طبق عکسِ ارسالی، عنوان تمام‌عرض و خودش یک ردیفِ
                 // جداست؛ نشان‌ها همه با هم در ردیفِ بعدی می‌آیند
-                Text(
-                  t['title'] ?? '',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: c.textStrong,
-                  ),
+                // 🔧 ستاره‌ی «منتخب» قبل از عنوان (سمتِ راستِ عنوان، چون
+                // طبقِ درخواست باید قبل از آن بیاید)
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 🔧 ذخیره‌یِ محلی و دائمیِ گوشی (نه تنظیمِ روزانه‌یِ
+                    // سرور) — با ValueListenableBuilder، تبِ «کارها»یِ
+                    // داشبورد هم بلافاصله همین تغییر را می‌بیند
+                    ValueListenableBuilder<Set<String>>(
+                      valueListenable: StarredTasksPreference.idsNotifier,
+                      builder: (context, starred, _) {
+                        final isStarred = starred.contains(
+                          widget.taskId.toString(),
+                        );
+                        return GestureDetector(
+                          onTap: () =>
+                              StarredTasksPreference.toggle(widget.taskId),
+                          child: Icon(
+                            isStarred
+                                ? Icons.star_rounded
+                                : Icons.star_outline_rounded,
+                            color: isStarred
+                                ? const Color(0xFFF5B94D)
+                                : c.textMuted,
+                            size: 24,
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        t['title'] ?? '',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: c.textStrong,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 10),
                 // نشان‌ها — طبقِ عکس: اولویت+نوع (پرشده) سمتِ راست،
@@ -1706,22 +2036,42 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
           const SizedBox(height: 12),
 
           // ── کارت اطلاعات ──
+          // 🔧 طبق درخواست: شماره تسک، ایجادکننده، مسئول انجام، گروه،
+          // تاریخ ایجاد، موعد انجام (با آیکن‌های تمدید/حذف موعد جلویش)
           _card(
             child: Column(
               children: [
                 _infoRow(
-                  Icons.person_outline,
-                  'سازنده',
-                  t['creator_name'] ?? '—',
+                  Icons.tag_rounded,
+                  'شماره تسک',
+                  toPersianDigits(t['id']?.toString() ?? '—'),
+                ),
+                const Divider(height: 26),
+                PlanGate(
+                  feature: PlanFeature.taskCreatorInfo,
+                  label: 'نمایش سازنده کار',
+                  child: _infoRow(
+                    Icons.person_outline,
+                    'ایجاد کننده',
+                    t['creator_name'] ?? '—',
+                  ),
                 ),
                 const Divider(height: 26),
                 _infoRow(
                   Icons.assignment_ind_outlined,
-                  'مسئول',
+                  'مسئول انجام',
                   t['assignee_name'] ?? '—',
                 ),
                 const Divider(height: 26),
+                _buildGroupRow(t),
+                const Divider(height: 26),
+                _infoRow(
+                  Icons.event_note_outlined,
+                  'تاریخ ایجاد',
+                  _toShamsi(t['created_at']),
+                ),
                 if (isContinuous) ...[
+                  const Divider(height: 26),
                   _infoRow(
                     Icons.play_circle_outline,
                     'تاریخ شروع',
@@ -1739,14 +2089,17 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                     'دوره تکرار',
                     TaskLabels.periodLabel(t['period_type']),
                   ),
-                ] else
-                  _infoRow(
-                    Icons.event_outlined,
-                    'موعد انجام',
-                    _toShamsi(t['due_date']),
+                ] else ...[
+                  const Divider(height: 26),
+                  _dueDateRow(
+                    c,
+                    t,
+                    status: status,
+                    isCreator: isCreator,
+                    isAssignee: isAssignee,
+                    isPending: isPending,
                   ),
-                const Divider(height: 26),
-                _buildGroupRow(t),
+                ],
               ],
             ),
           ),
@@ -1802,34 +2155,49 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
           _checklistViewersAttachmentsCard(c),
           const SizedBox(height: 12),
           // ── تاریخچه ──
-          // 🔧 طبق درخواست: عنوان دیگر بیرونِ کارت نیست — داخلِ همون کارتی
-          // که آیتم‌هایِ تاریخچه توشن
-          if (_history.isNotEmpty) ...[
-            _card(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    children: [
-                      // 🔧 طبق درخواست: آیکن پشتِ (سمتِ راستِ) متن
-                      Icon(Icons.history_rounded, size: 16, color: c.textMuted),
-                      const SizedBox(width: 6),
-                      Text(
-                        'تاریخچه فعالیت‌ها',
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.bold,
-                          color: c.textStrong,
+          // 🔧 طبق درخواست: دقیقاً مطابقِ وب — عنوان همیشه نشان داده
+          // می‌شود (حتی وقتی تاریخچه خالی است، با متنِ «بدون تاریخچه»؛
+          // قبلاً کلِ کارت وقتی خالی بود مخفی می‌شد)
+          Builder(
+            builder: (context) {
+              final items = _visibleHistory;
+              return _card(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        // 🔧 طبق درخواست: آیکن پشتِ (سمتِ راستِ) متن
+                        Icon(
+                          Icons.history_rounded,
+                          size: 16,
+                          color: c.textMuted,
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  ..._history.map((h) => _historyItem(h)),
-                ],
-              ),
-            ),
-          ],
+                        const SizedBox(width: 6),
+                        Text(
+                          'تاریخچه فعالیت‌ها',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                            color: c.textStrong,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    if (items.isEmpty)
+                      Text(
+                        'بدون تاریخچه',
+                        style: TextStyle(fontSize: 13, color: c.textMuted),
+                      )
+                    else
+                      for (int i = 0; i < items.length; i++)
+                        _historyItem(items[i], isLast: i == items.length - 1),
+                  ],
+                ),
+              );
+            },
+          ),
 
           const SizedBox(height: 20),
         ],
@@ -1916,73 +2284,77 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     // ── بینندگان (فقط تعریف‌کننده مدیریت می‌کند) ──
     if (_canEdit) {
       sections.add(
-        Column(
-          children: [
-            _sectionHeader(
-              c,
-              title: 'بینندگان',
-              open: _viewersOpen,
-              onToggle: () => setState(() => _viewersOpen = !_viewersOpen),
-              trailing: _addPillButton(
+        PlanGate(
+          feature: PlanFeature.taskViewers,
+          label: 'بینندگان کار',
+          child: Column(
+            children: [
+              _sectionHeader(
                 c,
-                label: 'افزودن',
-                onTap: _showManageViewersSheet,
-              ),
-            ),
-            _accordionBody(
-              _viewersOpen && _viewers.isNotEmpty,
-              Padding(
-                padding: const EdgeInsets.fromLTRB(4, 0, 4, 12),
-                child: Column(
-                  children: _viewers
-                      .map(
-                        (v) => Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 6),
-                          child: Row(
-                            children: [
-                              CircleAvatar(
-                                radius: 15,
-                                backgroundColor: c.primary.withValues(
-                                  alpha: 0.12,
-                                ),
-                                child: Icon(
-                                  Icons.visibility_outlined,
-                                  size: 15,
-                                  color: c.primary,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Text(
-                                  (v['full_name'] ?? '')
-                                          .toString()
-                                          .trim()
-                                          .isEmpty
-                                      ? 'کاربر'
-                                      : v['full_name'].toString(),
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    color: c.textStrong,
-                                  ),
-                                ),
-                              ),
-                              GestureDetector(
-                                onTap: () => _removeViewer(v['id']),
-                                child: Icon(
-                                  Icons.close_rounded,
-                                  size: 18,
-                                  color: c.textMuted,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      )
-                      .toList(),
+                title: 'دسترسی به',
+                open: _viewersOpen,
+                onToggle: () => setState(() => _viewersOpen = !_viewersOpen),
+                trailing: _addPillButton(
+                  c,
+                  label: 'افزودن',
+                  onTap: _showManageViewersSheet,
                 ),
               ),
-            ),
-          ],
+              _accordionBody(
+                _viewersOpen && _viewers.isNotEmpty,
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 0, 4, 12),
+                  child: Column(
+                    children: _viewers
+                        .map(
+                          (v) => Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 6),
+                            child: Row(
+                              children: [
+                                CircleAvatar(
+                                  radius: 15,
+                                  backgroundColor: c.primary.withValues(
+                                    alpha: 0.12,
+                                  ),
+                                  child: Icon(
+                                    Icons.visibility_outlined,
+                                    size: 15,
+                                    color: c.primary,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    (v['full_name'] ?? '')
+                                            .toString()
+                                            .trim()
+                                            .isEmpty
+                                        ? 'کاربر'
+                                        : v['full_name'].toString(),
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: c.textStrong,
+                                    ),
+                                  ),
+                                ),
+                                GestureDetector(
+                                  onTap: () => _removeViewer(v['id']),
+                                  child: Icon(
+                                    Icons.close_rounded,
+                                    size: 18,
+                                    color: c.textMuted,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -2112,6 +2484,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
   }
 
   void _showDelegateSheet() {
+    if (!checkPlanAccess(PlanFeature.delegate, label: 'ارجاع کار')) return;
     if (_users.isEmpty) {
       AppSnack.warning('توجه', 'کاربری برای ارجاع یافت نشد');
       return;
@@ -2344,7 +2717,9 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                           foregroundColor: Colors.white,
                           elevation: 0,
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(
+                              AppRadius.button,
+                            ),
                           ),
                         ),
                         child: Text(
@@ -2482,7 +2857,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                         foregroundColor: Colors.white,
                         elevation: 0,
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(AppRadius.button),
                         ),
                       ),
                       child: const Text('ارسال'),
@@ -3442,7 +3817,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                         foregroundColor: Colors.white,
                         elevation: 0,
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(AppRadius.button),
                         ),
                       ),
                       child: const Text('رد کردن'),
@@ -3547,7 +3922,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                         foregroundColor: Colors.white,
                         elevation: 0,
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(AppRadius.button),
                         ),
                       ),
                       child: const Text('تکمیل'),
@@ -3585,7 +3960,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
       }
     } catch (e) {
       setState(() => _isUpdating = false);
-      AppSnack.error('خطا', 'خطا در اتصال به سرور');
+      AppSnack.error('خطا', _dioErrorMessage(e, 'خطا در اتصال به سرور'));
     }
   }
 
@@ -3615,7 +3990,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
       }
     } catch (e) {
       setState(() => _isUpdating = false);
-      AppSnack.error('خطا', 'خطا در اتصال به سرور');
+      AppSnack.error('خطا', _dioErrorMessage(e, 'خطا در اتصال به سرور'));
     }
   }
 
@@ -3647,12 +4022,17 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
 
   // 🔧 «تأیید و ارجاع» — فقط مسئولِ فعلی: کار تأیید و هم‌زمان به فرد
   // دیگری ارجاع می‌شود
-  Future<void> _approveAndDelegate(int toUserId) async {
+  Future<void> _approveAndDelegate(int toUserId, {String? notes}) async {
     setState(() => _isUpdating = true);
     try {
       final res = await ApiClient.dio.post(
         '/api/tasks/approve-and-delegate.php',
-        data: {'task_id': widget.taskId, 'to_user_id': toUserId},
+        data: {
+          'task_id': widget.taskId,
+          'to_user_id': toUserId,
+          'approve_notes': notes ?? '',
+          'delegate_notes': notes ?? '',
+        },
       );
       final data = ApiClient.parseResponse(res.data);
       setState(() => _isUpdating = false);
@@ -3741,16 +4121,20 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                 },
               ),
             if (isAssignee)
-              ListTile(
-                leading: Icon(Icons.send_rounded, color: c.warning),
-                title: Text(
-                  'تأیید و ارجاع به فرد دیگر',
-                  style: TextStyle(fontSize: 14, color: c.textStrong),
+              PlanGate(
+                feature: PlanFeature.delegate,
+                label: 'ارجاع کار',
+                child: ListTile(
+                  leading: Icon(Icons.send_rounded, color: c.warning),
+                  title: Text(
+                    'تأیید و ارجاع به فرد دیگر',
+                    style: TextStyle(fontSize: 14, color: c.textStrong),
+                  ),
+                  onTap: () {
+                    Get.back();
+                    _showApproveAndDelegatePicker();
+                  },
                 ),
-                onTap: () {
-                  Get.back();
-                  _showApproveAndDelegatePicker();
-                },
               ),
           ],
         ),
@@ -3760,12 +4144,16 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
   }
 
   void _showApproveAndDelegatePicker() {
+    if (!checkPlanAccess(PlanFeature.delegate, label: 'ارجاع کار')) return;
     if (_users.isEmpty) {
       AppSnack.warning('توجه', 'کاربری برای ارجاع یافت نشد');
       return;
     }
     String searchQuery = '';
     final searchController = TextEditingController();
+    final notesController = TextEditingController();
+    dynamic selectedUserId;
+    String? selectedUserName;
     final c = AppColors.of(context);
 
     String userDisplay(dynamic u) {
@@ -3870,6 +4258,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                             shrinkWrap: true,
                             children: filteredUsers.map((u) {
                               final display = userDisplay(u);
+                              final selected = selectedUserId == u['id'];
                               return ListTile(
                                 leading: CircleAvatar(
                                   radius: 16,
@@ -3893,15 +4282,84 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                                     color: c.textStrong,
                                   ),
                                 ),
-                                onTap: () {
-                                  Get.back();
-                                  _approveAndDelegate(u['id']);
-                                },
+                                trailing: selected
+                                    ? Icon(Icons.check_circle, color: c.primary)
+                                    : null,
+                                onTap: () => setSheetState(() {
+                                  selectedUserId = u['id'];
+                                  selectedUserName = display;
+                                }),
                               );
                             }).toList(),
                           ),
                   ),
-                  const SizedBox(height: 12),
+
+                  // توضیح
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                    child: TextField(
+                      controller: notesController,
+                      style: TextStyle(color: c.textStrong, fontSize: 13.5),
+                      decoration: InputDecoration(
+                        hintText: 'توضیح (اختیاری)...',
+                        hintStyle: TextStyle(color: c.textMuted, fontSize: 13),
+                        filled: true,
+                        fillColor: c.surface,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: c.borderSoft),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 12,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      16,
+                      12,
+                      16,
+                      12 + MediaQuery.of(ctx).padding.bottom,
+                    ),
+                    child: SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: ElevatedButton(
+                        onPressed: selectedUserId == null
+                            ? null
+                            : () {
+                                Get.back();
+                                _approveAndDelegate(
+                                  selectedUserId,
+                                  notes: notesController.text.trim(),
+                                );
+                              },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: c.primary,
+                          disabledBackgroundColor: c.primary.withValues(
+                            alpha: 0.4,
+                          ),
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: Text(
+                          selectedUserName == null
+                              ? 'یک نفر را انتخاب کنید'
+                              : 'تأیید و ارجاع به $selectedUserName',
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -3942,7 +4400,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         AppSnack.error('خطا', data['message'] ?? 'خطا در حذف');
       }
     } catch (e) {
-      AppSnack.error('خطا', 'خطا در اتصال به سرور');
+      AppSnack.error('خطا', _dioErrorMessage(e, 'خطا در اتصال به سرور'));
     }
   }
 
@@ -4015,7 +4473,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
       }
     } catch (e) {
       setState(() => _isUpdating = false);
-      AppSnack.error('خطا', 'خطا در اتصال به سرور');
+      AppSnack.error('خطا', _dioErrorMessage(e, 'خطا در اتصال به سرور'));
     }
   }
 
@@ -4137,102 +4595,275 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     );
   }
 
-  Widget _historyItem(Map<String, dynamic> h) {
+  /// تاریخچه‌یِ قابلِ‌نمایش — دقیقاً مطابقِ وب، ردیف‌هایِ تکراریِ کارِ
+  /// دوره‌ای حذف می‌شوند: وقتی تکمیلِ دوره نیاز به تأیید دارد، هم‌زمان
+  /// یک ردیفِ 'completed'/'completed_rejected' (برایِ موتورِ دوره) و
+  /// یک ردیفِ 'pending_approval' (همان رویداد) ثبت می‌شود؛ فقط دومی
+  /// نشان داده می‌شود.
+  List<dynamic> get _visibleHistory {
+    DateTime? parseTime(dynamic h) {
+      final raw = h['created_at']?.toString();
+      if (raw == null || raw.isEmpty) return null;
+      try {
+        return DateTime.parse(raw.replaceFirst(' ', 'T'));
+      } catch (_) {
+        return null;
+      }
+    }
+
+    final pendings = _history
+        .where((h) => h['action'] == 'pending_approval')
+        .toList();
+    return _history.where((h) {
+      final action = h['action'];
+      if (action != 'completed' && action != 'completed_rejected') {
+        return true;
+      }
+      final t = parseTime(h);
+      if (t == null) return true;
+      final hasMatch = pendings.any((p) {
+        if (p['from_user_id']?.toString() != h['from_user_id']?.toString()) {
+          return false;
+        }
+        final pt = parseTime(p);
+        return pt != null && (pt.difference(t)).inMilliseconds.abs() <= 2000;
+      });
+      return !hasMatch;
+    }).toList();
+  }
+
+  Widget _historyItem(Map<String, dynamic> h, {required bool isLast}) {
     final action = h['action'] as String? ?? '';
     final actionLbl = TaskLabels.actionLabel(action);
-    final actionClr = TaskLabels.actionColor(action);
-    final actionIco = TaskLabels.actionIcon(action);
+    final badgeBg = TaskLabels.historyBadgeBg(action);
+    final badgeFg = TaskLabels.historyBadgeFg(action);
 
     // نام فردی که عمل را انجام داد
     final fromName =
         '${h['from_user_first_name'] ?? ''} ${h['from_user_last_name'] ?? ''}'
             .trim();
-    // نام فرد مقصد (برای ارجاع)
+    // نام فرد مقصد (برای ارجاع/تأیید/تمدید موعد)
     final toName =
         '${h['to_user_first_name'] ?? ''} ${h['to_user_last_name'] ?? ''}'
             .trim();
     final c = AppColors.of(context);
+    final (dateStr, timeStr) = _historyDateParts(h['created_at']?.toString());
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      decoration: BoxDecoration(
+        border: isLast
+            ? null
+            : Border(bottom: BorderSide(color: c.borderSoft, width: 1)),
+      ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // ستونِ زمان + بج — با خطِ عمودیِ جداکننده از ستونِ کاربر،
+          // عیناً مطابقِ وب (ml-left / ml-action-badge)
           Container(
-            padding: const EdgeInsets.all(7),
+            width: 84,
+            padding: const EdgeInsets.only(left: 12),
             decoration: BoxDecoration(
-              color: actionClr.withValues(alpha: 0.12),
-              shape: BoxShape.circle,
+              border: Border(left: BorderSide(color: c.borderSoft, width: 1)),
             ),
-            child: Icon(actionIco, color: actionClr, size: 14),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                // عمل + نام
-                Row(
-                  children: [
-                    Text(
-                      actionLbl,
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: c.textStrong,
-                      ),
-                    ),
-                    if (fromName.isNotEmpty) ...[
-                      Text(
-                        ' توسط ',
-                        style: TextStyle(fontSize: 12, color: c.textMuted),
-                      ),
-                      Text(
-                        fromName,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: c.textMuted,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ],
+                Text(
+                  dateStr,
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: c.textMuted.withValues(alpha: 0.75),
+                    height: 1.6,
+                  ),
                 ),
-                // برای ارجاع: به چه کسی
-                if (action == 'delegated' && toName.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 2),
-                    child: Text(
-                      'به: $toName',
-                      style: TextStyle(fontSize: 11, color: c.textMuted),
-                    ),
+                Text(
+                  timeStr,
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: c.textMuted.withValues(alpha: 0.75),
+                    height: 1.6,
                   ),
-                // توضیحات
-                if (_formatHistoryNotes(action, h['notes']).isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(
-                      _formatHistoryNotes(action, h['notes']),
-                      style: TextStyle(fontSize: 12, color: c.textMuted),
-                    ),
+                ),
+                const SizedBox(height: 5),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 5,
                   ),
-                // تاریخ و ساعت
-                Padding(
-                  padding: const EdgeInsets.only(top: 4),
+                  decoration: BoxDecoration(
+                    color: badgeBg,
+                    borderRadius: BorderRadius.circular(AppRadius.chip),
+                  ),
                   child: Text(
-                    _toShamsiDateTime(h['created_at']?.toString()),
+                    actionLbl,
+                    textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 10,
-                      color: c.textMuted.withValues(alpha: 0.7),
+                      fontWeight: FontWeight.w500,
+                      color: badgeFg,
                     ),
                   ),
                 ),
               ],
             ),
           ),
+          const SizedBox(width: 14),
+          // ستونِ کاربر + توضیحات
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.person_outline_rounded,
+                      size: 13,
+                      color: c.textMuted,
+                    ),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        fromName.isEmpty ? 'نامشخص' : fromName,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: c.textStrong,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+                ..._historyCustomContent(h, action, fromName, toName, c),
+              ],
+            ),
+          ),
         ],
       ),
     );
+  }
+
+  /// متنِ اختصاصیِ هر نوع رویداد — عیناً مطابقِ منطقِ displayHistory در
+  /// نسخه‌ی وب (pages/task-detail.php)
+  List<Widget> _historyCustomContent(
+    Map<String, dynamic> h,
+    String action,
+    String fromName,
+    String toName,
+    AppColors c,
+  ) {
+    final notes = (h['notes'] ?? '').toString();
+
+    Widget note(String text, {bool small = false}) => Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: small ? 10.5 : 12,
+          color: c.textMuted.withValues(alpha: small ? 0.75 : 1),
+          height: 1.6,
+        ),
+      ),
+    );
+
+    // ── تمدید موعد: خطِ «قدیم ← جدید» + دلیل، به‌جایِ یادداشتِ خام ──
+    if (action == 'deadline_extended') {
+      final widgets = <Widget>[];
+      Map<String, dynamic>? data;
+      try {
+        data = jsonDecode(notes) as Map<String, dynamic>;
+      } catch (_) {
+        data = null;
+      }
+      if (data == null) {
+        if (notes.isNotEmpty) widgets.add(note(notes));
+        return widgets;
+      }
+      final fromIsRequester = data['from_is_requester'] == true;
+      if (toName.isNotEmpty && toName != fromName && !fromIsRequester) {
+        widgets.add(note('به درخواست: $toName'));
+      }
+      final oldD = data['old_deadline'] == null
+          ? 'نامشخص'
+          : _toShamsi(data['old_deadline']?.toString());
+      final newD = data['new_deadline'] == null
+          ? 'نامشخص'
+          : _toShamsi(data['new_deadline']?.toString());
+      widgets.add(
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 5,
+            children: [
+              Text(
+                oldD,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: c.textMuted,
+                  decoration: TextDecoration.lineThrough,
+                ),
+              ),
+              const Icon(
+                Icons.arrow_back_rounded,
+                size: 13,
+                color: Color(0xFFFFC107),
+              ),
+              Text(
+                newD,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFFE65100),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+      final reason = data['reason']?.toString();
+      if (reason != null && reason.trim().isNotEmpty) {
+        widgets.add(note('دلیل: $reason', small: true));
+      }
+      return widgets;
+    }
+
+    // ── رد درخواست تمدید موعد: یادداشتِ خام جایگزینِ کاملِ متن می‌شود ──
+    if (action == 'deadline_rejected') {
+      final widgets = <Widget>[];
+      if (toName.isNotEmpty) {
+        widgets.add(note('درخواست تمدید موعد از $toName رد شد'));
+      }
+      if (notes.isNotEmpty) widgets.add(note('توضیح: $notes', small: true));
+      return widgets;
+    }
+
+    // ── بقیه‌ی اکشن‌ها: یادداشتِ خام (اگر بود) + متنِ اختصاصیِ هر نوع ──
+    final widgets = <Widget>[];
+    if (notes.isNotEmpty) widgets.add(note(notes));
+
+    switch (action) {
+      case 'created':
+        if (toName.isNotEmpty && toName != fromName) {
+          widgets.insert(0, note('واگذار به: $toName'));
+        }
+        final desc = (_task?['description'] ?? '').toString();
+        if (desc.isNotEmpty) widgets.add(note('توضیحات: $desc', small: true));
+        break;
+      case 'delegated':
+        if (toName.isNotEmpty) widgets.insert(0, note('ارجاع به $toName'));
+        break;
+      case 'pending_approval':
+        if (toName.isNotEmpty) widgets.add(note('در انتظار تأیید: $toName'));
+        break;
+      case 'deadline_requested':
+        if (toName.isNotEmpty) widgets.add(note('در انتظار بررسی: $toName'));
+        break;
+    }
+    return widgets;
   }
 
   Widget _checklistItem(Map<String, dynamic> item) {
@@ -4504,6 +5135,76 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     );
   }
 
+  /// ردیفِ «موعد انجام» — مثلِ [_infoRow] ولی با دو آیکنِ کوچکِ عملیاتی
+  /// جلویِ تاریخ: تمدیدِ موعد (برایِ مسئولِ فعلی، وقتی واقعاً امکانش
+  /// هست — همان شرطِ دکمه‌ی شناورِ «تمدید موعد») و حذفِ موعد (فقط وقتی
+  /// سازنده و مسئول یک نفرند و خودِ همان شخص است — دقیقاً همان شرطِ سرور
+  /// در api/tasks/clear-due-date.php).
+  Widget _dueDateRow(
+    AppColors c,
+    Map<String, dynamic> t, {
+    required String status,
+    required bool isCreator,
+    required bool isAssignee,
+    required bool isPending,
+  }) {
+    final hasDueDate = t['due_date'] != null || t['deadline'] != null;
+    final canExtend =
+        isAssignee &&
+        t['is_workflow_task'] != 1 &&
+        t['is_workflow_task'] != true &&
+        t['deadline'] != null &&
+        !isPending &&
+        status != 'completed' &&
+        status != 'approved' &&
+        status != 'rejected' &&
+        t['has_pending_deadline_request'] != 1 &&
+        t['has_pending_deadline_request'] != true;
+    final canClear =
+        isCreator &&
+        t['task_type'] == 'periodic' &&
+        t['creator_id']?.toString() == t['assignee_id']?.toString() &&
+        hasDueDate;
+
+    return Row(
+      children: [
+        Container(
+          width: 26,
+          height: 26,
+          decoration: BoxDecoration(
+            color: c.primary.withValues(alpha: 0.12),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(Icons.event_outlined, size: 14, color: c.primary),
+        ),
+        const SizedBox(width: 10),
+        Text('موعد انجام', style: TextStyle(fontSize: 13, color: c.textMuted)),
+        const Spacer(),
+        if (canExtend)
+          GestureDetector(
+            onTap: _showRequestDeadlineDialog,
+            child: Icon(Icons.event_repeat_rounded, size: 17, color: c.primary),
+          ),
+        if (canClear) ...[
+          if (canExtend) const SizedBox(width: 10),
+          GestureDetector(
+            onTap: _confirmClearDueDate,
+            child: Icon(Icons.event_busy_rounded, size: 17, color: c.danger),
+          ),
+        ],
+        if (canExtend || canClear) const SizedBox(width: 8),
+        Text(
+          _toShamsi(t['due_date']),
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: c.textStrong,
+          ),
+        ),
+      ],
+    );
+  }
+
   // 🔧 دکمه‌ی «افزودن +» بنفشِ کوچک — تکرار‌شده جلوی چک‌لیست/بینندگان/
   // پیوست‌ها (طبق عکسِ ارسالی)
   Widget _addPillButton(
@@ -4518,7 +5219,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
           color: c.primary.withValues(alpha: 0.14),
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(AppRadius.chip),
         ),
         child: loading
             ? SizedBox(
@@ -4552,7 +5253,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
     decoration: BoxDecoration(
       color: color.withValues(alpha: 0.14),
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: BorderRadius.circular(AppRadius.chip),
     ),
     child: Text(
       label,
@@ -4566,40 +5267,11 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
     decoration: BoxDecoration(
       border: Border.all(color: color.withValues(alpha: 0.5)),
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: BorderRadius.circular(AppRadius.chip),
     ),
     child: Text(
       label,
       style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w600),
     ),
   );
-
-  String _formatHistoryNotes(String action, dynamic rawNotes) {
-    final notes = (rawNotes ?? '').toString();
-    if (notes.isEmpty) return '';
-
-    if (action == 'deadline_extended') {
-      try {
-        final data = jsonDecode(notes) as Map<String, dynamic>;
-        final oldDeadline = data['old_deadline']?.toString();
-        final newDeadline = data['new_deadline']?.toString();
-        final reason = data['reason']?.toString();
-
-        final parts = <String>[];
-        if (oldDeadline != null && newDeadline != null) {
-          parts.add(
-            'موعد از ${_toShamsi(oldDeadline)} به ${_toShamsi(newDeadline)} تغییر کرد',
-          );
-        }
-        if (reason != null && reason.trim().isNotEmpty) {
-          parts.add('دلیل: $reason');
-        }
-        return parts.join('\n');
-      } catch (_) {
-        return notes;
-      }
-    }
-
-    return notes;
-  }
 }

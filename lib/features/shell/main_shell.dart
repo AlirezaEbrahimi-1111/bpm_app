@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'dart:async';
 import '../../core/network/api_client.dart';
-import '../../core/utils/persian_number.dart';
 import '../dashboard/dashboard_page.dart';
 import '../tasks/my_tasks_page.dart';
 import '../notifications/notifications_page.dart';
@@ -16,11 +15,21 @@ import 'widgets/global_search_sheet.dart';
 import '../../core/network/connectivity_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/notification_bar_preference.dart';
+import '../../core/plan/plan_access.dart';
+import '../subscription/plan_gate.dart';
+import 'widgets/app_bottom_nav.dart';
 
 /// پوسته اصلی اپ: نوار پایین ثابت + جابجایی بین تب‌ها + Drawer
 class MainShell extends StatefulWidget {
   final Map<String, dynamic> user;
   const MainShell({super.key, required this.user});
+
+  // 🔧 طبق درخواست: صفحاتی که با Get.to باز می‌شوند (Scaffoldِ خودشان
+  // را دارند، پس نوارِ پایینِ پوسته را نمی‌بینند) از همین یک راه مشترک
+  // (AppBottomNav + navigateToShellTab در widgets/app_bottom_nav.dart)
+  // به تبِ موردنظر از همین نمونه‌ی زنده‌ی MainShell برمی‌گردند — بدونِ
+  // از نو ساختنِ کل پوسته.
+  static final ValueNotifier<int?> requestedTab = ValueNotifier<int?>(null);
 
   @override
   State<MainShell> createState() => _MainShellState();
@@ -74,6 +83,9 @@ class _MainShellState extends State<MainShell>
     // تنظیمات هم باید هدر/نوارِ پایینِ مشترک را داشته باشد، پس حالا
     // خودش یک تبِ واقعیِ این PageView است (index=1)، نه یک صفحه‌ی
     // جداگانه‌ی push‌شده
+    PlanAccess.setFromUser(widget.user);
+    ApiClient.onPlanRestricted = (message) =>
+        showPlanUpgradeSheet(message: message);
     _pages = [
       DashboardPage(
         key: _dashboardKey,
@@ -97,6 +109,17 @@ class _MainShellState extends State<MainShell>
       const Duration(seconds: 30),
       (_) => _loadUnreadCount(),
     );
+    MainShell.requestedTab.addListener(_onTabRequestedFromElsewhere);
+  }
+
+  // 🔧 وقتی یک صفحه‌ی دیگر (با navigateToShellTab) درخواستِ تغییرِ تب
+  // می‌کند، همین‌جا اعمال می‌شود — بعد از پاپ‌شدنِ همه‌ی صفحاتِ بالاتر
+  void _onTabRequestedFromElsewhere() {
+    final idx = MainShell.requestedTab.value;
+    if (idx != null) {
+      _onTabTapped(idx);
+      MainShell.requestedTab.value = null;
+    }
   }
 
   @override
@@ -104,6 +127,7 @@ class _MainShellState extends State<MainShell>
     _unreadPollTimer?.cancel();
     _pageController.dispose();
     _searchBtnController.dispose();
+    MainShell.requestedTab.removeListener(_onTabRequestedFromElsewhere);
     super.dispose();
   }
 
@@ -257,8 +281,16 @@ class _MainShellState extends State<MainShell>
             Expanded(
               child: PageView(
                 controller: _pageController,
-                onPageChanged: (index) =>
-                    setState(() => _selectedIndex = index),
+                onPageChanged: (index) {
+                  // اگر با سوایپ به تبِ قفل‌شده رسیدیم، برگردیم و شیتِ ارتقا
+                  if (index == 2 &&
+                      !PlanAccess.allows(PlanFeature.notifications)) {
+                    _pageController.jumpToPage(_selectedIndex);
+                    showPlanUpgradeSheet(label: 'اعلان‌ها');
+                    return;
+                  }
+                  setState(() => _selectedIndex = index);
+                },
                 children: _pages,
               ),
             ),
@@ -282,173 +314,13 @@ class _MainShellState extends State<MainShell>
       // 🔧 اصلاح: کمی پایین‌تر از حالت استاندارد centerDocked — تا با
       // دکمه‌ی فلشِ بالای نوار برخورد نکند
       floatingActionButtonLocation: const _LoweredDockedFabLocation(),
-      bottomNavigationBar: _buildBottomNav(c),
-    );
-  }
-
-  // 🔧 اصلاح طبقِ درخواست: ترتیبِ جدید «داشبورد، تنظیمات، اعلان‌ها،
-  // کارها» — «واگذارشده» از نوارِ پایین حذف شد (فقط از دراور در
-  // دسترس است) و «تنظیمات» جایگزینش شد. تنظیمات هم هدر/نوارِ پایینِ
-  // مشترک را دارد (index=1 در PageView)، پس مثلِ بقیه‌ی تب‌ها با
-  // jumpToPage جابه‌جا می‌شود، نه push.
-  //
-  // 🔧 اصلاح طبقِ درخواست: نوار پایین باید به پایینِ واقعیِ صفحه
-  // بچسبد (نه شناور با فاصله از پایین) — فقط از چپ/راست فاصله دارد و
-  // فقط گوشه‌های بالا گرد است؛ فاصله‌ی سیستمی (دکمه‌های ناوبریِ گوشی)
-  // با SafeAreaِ داخلی رعایت می‌شود، نه با مارجینِ بیرونی.
-  Widget _buildBottomNav(AppColors c) {
-    // 🔧 اصلاح: رنگِ تونالِ استاندارد (طبقِ Material 3 surface-container) —
-    // در روشن، تنی فقط کمی تیره‌تر از سفید؛ در تاریک کمی روشن‌تر از
-    // پس‌زمینه. حالا که Scaffold با extendBody محتوایِ واقعیِ صفحه را
-    // زیرِ این نوار می‌آورد، شفافیت را کم کردیم تا بلور واقعاً محتوا
-    // را نشان دهد (شیشه‌ای واقعی)، نه فقط یک رنگِ صافِ پشتِ آن.
-    // 🔧 طبق درخواست: مستطیلِ ساده با هر چهار گوشه‌ی خیلی گرد (بدونِ
-    // فرورفتگیِ دکمه‌ی +)، شناور با ۱۲ پیکسل فاصله از پایین؛ SafeArea
-    // حالا بیرونِ کارت است تا فاصله‌ی دکمه‌های گوشی جدا از خودِ کارت بماند.
-    return SafeArea(
-      top: false,
-      child: FractionallySizedBox(
-        // 🔧 عرضِ نوار = ۹۰٪ عرضِ صفحه (وسط‌چین)
-        widthFactor: 0.9,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(30),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-            // 🔧 BottomAppBar حذف شد: ارتفاعِ پیش‌فرضِ آن (Material 3) مانعِ
-            // کوتاه‌کردنِ نوار بود؛ حالا ارتفاع دقیقاً همان عددِ height است
-            child: ColoredBox(
-              color: c.navBarBg.withValues(alpha: 0.75),
-              child: SizedBox(
-                height: 70,
-                child: Padding(
-                  // فشرده‌تر از اطراف: گزینه‌ها از لبه‌ها به مرکز نزدیک می‌شوند
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      _navItem(
-                        c: c,
-                        icon: Icons.grid_view_rounded,
-                        label: 'داشبورد',
-                        selected: _selectedIndex == 0,
-                        onTap: () => _onTabTapped(0),
-                      ),
-                      _navItem(
-                        c: c,
-                        icon: Icons.settings_outlined,
-                        label: 'تنظیمات',
-                        selected: _selectedIndex == 1,
-                        onTap: () => _onTabTapped(1),
-                      ),
-                      const SizedBox(
-                        width: 64,
-                      ), // جای خالیِ دکمه‌ی شناور در وسط
-                      _navItem(
-                        c: c,
-                        icon: Icons.notifications_rounded,
-                        label: 'اعلان‌ها',
-                        selected: _selectedIndex == 2,
-                        showBadge: _unreadCount > 0,
-                        onTap: () => _onTabTapped(2),
-                      ),
-                      _navItem(
-                        c: c,
-                        icon: Icons.task_alt_rounded,
-                        label: 'کارها',
-                        selected: _selectedIndex == 3,
-                        onTap: () => _onTabTapped(3),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  // 🔧 اصلاح: عنوان حالا زیرِ آیکون است (نه کنارش) تا جا بیشتری بگیرد،
-  // و همیشه نمایش داده می‌شود (نه فقط برای تبِ فعال) — برای تب‌های
-  // غیرفعال با رنگِ کم‌رنگ‌تر (textMuted) به‌جای سفیدِ پررنگ.
-  Widget _navItem({
-    required AppColors c,
-    required IconData icon,
-    required String label,
-    required bool selected,
-    required VoidCallback onTap,
-    bool showBadge = false,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: SizedBox(
-        width: 44,
-        // OverflowBox: اگر height نوار کمتر از اندازه‌ی آیکن شد، آیکن
-        // بریده/سرریز نشود و وسطِ نوار بماند
-        child: OverflowBox(
-          maxHeight: 48,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Icon(
-                    icon,
-                    size: 26,
-                    color: selected ? c.primary : c.textMuted,
-                  ),
-                  if (showBadge)
-                    Positioned(
-                      right: -6,
-                      top: -4,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 4,
-                          vertical: 1,
-                        ),
-                        constraints: const BoxConstraints(
-                          minWidth: 15,
-                          minHeight: 15,
-                        ),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFEF4444),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: c.navBarBg, width: 1.5),
-                        ),
-                        child: Text(
-                          _unreadCount > 99
-                              ? '${toPersianDigits('99')}+'
-                              : toPersianDigits(_unreadCount.toString()),
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 8,
-                            fontWeight: FontWeight.bold,
-                            height: 1.2,
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 2),
-              Text(
-                label,
-                maxLines: 1,
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                  color: selected ? c.primary : c.textMuted,
-                  fontFamily: 'Vazir',
-                ),
-              ),
-            ],
-          ),
-        ),
+      // 🔧 طبق درخواست: ساختِ خودِ نوار به ویجتِ مشترکِ AppBottomNav
+      // منتقل شد (widgets/app_bottom_nav.dart) تا صفحاتِ دیگری که
+      // Scaffoldِ خودشان را دارند (پس نوارِ این پوسته را نمی‌بینند) هم
+      // بتوانند همان نوار را نشان دهند، نه یک نسخه‌ی کپی‌شده‌ی جدا
+      bottomNavigationBar: AppBottomNav(
+        selectedIndex: _selectedIndex,
+        unreadCount: _unreadCount,
       ),
     );
   }

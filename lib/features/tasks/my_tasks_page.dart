@@ -154,6 +154,8 @@ class MyTasksPageState extends State<MyTasksPage> {
     }
   }
 
+  // 🔧 فقط در manageMode صدا زده می‌شود — دکمه‌اش فقط آن‌جا نمایش داده
+  // می‌شود (پایین‌تر در _buildHeader)
   Future<void> _openCreateTask() async {
     final result = await Get.to(
       () => CreateTaskPage(
@@ -171,8 +173,29 @@ class MyTasksPageState extends State<MyTasksPage> {
   // 🔧 مطابقِ وب (TF.isOverdue)، نه صرفاً days_remaining < 0
   bool _isOverdue(dynamic t) => taskIsOverdue(t);
 
+  // 🔧 طبق درخواست: کارهایِ بسته‌شده (تکمیل/تأیید/دوره‌انجام‌شده + لغوشده
+  // «rejected» + متوقف‌شده «stopped») نباید پیش‌فرض در لیست باشند — قبلاً
+  // فقط ته‌لیست می‌رفتند (مرتب‌سازیِ _isDone)، ولی هنوز نمایش داده می‌شدند
+  bool _isClosed(dynamic t) =>
+      _isDone(t) || t['status'] == 'rejected' || t['status'] == 'stopped';
+  static const _closedStatuses = {
+    'completed',
+    'approved',
+    'period_done',
+    'rejected',
+    'stopped',
+  };
+
   List<dynamic> get _filteredTasks {
     List<dynamic> list = List.from(_myTasks);
+
+    // کارهایِ بسته‌شده فقط وقتی دیده می‌شوند که کاربر صریحاً بخواهدشان:
+    // فیلترِ سریعِ «تکمیل‌شده» یا انتخابِ همان وضعیت از فیلترِ پیشرفته
+    final wantsClosed =
+        _quickFilter == 'done' || _closedStatuses.contains(_filterStatus);
+    if (!wantsClosed) {
+      list = list.where((t) => !_isClosed(t)).toList();
+    }
 
     if (_quickFilter == 'done') {
       list = list.where(_isDone).toList();
@@ -348,27 +371,34 @@ class MyTasksPageState extends State<MyTasksPage> {
             ),
           ),
         ),
-        const SizedBox(height: 10),
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton.icon(
-            onPressed: _openCreateTask,
-            icon: const Icon(Icons.add_rounded, size: 20),
-            label: const Text(
-              'افزودن وظیفه',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-            ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: c.primary,
-              foregroundColor: Colors.white,
-              elevation: 0,
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
+        // 🔧 طبق درخواست: این دکمه فقط از تبِ «کارها» حذف شد — چون آن‌جا
+        // دکمه‌ی شناورِ «+» پوسته‌ی اصلی از قبل همین کار را می‌کند. در
+        // «مدیریت کارها» (manageMode) نگه داشته شد، چون آن صفحه با
+        // Get.to جدا باز می‌شود و دکمه‌ی شناورِ پوسته را ندارد — بدونِ
+        // این دکمه، هیچ راهی برای ایجادِ کار از آن‌جا نمی‌ماند
+        if (widget.manageMode) ...[
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _openCreateTask,
+              icon: const Icon(Icons.add_rounded, size: 20),
+              label: const Text(
+                'افزودن وظیفه',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: c.primary,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
               ),
             ),
           ),
-        ),
+        ],
       ],
     );
   }

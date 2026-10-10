@@ -6,6 +6,9 @@ import '../../core/utils/persian_number.dart';
 import '../tasks/task_detail_page.dart';
 import '../../core/network/connectivity_service.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/plan/plan_access.dart';
+import '../../core/theme/starred_tasks_preference.dart';
+import '../subscription/plan_gate.dart';
 import '../tasks/widgets/task_badges.dart';
 import '../tasks/widgets/task_quick_actions_sheet.dart';
 import '../shell/widgets/nav_bar_metrics.dart';
@@ -36,8 +39,32 @@ class DashboardPageState extends State<DashboardPage> {
   // وسط عوض می‌شود و بزرگ/پررنگ می‌ماند؛ PageViewِ با viewportFraction
   // ۰.۲ دقیقاً همین جلوه را می‌سازد (صفحه‌ی جاری همیشه در وسطِ‌ویوپورت)
   late final PageController _dayPageController;
-  double _dayPageValue = _dayWindowRadius.toDouble();
+  // 🔧 ValueNotifier به‌جایِ setState: حینِ اسکرولِ تقویم فقط همین نوارِ
+  // کوچک دوباره ساخته شود، نه کلِ صفحه (که باعثِ پریدنِ دکمه‌ی فیلترِ
+  // «همه» در پایینِ بخشِ «همه کارها» می‌شد)
+  final ValueNotifier<double> _dayPageValue = ValueNotifier(
+    _dayWindowRadius.toDouble(),
+  );
   static const _dayWindowRadius = 60; // ۶۰ روز قبل تا ۶۰ روز بعد
+
+  // 🔧 ریشه‌یِ واقعیِ «پریدن»: با انتخابِ یک روز، لیستِ کارها (که در همان
+  // SingleChildScrollView زیرِ دکمه‌هاست) ناگهان کوتاه می‌شود؛ اگر کاربر
+  // کمی پایین‌تر اسکرول کرده باشد، چون محتوا دیگر به آن اندازه بلند نیست،
+  // خودِ اسکرول‌ویو به‌صورتِ ناگهانی (نه نرم) به بالا کلمپ/پَرت می‌شود —
+  // همین است که دکمه‌ی فیلترِ «همه» را بالا می‌پراند. راه‌حل: با هر
+  // انتخابِ روز، خودمان صفحه را نرم به بالا برگردانیم تا آن پرشِ ناگهانی
+  // هرگز اتفاق نیفتد
+  final ScrollController _pageScrollController = ScrollController();
+
+  void _scrollPageToTopIfNeeded() {
+    if (!_pageScrollController.hasClients) return;
+    if (_pageScrollController.offset <= 0) return;
+    _pageScrollController.animateTo(
+      0,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOut,
+    );
+  }
 
   // 🔧 آفلاین سبک: وقتی اینترنت نیست، آخرین داده‌ی ذخیره‌شده نمایش داده می‌شود
   bool _isOfflineData = false;
@@ -83,13 +110,15 @@ class DashboardPageState extends State<DashboardPage> {
   void dispose() {
     _dayPageController.removeListener(_onDayPageScroll);
     _dayPageController.dispose();
+    _dayPageValue.dispose();
+    _pageScrollController.dispose();
     super.dispose();
   }
 
   void _onDayPageScroll() {
     final page = _dayPageController.page;
     if (page == null) return;
-    setState(() => _dayPageValue = page);
+    _dayPageValue.value = page;
   }
 
   void reload() => _loadData();
@@ -109,6 +138,7 @@ class DashboardPageState extends State<DashboardPage> {
       _selectedDay = dayMidnight;
       _filter = null;
     });
+    _scrollPageToTopIfNeeded();
     if (_dayPageController.hasClients) {
       _dayPageController.animateToPage(
         index,
@@ -164,6 +194,19 @@ class DashboardPageState extends State<DashboardPage> {
 
   bool _isDone(dynamic task) =>
       task['status'] == 'completed' || task['status'] == 'approved';
+
+  // 🔧 طبق درخواست: کارهایِ تکمیل‌شده، لغوشده(rejected) یا متوقف‌شده
+  // (stopped) نباید در داشبورد نمایش داده شوند — نه فقط در شمارش‌ها.
+  // داشبورد هیچ فیلترِ «تکمیل‌شده»ای ندارد (برخلافِ تبِ «کارها»)، پس
+  // این کارها همیشه باید حذف شوند، نه فقط ته‌لیست بروند
+  bool _isClosed(dynamic task) {
+    final s = task['status'];
+    return s == 'completed' ||
+        s == 'approved' ||
+        s == 'period_done' ||
+        s == 'rejected' ||
+        s == 'stopped';
+  }
 
   DateTime? _dueDateOf(dynamic task) {
     final days = _daysRemaining(task);
@@ -225,6 +268,7 @@ class DashboardPageState extends State<DashboardPage> {
     if (_selectedDay != null) {
       final sel = _selectedDay!;
       return _tasks.where((t) {
+        if (_isClosed(t)) return false;
         final due = _dueDateOf(t);
         return due != null &&
             due.year == sel.year &&
@@ -238,7 +282,14 @@ class DashboardPageState extends State<DashboardPage> {
     if (_filter == 'عقب افتاده') {
       return _tasks.where((t) => taskIsOverdue(t)).toList();
     }
-    return List.from(_tasks);
+    if (_filter == 'منتخب') {
+      return _tasks
+          .where(
+            (t) => !_isClosed(t) && StarredTasksPreference.isStarred(t['id']),
+          )
+          .toList();
+    }
+    return _tasks.where((t) => !_isClosed(t)).toList();
   }
 
   @override
@@ -254,6 +305,7 @@ class DashboardPageState extends State<DashboardPage> {
                 color: c.primary,
                 onRefresh: _loadData,
                 child: SingleChildScrollView(
+                  controller: _pageScrollController,
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: EdgeInsets.fromLTRB(
                     20,
@@ -273,11 +325,28 @@ class DashboardPageState extends State<DashboardPage> {
                             : [
                                 _buildCalendarStrip(c),
                                 const SizedBox(height: 24),
-                                _buildScheduleCards(c),
+                                PlanGate(
+                                  feature: PlanFeature.dailyPlan,
+                                  label: 'برنامه کاری',
+                                  child: _buildScheduleCards(c),
+                                ),
                                 const SizedBox(height: 24),
                                 _buildTaskListHeader(c),
                                 const SizedBox(height: 14),
-                                ..._buildTaskList(c),
+                                // 🔧 فیلترِ «منتخب» (ستاره) محلیِ گوشی است، نه
+                                // داده‌ای که با _loadData می‌آید — پس خودِ لیست
+                                // باید مستقیماً به تغییرش گوش بدهد تا با زدنِ
+                                // ستاره از جزئیاتِ کار، همین‌جا هم فوری به‌روز شود
+                                ValueListenableBuilder<Set<String>>(
+                                  valueListenable:
+                                      StarredTasksPreference.idsNotifier,
+                                  builder: (context, _, _) => Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: _buildTaskList(c),
+                                  ),
+                                ),
                               ],
                       );
                     },
@@ -329,85 +398,106 @@ class DashboardPageState extends State<DashboardPage> {
   // فیلتر می‌شود ──
   Widget _buildCalendarStrip(AppColors c) {
     final days = _dayWindow();
-    final centerIndex = _dayPageValue.round().clamp(0, days.length - 1);
-    final centerJ = Jalali.fromDateTime(days[centerIndex]);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Text(
-          toPersianDigits('${_months[centerJ.month - 1]} ${centerJ.year}'),
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: c.textMuted,
-          ),
-        ),
-        // const SizedBox(height: 10),
-        SizedBox(
-          height: 66,
-          child: PageView.builder(
-            controller: _dayPageController,
-            itemCount: days.length,
-            onPageChanged: (page) => setState(() {
-              _selectedDay = days[page];
-              _filter = null;
-            }),
-            itemBuilder: (context, i) {
-              final d = days[i];
-              final j = Jalali.fromDateTime(d);
-              final now = DateTime.now();
-              final isToday =
-                  d.year == now.year &&
-                  d.month == now.month &&
-                  d.day == now.day;
-              // 🔧 فاصله‌ی زنده از مرکزِ ویوپورت (۰ = دقیقاً وسط) — برایِ
-              // انیمیشنِ نرمِ بزرگ/کوچک‌شدن حین خودِ اسکرول (نه فقط بعد از تسویه)
-              final distance = (i - _dayPageValue).abs().clamp(0.0, 1.0);
-              final numberSize = 26 - (26 - 15) * distance;
-              final weekdaySize = 12 - (12 - 10) * distance;
-              final isCenter = distance < 0.05;
-              return GestureDetector(
-                onTap: () => _dayPageController.animateToPage(
-                  i,
-                  duration: const Duration(milliseconds: 250),
-                  curve: Curves.easeOut,
-                ),
-                behavior: HitTestBehavior.opaque,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      toPersianDigits(j.day),
-                      style: TextStyle(
-                        fontSize: numberSize,
-                        fontWeight: isCenter
-                            ? FontWeight.bold
-                            : FontWeight.w500,
-                        color: isCenter
-                            ? c.textStrong
-                            : c.textMuted.withValues(alpha: 0.55),
+    // 🔧 این ValueListenableBuilder کوچک است تا حینِ اسکرولِ تقویم فقط
+    // همین نوار دوباره بسازد، نه کلِ صفحه (شاملِ لیستِ کارها و دکمه‌ی
+    // فیلترِ «همه» که پایین‌تر است و قبلاً با هر فریمِ اسکرول می‌پرید)
+    return ValueListenableBuilder<double>(
+      valueListenable: _dayPageValue,
+      builder: (context, dayPageValue, _) {
+        final centerIndex = dayPageValue.round().clamp(0, days.length - 1);
+        final centerJ = Jalali.fromDateTime(days[centerIndex]);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Text(
+              toPersianDigits('${_months[centerJ.month - 1]} ${centerJ.year}'),
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: c.textMuted,
+              ),
+            ),
+            // const SizedBox(height: 10),
+            SizedBox(
+              height: 66,
+              // 🔧 طبق درخواست: اعمالِ روزِ انتخاب‌شده/فیلتر فقط وقتی اسکرول
+              // واقعاً می‌ایستد — نه با onPageChanged که با عبور از هر روزِ
+              // میانی هم فایر می‌شد و با setStateِ کلِ صفحه چیپِ «همه» را
+              // مدام فعال/غیرفعال می‌کرد (همان «پریدن»)
+              child: NotificationListener<ScrollEndNotification>(
+                onNotification: (notification) {
+                  final page = _dayPageController.page?.round();
+                  if (page != null) {
+                    setState(() {
+                      _selectedDay = days[page];
+                      _filter = null;
+                    });
+                    _scrollPageToTopIfNeeded();
+                  }
+                  return false;
+                },
+                child: PageView.builder(
+                  controller: _dayPageController,
+                  itemCount: days.length,
+                  itemBuilder: (context, i) {
+                    final d = days[i];
+                    final j = Jalali.fromDateTime(d);
+                    final now = DateTime.now();
+                    final isToday =
+                        d.year == now.year &&
+                        d.month == now.month &&
+                        d.day == now.day;
+                    // 🔧 فاصله‌ی زنده از مرکزِ ویوپورت (۰ = دقیقاً وسط) — برایِ
+                    // انیمیشنِ نرمِ بزرگ/کوچک‌شدن حین خودِ اسکرول (نه فقط بعد از تسویه)
+                    final distance = (i - dayPageValue).abs().clamp(0.0, 1.0);
+                    final numberSize = 26 - (26 - 15) * distance;
+                    final weekdaySize = 12 - (12 - 10) * distance;
+                    final isCenter = distance < 0.05;
+                    return GestureDetector(
+                      onTap: () => _dayPageController.animateToPage(
+                        i,
+                        duration: const Duration(milliseconds: 250),
+                        curve: Curves.easeOut,
                       ),
-                    ),
-                    // const SizedBox(height: 1),
-                    Text(
-                      _weekdays[j.weekDay - 1],
-                      style: TextStyle(
-                        fontSize: weekdaySize,
-                        fontWeight: isCenter
-                            ? FontWeight.w600
-                            : FontWeight.normal,
-                        color: isCenter
-                            ? (isToday ? c.primary : c.textStrong)
-                            : c.textMuted.withValues(alpha: 0.5),
+                      behavior: HitTestBehavior.opaque,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            toPersianDigits(j.day),
+                            style: TextStyle(
+                              fontSize: numberSize,
+                              fontWeight: isCenter
+                                  ? FontWeight.bold
+                                  : FontWeight.w500,
+                              color: isCenter
+                                  ? c.textStrong
+                                  : c.textMuted.withValues(alpha: 0.55),
+                            ),
+                          ),
+                          // const SizedBox(height: 1),
+                          Text(
+                            _weekdays[j.weekDay - 1],
+                            style: TextStyle(
+                              fontSize: weekdaySize,
+                              fontWeight: isCenter
+                                  ? FontWeight.w600
+                                  : FontWeight.normal,
+                              color: isCenter
+                                  ? (isToday ? c.primary : c.textStrong)
+                                  : c.textMuted.withValues(alpha: 0.5),
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                  ],
+                    );
+                  },
                 ),
-              );
-            },
-          ),
-        ),
-      ],
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -542,9 +632,12 @@ class DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  // ── هدر لیست کار: فیلترها + عنوان «همه کارها» ──
+  // ── هدر لیست کار: عنوان «همه کارها» در یک ردیف، فیلترها در ردیفِ بعد ──
+  // 🔧 طبق درخواست: چون ۴ چیپ کنارِ عنوان جا نمی‌شد، عنوان و چیپ‌ها به
+  // دو ردیفِ جدا تقسیم شدند
   Widget _buildTaskListHeader(AppColors c) {
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           'همه کارها',
@@ -554,13 +647,23 @@ class DashboardPageState extends State<DashboardPage> {
             color: c.textStrong,
           ),
         ),
-        const Spacer(),
-        // 🔧 اصلاح طبق درخواست: ترتیب از راست = همه، امروز، عقب‌افتاده
-        _filterChip(c, 'همه'),
-        const SizedBox(width: 8),
-        _filterChip(c, 'امروز'),
-        const SizedBox(width: 8),
-        _filterChip(c, 'عقب افتاده'),
+        const SizedBox(height: 10),
+        // 🔧 طبق درخواست: چپ‌چین — centerEnd در راست‌به‌چپ یعنی چپ
+        Align(
+          alignment: AlignmentDirectional.centerEnd,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _filterChip(c, 'همه'),
+              const SizedBox(width: 8),
+              _filterChip(c, 'امروز'),
+              const SizedBox(width: 8),
+              _filterChip(c, 'عقب افتاده'),
+              const SizedBox(width: 8),
+              _filterChip(c, 'منتخب'),
+            ],
+          ),
+        ),
       ],
     );
   }
@@ -634,9 +737,8 @@ class DashboardPageState extends State<DashboardPage> {
           borderRadius: BorderRadius.circular(16),
         ),
         // 🔧 طبق درخواست: عنوان + نشان‌ها + سه‌نقطه همه در ردیفِ اول؛
-        // موعدِ انجام دقیقاً زیرِ همین ردیف (زیرِ عنوان) می‌آید و با
-        // هیچ‌چیزِ دیگری هم‌ردیف نمی‌شود — دقیقاً هم‌راستا با کارتِ
-        // صفحه‌ی «کارها»
+        // موعدِ انجام زیرِ همین ردیف، سمتِ چپ (زیرِ بج‌هایِ وضعیت) می‌آید —
+        // دقیقاً هم‌راستا با کارتِ صفحه‌ی «کارها»
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -680,7 +782,9 @@ class DashboardPageState extends State<DashboardPage> {
                 ),
               ],
             ),
-            taskDueRow(c, task),
+            // 🔧 آیکنِ سه‌نقطه‌ی این صفحه ۲۰ پیکسل است (نه ۱۸ مثلِ کارتِ
+            // مشترک)، پس برای هم‌راستاییِ دقیق زیرِ بج‌ها همین را می‌دهیم
+            taskDueRow(c, task, trailingIconWidth: 28),
           ],
         ),
       ),

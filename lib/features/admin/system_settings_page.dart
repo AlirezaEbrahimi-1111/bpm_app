@@ -7,6 +7,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/widgets/app_snack.dart';
 import '../../core/widgets/app_switch.dart';
 import '../../core/utils/persian_number.dart';
+import '../shell/widgets/app_bottom_nav.dart';
 
 const _groupIcons = {
   'attendance': Icons.calendar_month_rounded,
@@ -186,6 +187,21 @@ class _SystemSettingsPageState extends State<SystemSettingsPage> {
   @override
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
+    return AppShellOverlays(
+      child: Stack(
+        children: [
+          _settingsScaffold(c),
+          Positioned(
+            left: 16,
+            bottom: MediaQuery.of(context).padding.bottom + 70,
+            child: _saveActionButton(c),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _settingsScaffold(AppColors c) {
     return Scaffold(
       backgroundColor: c.bgPage,
       appBar: AppBar(
@@ -238,61 +254,37 @@ class _SystemSettingsPageState extends State<SystemSettingsPage> {
                 ),
               ),
             )
-          : Column(
-              children: [
-                Expanded(
-                  child: ListView(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-                    children: _groups.entries
-                        .map((e) => _groupCard(c, e.key, e.value))
-                        .toList(),
-                  ),
-                ),
-                Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    16,
-                    0,
-                    16,
-                    12 + MediaQuery.of(context).padding.bottom,
-                  ),
-                  // 🔧 طبق درخواست: بزرگ و تمام‌عرض، مثلِ دکمه‌ی «ارجاع به ...»
-                  child: SizedBox(
-                    width: double.infinity,
-                    height: 50,
-                    child: ElevatedButton(
-                      onPressed: _isSaving ? null : _save,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: c.primary,
-                        disabledBackgroundColor: c.primary.withValues(
-                          alpha: 0.4,
-                        ),
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: _isSaving
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                color: Colors.white,
-                                strokeWidth: 2,
-                              ),
-                            )
-                          : const Text(
-                              'ذخیره تنظیمات',
-                              style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                    ),
-                  ),
-                ),
-              ],
+          : ListView(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+              children: _groups.entries
+                  .map((e) => _groupCard(c, e.key, e.value))
+                  .toList(),
             ),
+      // 🔧 طبق درخواست: نوارِ ناوبریِ پایین در همه‌ی صفحاتِ اپ — چون این
+      // صفحه با Get.to باز می‌شود، Scaffoldِ پوسته‌ی اصلی را نمی‌بیند.
+      floatingActionButton: const AppCreateTaskFab(),
+      floatingActionButtonLocation: const LoweredDockedFabLocation(),
+      bottomNavigationBar: const AppBottomNav(),
+    );
+  }
+
+  Widget _saveActionButton(AppColors c) {
+    return GestureDetector(
+      onTap: _isSaving ? null : _save,
+      child: Container(
+        width: 62,
+        height: 62,
+        decoration: BoxDecoration(color: c.primary, shape: BoxShape.circle),
+        child: _isSaving
+            ? const Padding(
+                padding: EdgeInsets.all(18),
+                child: CircularProgressIndicator(
+                  color: Colors.white,
+                  strokeWidth: 2.4,
+                ),
+              )
+            : const Icon(Icons.check_rounded, color: Colors.white, size: 30),
+      ),
     );
   }
 

@@ -257,23 +257,34 @@ String? taskDueLabel(dynamic task) {
   }
 }
 
-/// ردیفِ «آیکن تقویم + تاریخِ موعد» — همه‌جا دقیقاً زیرِ عنوان و راست‌چین
-/// (در راست‌به‌چپ، start یعنی سمتِ راست).
-Widget taskDueRow(AppColors c, dynamic task) {
+/// ردیفِ «آیکن تقویم + تاریخِ موعد» — دقیقاً زیرِ بج‌هایِ وضعیت (سمتِ چپ).
+///
+/// ردیفِ اولِ هر کارت این اسکلت را دارد: [عنوانِ منبسط‌شونده] [بج‌ها]
+/// [آیکنِ سه‌نقطه]. همین اسکلت این‌جا هم تکرار می‌شود (Expanded خالی به‌جایِ
+/// عنوان، جعبه‌ی خالیِ هم‌عرضِ آیکن به‌جایِ آن) تا محتوای وسط — یعنی موعد —
+/// دقیقاً زیرِ بج‌ها بیفتد، نه زیرِ آیکنِ سه‌نقطه.
+/// [trailingIconWidth] باید با عرضِ همان آیکنِ سه‌نقطه‌ی هر صفحه یکی باشد.
+Widget taskDueRow(AppColors c, dynamic task, {double trailingIconWidth = 24}) {
   final label = taskDueLabel(task);
   if (label == null) return const SizedBox.shrink();
   return Padding(
     padding: const EdgeInsets.only(top: 8),
-    child: Align(
-      alignment: AlignmentDirectional.centerStart,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.calendar_today_outlined, size: 12, color: c.textMuted),
-          const SizedBox(width: 4),
-          Text(label, style: TextStyle(fontSize: 11.5, color: c.textMuted)),
-        ],
-      ),
+    child: Row(
+      children: [
+        const Expanded(child: SizedBox.shrink()),
+        // 🔧 هم‌عرض با فاصله‌ی بینِ عنوان و بج‌ها در ردیفِ اول (SizedBox
+        // width:8 همان‌جا)، تا این محتوا دقیقاً زیرِ بج‌ها بیفتد
+        const SizedBox(width: 8),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.calendar_today_outlined, size: 12, color: c.textMuted),
+            const SizedBox(width: 4),
+            Text(label, style: TextStyle(fontSize: 11.5, color: c.textMuted)),
+          ],
+        ),
+        SizedBox(width: trailingIconWidth),
+      ],
     ),
   );
 }

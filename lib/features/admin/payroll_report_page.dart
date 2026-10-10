@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/persian_number.dart';
+import '../shell/widgets/app_bottom_nav.dart';
 
 const _jalaliMonths = [
   'فروردین',
@@ -227,156 +228,167 @@ class _PayrollReportPageState extends State<PayrollReportPage> {
   @override
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
-    return Scaffold(
-      backgroundColor: c.bgPage,
-      appBar: AppBar(
+    return AppShellOverlays(
+      child: Scaffold(
         backgroundColor: c.bgPage,
-        elevation: 0,
-        centerTitle: true,
-        iconTheme: IconThemeData(color: c.textStrong),
-        title: Text(
-          'گزارش حقوق پرسنل',
-          style: TextStyle(
-            color: c.textStrong,
-            fontWeight: FontWeight.bold,
-            fontSize: 15,
+        appBar: AppBar(
+          backgroundColor: c.bgPage,
+          elevation: 0,
+          centerTitle: true,
+          iconTheme: IconThemeData(color: c.textStrong),
+          title: Text(
+            'گزارش حقوق پرسنل',
+            style: TextStyle(
+              color: c.textStrong,
+              fontWeight: FontWeight.bold,
+              fontSize: 15,
+            ),
+          ),
+          leading: IconButton(
+            icon: Transform.rotate(
+              angle: math.pi,
+              child: const Icon(Icons.arrow_forward_ios_rounded, size: 20),
+            ),
+            onPressed: () => Get.back(),
           ),
         ),
-        leading: IconButton(
-          icon: Transform.rotate(
-            angle: math.pi,
-            child: const Icon(Icons.arrow_forward_ios_rounded, size: 20),
-          ),
-          onPressed: () => Get.back(),
-        ),
-      ),
-      body: _isLoading
-          ? Center(child: CircularProgressIndicator(color: c.primary))
-          : _error != null
-          ? Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.error_outline_rounded,
-                      size: 48,
-                      color: c.textMuted,
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      _error!,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: c.textMuted),
-                    ),
-                    const SizedBox(height: 16),
-                    TextButton(
-                      onPressed: () => _load(),
-                      child: const Text('تلاش مجدد'),
-                    ),
-                  ],
-                ),
-              ),
-            )
-          : RefreshIndicator(
-              color: c.primary,
-              onRefresh: () => _load(jy: _jy, jm: _jm),
-              child: ListView(
-                padding: EdgeInsets.fromLTRB(
-                  16,
-                  12,
-                  16,
-                  24 + MediaQuery.of(context).padding.bottom,
-                ),
-                children: [
-                  // ── انتخابگرِ ماه ──
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: c.surface,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: c.borderSoft),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.chevron_left_rounded),
-                          color: c.textMuted,
-                          onPressed: () => _changeMonth(-1),
-                        ),
-                        Text(
-                          (_jy != null && _jm != null)
-                              ? '${_jalaliMonths[_jm! - 1]} ${toPersianDigits(_jy!)}'
-                              : '—',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color: c.textStrong,
-                          ),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.chevron_right_rounded),
-                          color: c.textMuted,
-                          onPressed: () => _changeMonth(1),
-                        ),
-                      ],
-                    ),
+        body: _isLoading
+            ? Center(child: CircularProgressIndicator(color: c.primary))
+            : _error != null
+            ? Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.error_outline_rounded,
+                        size: 48,
+                        color: c.textMuted,
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        _error!,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: c.textMuted),
+                      ),
+                      const SizedBox(height: 16),
+                      TextButton(
+                        onPressed: () => _load(),
+                        child: const Text('تلاش مجدد'),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 14),
-                  // ── جمع کل ──
-                  if (_totals != null)
+                ),
+              )
+            : RefreshIndicator(
+                color: c.primary,
+                onRefresh: () => _load(jy: _jy, jm: _jm),
+                child: ListView(
+                  padding: EdgeInsets.fromLTRB(
+                    16,
+                    12,
+                    16,
+                    24 + MediaQuery.of(context).padding.bottom,
+                  ),
+                  children: [
+                    // ── انتخابگرِ ماه ──
                     Container(
-                      padding: const EdgeInsets.all(14),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
-                        color: c.primary.withValues(alpha: 0.08),
+                        color: c.surface,
                         borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: c.borderSoft),
                       ),
                       child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Expanded(
-                            child: _totalItem(
-                              c,
-                              'جمع حقوق پایه',
-                              _fmtToman(_totals!['base_salary']),
+                          IconButton(
+                            icon: const Icon(Icons.chevron_left_rounded),
+                            color: c.textMuted,
+                            onPressed: () => _changeMonth(-1),
+                          ),
+                          Text(
+                            (_jy != null && _jm != null)
+                                ? '${_jalaliMonths[_jm! - 1]} ${toPersianDigits(_jy!)}'
+                                : '—',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: c.textStrong,
                             ),
                           ),
-                          Container(width: 1, height: 32, color: c.borderSoft),
-                          Expanded(
-                            child: _totalItem(
-                              c,
-                              'جمع پرداختی',
-                              _fmtToman(_totals!['salary_received']),
-                            ),
+                          IconButton(
+                            icon: const Icon(Icons.chevron_right_rounded),
+                            color: c.textMuted,
+                            onPressed: () => _changeMonth(1),
                           ),
                         ],
                       ),
                     ),
-                  const SizedBox(height: 14),
-                  Text(
-                    toPersianDigits('${_rows.length} نفر'),
-                    style: TextStyle(fontSize: 12, color: c.textMuted),
-                  ),
-                  const SizedBox(height: 8),
-                  if (_rows.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 60),
-                      child: Center(
-                        child: Text(
-                          'داده‌ای برای این ماه نیست',
-                          style: TextStyle(color: c.textMuted),
+                    const SizedBox(height: 14),
+                    // ── جمع کل ──
+                    if (_totals != null)
+                      Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: c.primary.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: _totalItem(
+                                c,
+                                'جمع حقوق پایه',
+                                _fmtToman(_totals!['base_salary']),
+                              ),
+                            ),
+                            Container(
+                              width: 1,
+                              height: 32,
+                              color: c.borderSoft,
+                            ),
+                            Expanded(
+                              child: _totalItem(
+                                c,
+                                'جمع پرداختی',
+                                _fmtToman(_totals!['salary_received']),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    )
-                  else
-                    ..._rows.map((r) => _row(c, r)),
-                ],
+                    const SizedBox(height: 14),
+                    Text(
+                      toPersianDigits('${_rows.length} نفر'),
+                      style: TextStyle(fontSize: 12, color: c.textMuted),
+                    ),
+                    const SizedBox(height: 8),
+                    if (_rows.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 60),
+                        child: Center(
+                          child: Text(
+                            'داده‌ای برای این ماه نیست',
+                            style: TextStyle(color: c.textMuted),
+                          ),
+                        ),
+                      )
+                    else
+                      ..._rows.map((r) => _row(c, r)),
+                  ],
+                ),
               ),
-            ),
+        // 🔧 طبق درخواست: نوارِ ناوبرییِ پایین در همه‌ی صفحاتِ اپ — چون این صفحه با Get.to باز می‌شود، Scaffoldِ پوسته‌ی اصلی را نمی‌بیند
+        // 🔧 طبق درخواست: دکمهِ شناورِ افزودنِ کار هم مثلِ پوستهِ اصلی
+        floatingActionButton: const AppCreateTaskFab(),
+        floatingActionButtonLocation: const LoweredDockedFabLocation(),
+        bottomNavigationBar: const AppBottomNav(),
+      ),
     );
   }
 

@@ -7,6 +7,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/utils/persian_number.dart';
 import '../../core/widgets/app_snack.dart';
 import '../../core/widgets/scrollable_chip_row.dart';
+import '../shell/widgets/app_bottom_nav.dart';
 
 /// «نظارت بر روتین‌های فعال» — پورتِ pages/workflow-monitor.php برایِ
 /// موبایل. آدرسِ داده دقیقاً همان API نسخه‌ی وب است:
@@ -241,217 +242,224 @@ class _WorkflowMonitorPageState extends State<WorkflowMonitorPage> {
   @override
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
-    return Scaffold(
-      backgroundColor: c.bgPage,
-      appBar: AppBar(
+    return AppShellOverlays(
+      child: Scaffold(
         backgroundColor: c.bgPage,
-        elevation: 0,
-        centerTitle: true,
-        iconTheme: IconThemeData(color: c.textStrong),
-        title: Text(
-          'نظارت بر روتین‌های فعال',
-          style: TextStyle(
-            color: c.textStrong,
-            fontWeight: FontWeight.bold,
-            fontSize: 14.5,
+        appBar: AppBar(
+          backgroundColor: c.bgPage,
+          elevation: 0,
+          centerTitle: true,
+          iconTheme: IconThemeData(color: c.textStrong),
+          title: Text(
+            'نظارت بر روتین‌های فعال',
+            style: TextStyle(
+              color: c.textStrong,
+              fontWeight: FontWeight.bold,
+              fontSize: 14.5,
+            ),
+          ),
+          leading: IconButton(
+            icon: Transform.rotate(
+              angle: math.pi,
+              child: const Icon(Icons.arrow_forward_ios_rounded, size: 20),
+            ),
+            onPressed: () => Get.back(),
           ),
         ),
-        leading: IconButton(
-          icon: Transform.rotate(
-            angle: math.pi,
-            child: const Icon(Icons.arrow_forward_ios_rounded, size: 20),
-          ),
-          onPressed: () => Get.back(),
-        ),
-      ),
-      body: _isLoading
-          ? Center(child: CircularProgressIndicator(color: c.primary))
-          : _error != null
-          ? Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
+        body: _isLoading
+            ? Center(child: CircularProgressIndicator(color: c.primary))
+            : _error != null
+            ? Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.error_outline_rounded,
+                        size: 48,
+                        color: c.textMuted,
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        _error!,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: c.textMuted),
+                      ),
+                      const SizedBox(height: 16),
+                      TextButton(
+                        onPressed: _load,
+                        child: const Text('تلاش مجدد'),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            : RefreshIndicator(
+                color: c.primary,
+                onRefresh: _load,
+                child: ListView(
+                  padding: EdgeInsets.fromLTRB(
+                    16,
+                    12,
+                    16,
+                    24 + MediaQuery.of(context).padding.bottom,
+                  ),
                   children: [
-                    Icon(
-                      Icons.error_outline_rounded,
-                      size: 48,
-                      color: c.textMuted,
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _statCard(
+                            c,
+                            'تعداد',
+                            toPersianDigits(_workflows.length),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _statCard(
+                            c,
+                            'میانگین پیشرفت',
+                            toPersianDigits('$_avgProgress٪'),
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 12),
-                    Text(
-                      _error!,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: c.textMuted),
+                    const SizedBox(height: 14),
+                    TextField(
+                      onChanged: (v) => setState(() => _query = v),
+                      style: TextStyle(color: c.textStrong, fontSize: 14),
+                      decoration: InputDecoration(
+                        hintText: 'جستجو بر اساسِ عنوان یا شناسه...',
+                        hintStyle: TextStyle(color: c.textMuted, fontSize: 13),
+                        prefixIcon: Icon(
+                          Icons.search_rounded,
+                          color: c.textMuted,
+                        ),
+                        filled: true,
+                        fillColor: c.surface,
+                        contentPadding: const EdgeInsets.symmetric(vertical: 4),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                          borderSide: BorderSide(color: c.borderSoft),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                          borderSide: BorderSide(color: c.borderSoft),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                          borderSide: BorderSide(color: c.primary, width: 1.5),
+                        ),
+                      ),
                     ),
-                    const SizedBox(height: 16),
-                    TextButton(
-                      onPressed: _load,
-                      child: const Text('تلاش مجدد'),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      height: 36,
+                      child: ScrollableChipRow(
+                        children: [
+                          _pill(c, 'all', 'همه'),
+                          _pill(c, 'active', 'جاری'),
+                          _pill(c, 'in_progress', 'در حال اجرا'),
+                          _pill(c, 'delayed', 'تأخیردار'),
+                          _pill(c, 'completed', 'تکمیل‌شده'),
+                          _pill(c, 'cancelled', 'لغوشده'),
+                        ],
+                      ),
                     ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        if (_routines.isNotEmpty)
+                          Expanded(
+                            child: DropdownButtonFormField<String>(
+                              initialValue: _routineId,
+                              isExpanded: true,
+                              dropdownColor: c.surface,
+                              style: TextStyle(
+                                color: c.textStrong,
+                                fontSize: 12.5,
+                              ),
+                              decoration: InputDecoration(
+                                isDense: true,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 8,
+                                ),
+                                filled: true,
+                                fillColor: c.surface,
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide: BorderSide(color: c.borderSoft),
+                                ),
+                              ),
+                              items: [
+                                const DropdownMenuItem(
+                                  value: null,
+                                  child: Text('همه روتین‌ها'),
+                                ),
+                                ..._routines.map(
+                                  (r) => DropdownMenuItem(
+                                    value: r['id'].toString(),
+                                    child: Text(
+                                      r['name']?.toString() ?? '',
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                              onChanged: (v) => setState(() => _routineId = v),
+                            ),
+                          ),
+                        const SizedBox(width: 8),
+                        GestureDetector(
+                          onTap: () => setState(() => _onlyMine = !_onlyMine),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
+                            decoration: BoxDecoration(
+                              color: _onlyMine ? c.primary : c.surface,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: _onlyMine ? c.primary : c.borderSoft,
+                              ),
+                            ),
+                            child: Text(
+                              'روتین‌های من',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: _onlyMine ? Colors.white : c.textMuted,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    if (_filtered.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 60),
+                        child: Center(
+                          child: Text(
+                            'روتینی یافت نشد',
+                            style: TextStyle(color: c.textMuted),
+                          ),
+                        ),
+                      )
+                    else
+                      ..._filtered.map((w) => _workflowCard(c, w)),
                   ],
                 ),
               ),
-            )
-          : RefreshIndicator(
-              color: c.primary,
-              onRefresh: _load,
-              child: ListView(
-                padding: EdgeInsets.fromLTRB(
-                  16,
-                  12,
-                  16,
-                  24 + MediaQuery.of(context).padding.bottom,
-                ),
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _statCard(
-                          c,
-                          'تعداد',
-                          toPersianDigits(_workflows.length),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: _statCard(
-                          c,
-                          'میانگین پیشرفت',
-                          toPersianDigits('$_avgProgress٪'),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-                  TextField(
-                    onChanged: (v) => setState(() => _query = v),
-                    style: TextStyle(color: c.textStrong, fontSize: 14),
-                    decoration: InputDecoration(
-                      hintText: 'جستجو بر اساسِ عنوان یا شناسه...',
-                      hintStyle: TextStyle(color: c.textMuted, fontSize: 13),
-                      prefixIcon: Icon(
-                        Icons.search_rounded,
-                        color: c.textMuted,
-                      ),
-                      filled: true,
-                      fillColor: c.surface,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 4),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: BorderSide(color: c.borderSoft),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: BorderSide(color: c.borderSoft),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: BorderSide(color: c.primary, width: 1.5),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  SizedBox(
-                    height: 36,
-                    child: ScrollableChipRow(
-                      children: [
-                        _pill(c, 'all', 'همه'),
-                        _pill(c, 'active', 'جاری'),
-                        _pill(c, 'in_progress', 'در حال اجرا'),
-                        _pill(c, 'delayed', 'تأخیردار'),
-                        _pill(c, 'completed', 'تکمیل‌شده'),
-                        _pill(c, 'cancelled', 'لغوشده'),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      if (_routines.isNotEmpty)
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            initialValue: _routineId,
-                            isExpanded: true,
-                            dropdownColor: c.surface,
-                            style: TextStyle(
-                              color: c.textStrong,
-                              fontSize: 12.5,
-                            ),
-                            decoration: InputDecoration(
-                              isDense: true,
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 8,
-                              ),
-                              filled: true,
-                              fillColor: c.surface,
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(10),
-                                borderSide: BorderSide(color: c.borderSoft),
-                              ),
-                            ),
-                            items: [
-                              const DropdownMenuItem(
-                                value: null,
-                                child: Text('همه روتین‌ها'),
-                              ),
-                              ..._routines.map(
-                                (r) => DropdownMenuItem(
-                                  value: r['id'].toString(),
-                                  child: Text(
-                                    r['name']?.toString() ?? '',
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ),
-                            ],
-                            onChanged: (v) => setState(() => _routineId = v),
-                          ),
-                        ),
-                      const SizedBox(width: 8),
-                      GestureDetector(
-                        onTap: () => setState(() => _onlyMine = !_onlyMine),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 10,
-                          ),
-                          decoration: BoxDecoration(
-                            color: _onlyMine ? c.primary : c.surface,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                              color: _onlyMine ? c.primary : c.borderSoft,
-                            ),
-                          ),
-                          child: Text(
-                            'روتین‌های من',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: _onlyMine ? Colors.white : c.textMuted,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-                  if (_filtered.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 60),
-                      child: Center(
-                        child: Text(
-                          'روتینی یافت نشد',
-                          style: TextStyle(color: c.textMuted),
-                        ),
-                      ),
-                    )
-                  else
-                    ..._filtered.map((w) => _workflowCard(c, w)),
-                ],
-              ),
-            ),
+        // 🔧 طبق درخواست: نوارِ ناوبرییِ پایین در همه‌ی صفحاتِ اپ — چون این صفحه با Get.to باز می‌شود، Scaffoldِ پوسته‌ی اصلی را نمی‌بیند
+        // 🔧 طبق درخواست: دکمهِ شناورِ افزودنِ کار هم مثلِ پوستهِ اصلی
+        floatingActionButton: const AppCreateTaskFab(),
+        floatingActionButtonLocation: const LoweredDockedFabLocation(),
+        bottomNavigationBar: const AppBottomNav(),
+      ),
     );
   }
 

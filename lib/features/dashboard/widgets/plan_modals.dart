@@ -53,24 +53,18 @@ bool _sameDay(DateTime? a, DateTime b) =>
 
 // ── چگالیِ کار: ۰=بدون‌وظیفه، ۱-۵=کم‌کار، ۶-۱۰=متوسط، ۱۱+=پرکار ──
 int _densityTier(int n) => n == 0 ? 0 : (n <= 5 ? 1 : (n <= 10 ? 2 : 3));
-// 🔧 طبق درخواست: پس‌زمینه‌ی روزِ «بدون وظیفه» همیشه سفیدِ کامل است —
-// در هر دو تم، نه فقط روشن (قبلاً با c.surface در تمِ تاریک رنگِ سطحِ
-// تیره می‌گرفت)
 const _densityBg = [
-  Colors.white,
+  null,
   Color(0xFFECE3FF),
   Color(0xFFCCB4FF),
   Color(0xFF8E57FE),
 ];
 const _densityLabels = ['بدون وظیفه', 'کم‌کار', 'متوسط', 'پرکار'];
 
-Color _densityBgFor(AppColors c, int tier) => _densityBg[tier];
-// 🔧 چون پس‌زمینه‌ی تیرِ ۰ همیشه سفید است (در هر دو تم)، متنش هم باید
-// همیشه همون خاکستریِ ملایمِ ثابت باشد تا رویِ سفید خوانا بماند — نه
-// سفیدِ تمامِ تمِ تاریک (که رویِ پس‌زمینه‌ی سفید نامرئی می‌شد)
+Color _densityBgFor(AppColors c, int tier) => _densityBg[tier] ?? c.surface;
 Color _densityTextFor(AppColors c, int tier) {
   if (tier == 3) return Colors.white;
-  if (tier == 0) return const Color(0xFF64748B);
+  if (tier == 0) return c.textMuted;
   return const Color(0xFF3B1D73);
 }
 
@@ -507,6 +501,17 @@ class _WeekPlanSheetState extends State<_WeekPlanSheet> {
                             Navigator.of(context).pop();
                             widget.onDaySelected(day);
                           },
+                          // 🔧 طبق درخواست: مثلِ مودالِ ماه، لمسِ طولانیِ یک
+                          // روز، لیستِ کارهایِ همان روز را به‌صورتِ شیت باز می‌کند
+                          onLongPress: () => _showDayTasksModal(
+                            context,
+                            day: day,
+                            tasks: widget.tasks,
+                            onSeeAll: () {
+                              Navigator.of(context).pop();
+                              widget.onSeeAll();
+                            },
+                          ),
                           child: Container(
                             margin: const EdgeInsets.symmetric(horizontal: 2),
                             padding: const EdgeInsets.symmetric(
@@ -544,10 +549,12 @@ class _WeekPlanSheetState extends State<_WeekPlanSheet> {
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     fontSize: 9,
-                                    color: _densityTextFor(
-                                      c,
-                                      tier,
-                                    ).withValues(alpha: 0.8),
+                                    color: tier == 0
+                                        ? _densityTextFor(c, tier)
+                                        : _densityTextFor(
+                                            c,
+                                            tier,
+                                          ).withValues(alpha: 0.8),
                                   ),
                                 ),
                                 const SizedBox(height: 6),
@@ -596,10 +603,12 @@ class _WeekPlanSheetState extends State<_WeekPlanSheet> {
                                       '—',
                                       textAlign: TextAlign.center,
                                       style: TextStyle(
-                                        color: _densityTextFor(
-                                          c,
-                                          tier,
-                                        ).withValues(alpha: 0.5),
+                                        color: tier == 0
+                                            ? _densityTextFor(c, tier)
+                                            : _densityTextFor(
+                                                c,
+                                                tier,
+                                              ).withValues(alpha: 0.5),
                                         fontSize: 12,
                                       ),
                                     ),
@@ -656,35 +665,58 @@ class _WeekPlanSheetState extends State<_WeekPlanSheet> {
 
   Widget _weekNav(AppColors c) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
+      // 🔧 طبق درخواست: مستطیلِ بدونِ گردیِ گوشه، و عرضِ کمتر (هم پدینگ و
+      // هم اندازه‌ی ناحیه‌ی لمسیِ دکمه‌های فلش کوچک‌تر شد) تا متن به لبه‌ی
+      // کادر نزدیک‌تر باشد
+      padding: const EdgeInsets.symmetric(horizontal: 8),
       decoration: BoxDecoration(
         color: c.surface,
-        borderRadius: BorderRadius.circular(20),
         border: Border.all(color: c.borderSoft),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           IconButton(
-            icon: const Icon(Icons.chevron_left_rounded, size: 18),
+            icon: const Icon(Icons.chevron_left_rounded, size: 17),
             color: c.textMuted,
             padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+            // 🔧 رفعِ باگِ اصلی: IconButton حتی با constraints دستی، یک
+            // حداقلِ نامرئیِ ۴۸×۴۸ برایِ تاچ‌تارگت رزرو می‌کند؛ همین باعثِ
+            // فاصله‌ی زیادِ بینِ فلش و لبه‌ی کادر بود. این خط آن حداقل را
+            // خاموش می‌کند تا واقعاً به‌اندازه‌ی constraints جمع شود
+            style: IconButton.styleFrom(
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            // 🔧 اندازه‌ی خودِ آیکنِ فلش (size) ثابت/خوانا می‌ماند؛ فقط
+            // ناحیه‌ی دورش (پس‌زمینه/کادر) تنگ‌تر می‌شود
+            constraints: const BoxConstraints(minWidth: 22, minHeight: 36),
             onPressed: () => setState(() => _offset -= 1),
           ),
-          Text(
-            _label,
-            style: TextStyle(
-              fontSize: 11.5,
-              fontWeight: FontWeight.w600,
-              color: c.textStrong,
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Text(
+              _label,
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+                color: c.textStrong,
+              ),
             ),
           ),
           IconButton(
-            icon: const Icon(Icons.chevron_right_rounded, size: 18),
+            icon: const Icon(Icons.chevron_right_rounded, size: 17),
             color: c.textMuted,
             padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+            // 🔧 رفعِ باگِ اصلی: IconButton حتی با constraints دستی، یک
+            // حداقلِ نامرئیِ ۴۸×۴۸ برایِ تاچ‌تارگت رزرو می‌کند؛ همین باعثِ
+            // فاصله‌ی زیادِ بینِ فلش و لبه‌ی کادر بود. این خط آن حداقل را
+            // خاموش می‌کند تا واقعاً به‌اندازه‌ی constraints جمع شود
+            style: IconButton.styleFrom(
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            // 🔧 اندازه‌ی خودِ آیکنِ فلش (size) ثابت/خوانا می‌ماند؛ فقط
+            // ناحیه‌ی دورش (پس‌زمینه/کادر) تنگ‌تر می‌شود
+            constraints: const BoxConstraints(minWidth: 22, minHeight: 26),
             onPressed: () => setState(() => _offset += 1),
           ),
         ],
@@ -813,7 +845,7 @@ class _MonthPlanSheetState extends State<_MonthPlanSheet> {
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 child: Row(
-                  children: _weekdaysFa.reversed
+                  children: _weekdaysFa
                       .map(
                         (d) => Expanded(
                           child: Center(
@@ -917,10 +949,12 @@ class _MonthPlanSheetState extends State<_MonthPlanSheet> {
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
                                   fontSize: 8,
-                                  color: _densityTextFor(
-                                    c,
-                                    tier,
-                                  ).withValues(alpha: 0.85),
+                                  color: tier == 0
+                                      ? _densityTextFor(c, tier)
+                                      : _densityTextFor(
+                                          c,
+                                          tier,
+                                        ).withValues(alpha: 0.85),
                                 ),
                               ),
                             ],
@@ -974,35 +1008,58 @@ class _MonthPlanSheetState extends State<_MonthPlanSheet> {
 
   Widget _monthNav(AppColors c, Jalali monthStart) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
+      // 🔧 طبق درخواست: مستطیلِ بدونِ گردیِ گوشه، و عرضِ کمتر (هم پدینگ و
+      // هم اندازه‌ی ناحیه‌ی لمسیِ دکمه‌های فلش کوچک‌تر شد) تا متن به لبه‌ی
+      // کادر نزدیک‌تر باشد
+      padding: const EdgeInsets.symmetric(horizontal: 8),
       decoration: BoxDecoration(
         color: c.surface,
-        borderRadius: BorderRadius.circular(20),
         border: Border.all(color: c.borderSoft),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           IconButton(
-            icon: const Icon(Icons.chevron_left_rounded, size: 18),
+            icon: const Icon(Icons.chevron_left_rounded, size: 17),
             color: c.textMuted,
             padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+            // 🔧 رفعِ باگِ اصلی: IconButton حتی با constraints دستی، یک
+            // حداقلِ نامرئیِ ۴۸×۴۸ برایِ تاچ‌تارگت رزرو می‌کند؛ همین باعثِ
+            // فاصله‌ی زیادِ بینِ فلش و لبه‌ی کادر بود. این خط آن حداقل را
+            // خاموش می‌کند تا واقعاً به‌اندازه‌ی constraints جمع شود
+            style: IconButton.styleFrom(
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            // 🔧 اندازه‌ی خودِ آیکنِ فلش (size) ثابت/خوانا می‌ماند؛ فقط
+            // ناحیه‌ی دورش (پس‌زمینه/کادر) تنگ‌تر می‌شود
+            constraints: const BoxConstraints(minWidth: 22, minHeight: 36),
             onPressed: () => setState(() => _offset -= 1),
           ),
-          Text(
-            _label(monthStart),
-            style: TextStyle(
-              fontSize: 11.5,
-              fontWeight: FontWeight.w600,
-              color: c.textStrong,
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Text(
+              _label(monthStart),
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+                color: c.textStrong,
+              ),
             ),
           ),
           IconButton(
-            icon: const Icon(Icons.chevron_right_rounded, size: 18),
+            icon: const Icon(Icons.chevron_right_rounded, size: 17),
             color: c.textMuted,
             padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+            // 🔧 رفعِ باگِ اصلی: IconButton حتی با constraints دستی، یک
+            // حداقلِ نامرئیِ ۴۸×۴۸ برایِ تاچ‌تارگت رزرو می‌کند؛ همین باعثِ
+            // فاصله‌ی زیادِ بینِ فلش و لبه‌ی کادر بود. این خط آن حداقل را
+            // خاموش می‌کند تا واقعاً به‌اندازه‌ی constraints جمع شود
+            style: IconButton.styleFrom(
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            // 🔧 اندازه‌ی خودِ آیکنِ فلش (size) ثابت/خوانا می‌ماند؛ فقط
+            // ناحیه‌ی دورش (پس‌زمینه/کادر) تنگ‌تر می‌شود
+            constraints: const BoxConstraints(minWidth: 22, minHeight: 36),
             onPressed: () => setState(() => _offset += 1),
           ),
         ],

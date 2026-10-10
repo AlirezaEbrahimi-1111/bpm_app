@@ -7,6 +7,7 @@ import '../../core/utils/task_labels.dart';
 import '../../core/utils/task_search.dart';
 import '../tasks/task_detail_page.dart';
 import '../tasks/widgets/task_list_card.dart';
+import '../shell/widgets/app_bottom_nav.dart';
 
 /// «نظارت بر کارها» — پورتِ pages/tasks-overview.php برایِ موبایل.
 /// همان API وب: GET /api/tasks/overview.php?include_my_tasks=0|1
@@ -33,6 +34,9 @@ class _TasksOverviewPageState extends State<TasksOverviewPage> {
   String? _filterAssigneeId;
   String? _filterStatus;
   String? _filterType;
+
+  // 🔧 طبق درخواست: این وضعیت‌ها به‌صورتِ پیش‌فرض نمایش داده نشوند
+  static const _hiddenByDefaultStatuses = {'completed', 'rejected', 'stopped'};
 
   @override
   void initState() {
@@ -100,6 +104,12 @@ class _TasksOverviewPageState extends State<TasksOverviewPage> {
     }
     if (_filterStatus != null) {
       list = list.where((t) => t['status'] == _filterStatus).toList();
+    } else {
+      // 🔧 طبق درخواست: پیش‌فرض، کارهایِ تکمیل‌شده/لغوشده/متوقف‌شده نمایش
+      // داده نشوند؛ فقط با انتخابِ دستیِ وضعیت (فیلتر بالا) دیده شوند
+      list = list
+          .where((t) => !_hiddenByDefaultStatuses.contains(t['status']))
+          .toList();
     }
     if (_filterType != null) {
       list = list.where((t) => t['task_type'] == _filterType).toList();
@@ -124,187 +134,197 @@ class _TasksOverviewPageState extends State<TasksOverviewPage> {
   @override
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
-    return Scaffold(
-      backgroundColor: c.bgPage,
-      appBar: AppBar(
+    return AppShellOverlays(
+      child: Scaffold(
         backgroundColor: c.bgPage,
-        elevation: 0,
-        centerTitle: true,
-        iconTheme: IconThemeData(color: c.textStrong),
-        title: Text(
-          'نظارت بر کارها',
-          style: TextStyle(
-            color: c.textStrong,
-            fontWeight: FontWeight.bold,
-            fontSize: 16,
+        appBar: AppBar(
+          backgroundColor: c.bgPage,
+          elevation: 0,
+          centerTitle: true,
+          iconTheme: IconThemeData(color: c.textStrong),
+          title: Text(
+            'نظارت بر کارها',
+            style: TextStyle(
+              color: c.textStrong,
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+            ),
+          ),
+          leading: IconButton(
+            icon: Transform.rotate(
+              angle: math.pi,
+              child: const Icon(Icons.arrow_forward_ios_rounded, size: 20),
+            ),
+            onPressed: () => Get.back(),
           ),
         ),
-        leading: IconButton(
-          icon: Transform.rotate(
-            angle: math.pi,
-            child: const Icon(Icons.arrow_forward_ios_rounded, size: 20),
-          ),
-          onPressed: () => Get.back(),
-        ),
-      ),
-      body: _isLoading
-          ? Center(child: CircularProgressIndicator(color: c.primary))
-          : _error != null
-          ? Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.error_outline_rounded,
-                      size: 48,
-                      color: c.textMuted,
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      _error!,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: c.textMuted),
-                    ),
-                    const SizedBox(height: 16),
-                    TextButton(
-                      onPressed: _load,
-                      child: const Text('تلاش مجدد'),
-                    ),
-                  ],
-                ),
-              ),
-            )
-          : RefreshIndicator(
-              color: c.primary,
-              onRefresh: _load,
-              child: ListView(
-                padding: EdgeInsets.fromLTRB(
-                  16,
-                  12,
-                  16,
-                  24 + MediaQuery.of(context).padding.bottom,
-                ),
-                children: [
-                  if (_userRole == 'manager')
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: Text(
-                        _subordinatesCount == null
-                            ? 'کارهای زیردستان شما'
-                            : 'کارهای زیردستان شما — $_subordinatesCount نفر',
-                        style: TextStyle(fontSize: 12, color: c.textMuted),
-                      ),
-                    ),
-                  TextField(
-                    onChanged: (v) => setState(() => _query = v),
-                    style: TextStyle(color: c.textStrong, fontSize: 14),
-                    decoration: InputDecoration(
-                      hintText: 'جستجو در عنوان، توضیحات، شناسه...',
-                      hintStyle: TextStyle(color: c.textMuted, fontSize: 13),
-                      prefixIcon: Icon(
-                        Icons.search_rounded,
+        body: _isLoading
+            ? Center(child: CircularProgressIndicator(color: c.primary))
+            : _error != null
+            ? Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.error_outline_rounded,
+                        size: 48,
                         color: c.textMuted,
                       ),
-                      filled: true,
-                      fillColor: c.surface,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 4),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: BorderSide(color: c.borderSoft),
+                      const SizedBox(height: 12),
+                      Text(
+                        _error!,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: c.textMuted),
                       ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: BorderSide(color: c.borderSoft),
+                      const SizedBox(height: 16),
+                      TextButton(
+                        onPressed: _load,
+                        child: const Text('تلاش مجدد'),
                       ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: BorderSide(color: c.primary, width: 1.5),
-                      ),
-                    ),
+                    ],
                   ),
-                  const SizedBox(height: 10),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: () => _showFilterSheet(c),
-                      icon: Icon(
-                        _hasActiveFilters
-                            ? Icons.filter_alt_rounded
-                            : Icons.filter_alt_outlined,
-                        size: 18,
-                        color: c.primary,
-                      ),
-                      label: Text(
-                        _hasActiveFilters ? 'فیلتر (فعال)' : 'فیلتر',
-                        style: TextStyle(
-                          color: c.primary,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 13.5,
-                        ),
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        side: BorderSide(
-                          color: c.primary.withValues(alpha: 0.5),
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 13),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                      ),
-                    ),
+                ),
+              )
+            : RefreshIndicator(
+                color: c.primary,
+                onRefresh: _load,
+                child: ListView(
+                  padding: EdgeInsets.fromLTRB(
+                    16,
+                    12,
+                    16,
+                    24 + MediaQuery.of(context).padding.bottom,
                   ),
-                  // 🔧 طبق وب: فقط برایِ manager معنا دارد (supervisor خودش
-                  // همه‌چیز را می‌بیند)
-                  if (_userRole == 'manager') ...[
-                    const SizedBox(height: 10),
-                    GestureDetector(
-                      onTap: () {
-                        setState(() => _includeMyTasks = !_includeMyTasks);
-                        _load();
-                      },
-                      child: Row(
-                        children: [
-                          Checkbox(
-                            value: _includeMyTasks,
-                            onChanged: (v) {
-                              setState(() => _includeMyTasks = v ?? true);
-                              _load();
-                            },
-                            activeColor: c.primary,
-                          ),
-                          Text(
-                            'نمایش کارهای من',
-                            style: TextStyle(fontSize: 13, color: c.textStrong),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 12),
-                  if (_filtered.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 60),
-                      child: Center(
+                  children: [
+                    if (_userRole == 'manager')
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
                         child: Text(
-                          'کاری یافت نشد',
-                          style: TextStyle(color: c.textMuted, fontSize: 14),
+                          _subordinatesCount == null
+                              ? 'کارهای زیردستان شما'
+                              : 'کارهای زیردستان شما — $_subordinatesCount نفر',
+                          style: TextStyle(fontSize: 12, color: c.textMuted),
                         ),
                       ),
-                    )
-                  else
-                    ..._filtered.map(
-                      (t) => TaskListCard(
-                        task: t,
-                        showPeople: true,
-                        onTap: () => _openDetail(t),
-                        onChanged: _load,
+                    TextField(
+                      onChanged: (v) => setState(() => _query = v),
+                      style: TextStyle(color: c.textStrong, fontSize: 14),
+                      decoration: InputDecoration(
+                        hintText: 'جستجو در عنوان، توضیحات، شناسه...',
+                        hintStyle: TextStyle(color: c.textMuted, fontSize: 13),
+                        prefixIcon: Icon(
+                          Icons.search_rounded,
+                          color: c.textMuted,
+                        ),
+                        filled: true,
+                        fillColor: c.surface,
+                        contentPadding: const EdgeInsets.symmetric(vertical: 4),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                          borderSide: BorderSide(color: c.borderSoft),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                          borderSide: BorderSide(color: c.borderSoft),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                          borderSide: BorderSide(color: c.primary, width: 1.5),
+                        ),
                       ),
                     ),
-                ],
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: () => _showFilterSheet(c),
+                        icon: Icon(
+                          _hasActiveFilters
+                              ? Icons.filter_alt_rounded
+                              : Icons.filter_alt_outlined,
+                          size: 18,
+                          color: c.primary,
+                        ),
+                        label: Text(
+                          _hasActiveFilters ? 'فیلتر (فعال)' : 'فیلتر',
+                          style: TextStyle(
+                            color: c.primary,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13.5,
+                          ),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          side: BorderSide(
+                            color: c.primary.withValues(alpha: 0.5),
+                          ),
+                          padding: const EdgeInsets.symmetric(vertical: 13),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                      ),
+                    ),
+                    // 🔧 طبق وب: فقط برایِ manager معنا دارد (supervisor خودش
+                    // همه‌چیز را می‌بیند)
+                    if (_userRole == 'manager') ...[
+                      const SizedBox(height: 10),
+                      GestureDetector(
+                        onTap: () {
+                          setState(() => _includeMyTasks = !_includeMyTasks);
+                          _load();
+                        },
+                        child: Row(
+                          children: [
+                            Checkbox(
+                              value: _includeMyTasks,
+                              onChanged: (v) {
+                                setState(() => _includeMyTasks = v ?? true);
+                                _load();
+                              },
+                              activeColor: c.primary,
+                            ),
+                            Text(
+                              'نمایش کارهای من',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: c.textStrong,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    if (_filtered.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 60),
+                        child: Center(
+                          child: Text(
+                            'کاری یافت نشد',
+                            style: TextStyle(color: c.textMuted, fontSize: 14),
+                          ),
+                        ),
+                      )
+                    else
+                      ..._filtered.map(
+                        (t) => TaskListCard(
+                          task: t,
+                          showPeople: true,
+                          onTap: () => _openDetail(t),
+                          onChanged: _load,
+                        ),
+                      ),
+                  ],
+                ),
               ),
-            ),
+        // 🔧 طبق درخواست: نوارِ ناوبریِ پایین در همه‌ی صفحاتِ اپ — چون این
+        // صفحه با Get.to باز می‌شود، Scaffoldِ پوسته‌ی اصلی را نمی‌بیند
+        floatingActionButton: const AppCreateTaskFab(),
+        floatingActionButtonLocation: const LoweredDockedFabLocation(),
+        bottomNavigationBar: const AppBottomNav(),
+      ),
     );
   }
 

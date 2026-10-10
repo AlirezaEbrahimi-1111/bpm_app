@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:shamsi_date/shamsi_date.dart';
 import '../../../core/utils/persian_number.dart';
@@ -10,6 +11,10 @@ import '../../../core/theme/app_colors.dart';
 /// رندر کردن ارقام داخل خودِ پکیج انجام می‌شود و ما کنترلی روی آن نداریم.
 /// این ویجت را خودمان می‌سازیم تا تضمین کنیم همه‌ی اعداد همیشه با
 /// ارقام فارسی («toPersianDigits») نمایش داده شوند.
+/// [firstDate] اگر داده نشود، پیش‌فرض «امروز» است — یعنی روزهای قبل از
+/// امروز به‌طور پیش‌فرض خاکستری/غیرفعال نمایش داده می‌شوند. برای مواردی
+/// که واقعاً باید تاریخِ گذشته هم قابل‌انتخاب باشد، یک `firstDate` قدیمی‌تر
+/// صریحاً پاس بدهید.
 Future<DateTime?> showCustomPersianDatePicker(
   BuildContext context, {
   DateTime? initialDate,
@@ -29,7 +34,7 @@ Future<DateTime?> showCustomPersianDatePicker(
     ),
     builder: (_) => _PersianDatePickerSheet(
       initialDate: initialDate,
-      firstDate: firstDate ?? Jalali(1400, 1, 1),
+      firstDate: firstDate ?? Jalali.now(),
       lastDate: lastDate ?? Jalali(1410, 12, 29),
     ),
   );
@@ -102,6 +107,22 @@ class _PersianDatePickerSheetState extends State<_PersianDatePickerSheet> {
     // weekDay در Jalali: شنبه=۱ ... جمعه=۷ → برای شبکه، شنبه باید ستون صفر باشد
     final firstWeekDay = _viewMonth.weekDay - 1;
     final today = Jalali.now();
+    // 🔧 رفعِ باگ: Jalali.now() ساعتِ لحظه‌ی فعلی را هم در خودش نگه
+    // می‌دارد؛ اگر widget.firstDate/lastDate مستقیماً با آن مقایسه شوند
+    // (مثلاً firstDate: Jalali.now() از صفحه‌ی تمدیدِ موعد)، «امروز» چون
+    // ساعتش صفر است ولی firstDate ساعتِ واقعی دارد، به‌اشتباه «خارج از
+    // بازه» حساب می‌شد (غیرقابلِ‌کلیک + رنگِ کم‌رنگِ اشتباه). با ساختنِ
+    // نسخه‌یِ بدونِ‌ساعتِ همان روزها، مقایسه فقط بر اساسِ سال/ماه/روز است.
+    final firstDateOnly = Jalali(
+      widget.firstDate.year,
+      widget.firstDate.month,
+      widget.firstDate.day,
+    );
+    final lastDateOnly = Jalali(
+      widget.lastDate.year,
+      widget.lastDate.month,
+      widget.lastDate.day,
+    );
 
     return Container(
       decoration: BoxDecoration(
@@ -129,11 +150,15 @@ class _PersianDatePickerSheetState extends State<_PersianDatePickerSheet> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // 🔧 طبق درخواست: فلشِ ماهِ قبل/بعد برعکس شد
+                  // 🔧 اصلاح: هم‌سو با تقویمِ روزهای تعطیل — آیکن‌ها ۱۸۰
+                  // درجه می‌چرخند تا جهتِ فلش با جهتِ حرکت (قبل/بعد) درست باشد
                   IconButton(
-                    icon: const Icon(Icons.chevron_right_rounded),
+                    icon: Transform.rotate(
+                      angle: math.pi,
+                      child: const Icon(Icons.chevron_right_rounded),
+                    ),
                     color: c.primary,
-                    onPressed: () => _changeMonth(1),
+                    onPressed: () => _changeMonth(-1),
                   ),
                   Text(
                     '${_months[_viewMonth.month - 1]} ${toPersianDigits(_viewMonth.year.toString())}',
@@ -144,9 +169,12 @@ class _PersianDatePickerSheetState extends State<_PersianDatePickerSheet> {
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.chevron_left_rounded),
+                    icon: Transform.rotate(
+                      angle: math.pi,
+                      child: const Icon(Icons.chevron_left_rounded),
+                    ),
                     color: c.primary,
-                    onPressed: () => _changeMonth(-1),
+                    onPressed: () => _changeMonth(1),
                   ),
                 ],
               ),
@@ -196,8 +224,7 @@ class _PersianDatePickerSheetState extends State<_PersianDatePickerSheet> {
                       date.year == today.year &&
                       date.month == today.month &&
                       date.day == today.day;
-                  final inRange =
-                      date >= widget.firstDate && date <= widget.lastDate;
+                  final inRange = date >= firstDateOnly && date <= lastDateOnly;
 
                   return GestureDetector(
                     onTap: inRange

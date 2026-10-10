@@ -7,6 +7,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/widgets/app_snack.dart';
 import '../../core/utils/persian_number.dart';
 import '../../core/widgets/app_switch.dart';
+import '../shell/widgets/app_bottom_nav.dart';
 
 /// «مدیریت کاربران» — پورتِ صفحه‌ی وب pages/users.php برایِ موبایل.
 /// آدرسِ داده و عملیات دقیقاً همان API نسخه‌ی وب است:
@@ -520,141 +521,151 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
   @override
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
-    return Scaffold(
-      backgroundColor: c.bgPage,
-      appBar: AppBar(
+    return AppShellOverlays(
+      child: Scaffold(
         backgroundColor: c.bgPage,
-        elevation: 0,
-        centerTitle: true,
-        iconTheme: IconThemeData(color: c.textStrong),
-        title: Text(
-          'مدیریت کاربران',
-          style: TextStyle(
-            color: c.textStrong,
-            fontWeight: FontWeight.bold,
-            fontSize: 16,
+        appBar: AppBar(
+          backgroundColor: c.bgPage,
+          elevation: 0,
+          centerTitle: true,
+          iconTheme: IconThemeData(color: c.textStrong),
+          title: Text(
+            'مدیریت کاربران',
+            style: TextStyle(
+              color: c.textStrong,
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+            ),
+          ),
+          leading: IconButton(
+            icon: Transform.rotate(
+              angle: math.pi,
+              child: const Icon(Icons.arrow_forward_ios_rounded, size: 20),
+            ),
+            onPressed: () => Get.back(),
           ),
         ),
-        leading: IconButton(
-          icon: Transform.rotate(
-            angle: math.pi,
-            child: const Icon(Icons.arrow_forward_ios_rounded, size: 20),
+        floatingActionButton: FloatingActionButton(
+          onPressed: () => _openUserFormSheet(user: null),
+          backgroundColor: c.primary,
+          child: const Icon(
+            Icons.person_add_alt_1_rounded,
+            color: Colors.white,
           ),
-          onPressed: () => Get.back(),
         ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _openUserFormSheet(user: null),
-        backgroundColor: c.primary,
-        child: const Icon(Icons.person_add_alt_1_rounded, color: Colors.white),
-      ),
-      body: _isLoading
-          ? Center(child: CircularProgressIndicator(color: c.primary))
-          : _error != null
-          ? Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.error_outline_rounded,
-                      size: 48,
-                      color: c.textMuted,
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      _error!,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: c.textMuted),
-                    ),
-                    const SizedBox(height: 16),
-                    TextButton(
-                      onPressed: _load,
-                      child: const Text('تلاش مجدد'),
-                    ),
-                  ],
-                ),
-              ),
-            )
-          : RefreshIndicator(
-              color: c.primary,
-              onRefresh: _load,
-              child: ListView(
-                // 🔧 طبق درخواست: فاصله‌ی دکمه‌های ناوبریِ گوشی هم رعایت شود
-                // تا آخرین کارت پشتِ آن‌ها نرود
-                padding: EdgeInsets.fromLTRB(
-                  16,
-                  12,
-                  16,
-                  24 + MediaQuery.of(context).padding.bottom,
-                ),
-                children: [
-                  TextField(
-                    onChanged: (v) => setState(() => _query = v),
-                    style: TextStyle(color: c.textStrong, fontSize: 14),
-                    decoration: InputDecoration(
-                      hintText: 'جستجوی نام، شماره یا نام‌کاربری...',
-                      hintStyle: TextStyle(color: c.textMuted, fontSize: 13),
-                      prefixIcon: Icon(
-                        Icons.search_rounded,
+        body: _isLoading
+            ? Center(child: CircularProgressIndicator(color: c.primary))
+            : _error != null
+            ? Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.error_outline_rounded,
+                        size: 48,
                         color: c.textMuted,
                       ),
-                      filled: true,
-                      fillColor: c.surface,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 4),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: BorderSide(color: c.borderSoft),
+                      const SizedBox(height: 12),
+                      Text(
+                        _error!,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: c.textMuted),
                       ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: BorderSide(color: c.borderSoft),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: BorderSide(color: c.primary, width: 1.5),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      _statusChip(
-                        c,
-                        'all',
-                        'همه (${toPersianDigits(_users.length)})',
-                      ),
-                      const SizedBox(width: 8),
-                      _statusChip(
-                        c,
-                        'active',
-                        'فعال (${toPersianDigits(_users.where((u) => u['is_active'] == 1 || u['is_active'] == true).length)})',
-                      ),
-                      const SizedBox(width: 8),
-                      _statusChip(
-                        c,
-                        'inactive',
-                        'غیرفعال (${toPersianDigits(_users.where((u) => u['is_active'] == 0 || u['is_active'] == false).length)})',
+                      const SizedBox(height: 16),
+                      TextButton(
+                        onPressed: _load,
+                        child: const Text('تلاش مجدد'),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 14),
-                  if (_filtered.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 60),
-                      child: Center(
-                        child: Text(
-                          'کاربری یافت نشد',
-                          style: TextStyle(color: c.textMuted, fontSize: 14),
+                ),
+              )
+            : RefreshIndicator(
+                color: c.primary,
+                onRefresh: _load,
+                child: ListView(
+                  // 🔧 طبق درخواست: فاصله‌ی دکمه‌های ناوبریِ گوشی هم رعایت شود
+                  // تا آخرین کارت پشتِ آن‌ها نرود
+                  padding: EdgeInsets.fromLTRB(
+                    16,
+                    12,
+                    16,
+                    24 + MediaQuery.of(context).padding.bottom,
+                  ),
+                  children: [
+                    TextField(
+                      onChanged: (v) => setState(() => _query = v),
+                      style: TextStyle(color: c.textStrong, fontSize: 14),
+                      decoration: InputDecoration(
+                        hintText: 'جستجوی نام، شماره یا نام‌کاربری...',
+                        hintStyle: TextStyle(color: c.textMuted, fontSize: 13),
+                        prefixIcon: Icon(
+                          Icons.search_rounded,
+                          color: c.textMuted,
+                        ),
+                        filled: true,
+                        fillColor: c.surface,
+                        contentPadding: const EdgeInsets.symmetric(vertical: 4),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                          borderSide: BorderSide(color: c.borderSoft),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                          borderSide: BorderSide(color: c.borderSoft),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                          borderSide: BorderSide(color: c.primary, width: 1.5),
                         ),
                       ),
-                    )
-                  else
-                    ..._filtered.map((u) => _userCard(c, u)),
-                ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        _statusChip(
+                          c,
+                          'all',
+                          'همه (${toPersianDigits(_users.length)})',
+                        ),
+                        const SizedBox(width: 8),
+                        _statusChip(
+                          c,
+                          'active',
+                          'فعال (${toPersianDigits(_users.where((u) => u['is_active'] == 1 || u['is_active'] == true).length)})',
+                        ),
+                        const SizedBox(width: 8),
+                        _statusChip(
+                          c,
+                          'inactive',
+                          'غیرفعال (${toPersianDigits(_users.where((u) => u['is_active'] == 0 || u['is_active'] == false).length)})',
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    if (_filtered.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 60),
+                        child: Center(
+                          child: Text(
+                            'کاربری یافت نشد',
+                            style: TextStyle(color: c.textMuted, fontSize: 14),
+                          ),
+                        ),
+                      )
+                    else
+                      ..._filtered.map((u) => _userCard(c, u)),
+                  ],
+                ),
               ),
-            ),
+        // 🔧 طبق درخواست: نوارِ ناوبریِ پایین در همه‌ی صفحاتِ اپ — چون این
+        // صفحه با Get.to باز می‌شود، Scaffoldِ پوسته‌ی اصلی را نمی‌بیند.
+        // دکمه‌ی شناورِ «افزودنِ کار» اضافه نشد، چون این صفحه از قبل
+        // دکمه‌ی شناورِ خودش (افزودنِ کاربر) را دارد
+        bottomNavigationBar: const AppBottomNav(),
+      ),
     );
   }
 
@@ -1132,92 +1143,88 @@ class _UserFormSheetState extends State<_UserFormSheet> {
           borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         ),
         child: SafeArea(
-            top: false,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 12),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: c.borderSoft,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                _isEdit ? 'ویرایش کاربر' : 'کاربر جدید',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                  color: c.textStrong,
+                ),
+              ),
+              if (_isEdit) ...[
                 const SizedBox(height: 12),
-                Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: c.borderSoft,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  _isEdit ? 'ویرایش کاربر' : 'کاربر جدید',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                    color: c.textStrong,
-                  ),
-                ),
-                if (_isEdit) ...[
-                  const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      _tabChip(c, 0, 'اطلاعات پایه'),
-                      const SizedBox(width: 8),
-                      _tabChip(c, 1, 'شیفت و حقوق'),
-                      const SizedBox(width: 8),
-                      _tabChip(c, 2, 'سلسله‌مراتب'),
-                    ],
-                  ),
-                ],
-                Flexible(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-                    child: _tab == 0
-                        ? _basicTab(c)
-                        : _tab == 1
-                        ? _shiftTab(c)
-                        : _hierarchyTab(c),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-                  child: SizedBox(
-                    // 🔧 طبق درخواست: تمام‌عرض و هم‌اندازه‌ی دکمه‌ی «ارجاع به ...»
-                    width: double.infinity,
-                    height: 48,
-                    child: ElevatedButton(
-                      onPressed: _isSaving ? null : _submit,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: c.primary,
-                        disabledBackgroundColor: c.primary.withValues(
-                          alpha: 0.4,
-                        ),
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: _isSaving
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                color: Colors.white,
-                                strokeWidth: 2,
-                              ),
-                            )
-                          : Text(
-                              _isEdit ? 'ذخیره تغییرات' : 'ایجاد کاربر',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                    ),
-                  ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    _tabChip(c, 0, 'اطلاعات پایه'),
+                    const SizedBox(width: 8),
+                    _tabChip(c, 1, 'شیفت و حقوق'),
+                    const SizedBox(width: 8),
+                    _tabChip(c, 2, 'سلسله‌مراتب'),
+                  ],
                 ),
               ],
-            ),
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+                  child: _tab == 0
+                      ? _basicTab(c)
+                      : _tab == 1
+                      ? _shiftTab(c)
+                      : _hierarchyTab(c),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                child: SizedBox(
+                  // 🔧 طبق درخواست: تمام‌عرض و هم‌اندازه‌ی دکمه‌ی «ارجاع به ...»
+                  width: double.infinity,
+                  height: 48,
+                  child: ElevatedButton(
+                    onPressed: _isSaving ? null : _submit,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: c.primary,
+                      disabledBackgroundColor: c.primary.withValues(alpha: 0.4),
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: _isSaving
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : Text(
+                            _isEdit ? 'ذخیره تغییرات' : 'ایجاد کاربر',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
+      ),
     );
   }
 

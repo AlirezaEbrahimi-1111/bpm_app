@@ -5,7 +5,7 @@ import 'task_quick_actions_sheet.dart';
 
 /// کارتِ یک کار در لیست‌ها — مشترکِ صفحه‌ی «کارها» و «کارهای واگذارشده»
 /// تا هر دو دقیقاً یک‌شکل باشند: ردیفِ اول = عنوان + بج + سه‌نقطه، و
-/// موعد دقیقاً زیرِ عنوان (راست‌چین).
+/// موعد زیرِ بج‌هایِ وضعیت، سمتِ چپ.
 class TaskListCard extends StatelessWidget {
   final dynamic task;
   final VoidCallback onTap;

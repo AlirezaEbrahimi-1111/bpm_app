@@ -15,6 +15,8 @@ import '../admin/tasks_overview_page.dart';
 import '../admin/workflow_monitor_page.dart';
 import '../admin/payroll_report_page.dart';
 import '../subscription/subscription_page.dart';
+import '../subscription/plan_gate.dart';
+import '../../core/plan/plan_access.dart';
 import 'widgets/about_sheet.dart';
 import '../../main.dart';
 import '../../core/theme/theme_controller.dart';
@@ -26,7 +28,7 @@ import '../../core/widgets/app_switch.dart';
 /// - لینک به تب‌ها (از طریق callback به Shell)
 /// - پروفایل، تنظیمات، درباره ما
 /// - دکمه خروج
-class AppDrawer extends StatelessWidget {
+class AppDrawer extends StatefulWidget {
   final Map<String, dynamic> user;
   final int currentIndex;
   final void Function(int index) onTabSelected;
@@ -39,12 +41,30 @@ class AppDrawer extends StatelessWidget {
   });
 
   @override
+  State<AppDrawer> createState() => _AppDrawerState();
+}
+
+class _AppDrawerState extends State<AppDrawer> {
+  // 🔧 طبق درخواست: هم‌زمان فقط یکی از منوهایِ بازشونده (نظارت/مدیریت/
+  // پشتیبانی) باز بماند — با بازشدنِ یکی، بقیه‌ای که باز بودند بسته شوند
+  String? _expandedKey;
+
+  void _toggleExpanded(String key) {
+    setState(() => _expandedKey = _expandedKey == key ? null : key);
+  }
+
+  @override
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
+    final user = widget.user;
+    final currentIndex = widget.currentIndex;
+    final onTabSelected = widget.onTabSelected;
     final firstName = (user['first_name'] ?? '').toString();
     final lastName = (user['last_name'] ?? '').toString();
     final fullName = '$firstName $lastName'.trim();
     final avatarPath = (user['avatar_path'] ?? '').toString();
+    // 🔧 طبق درخواست: اینجا باید نامِ سازمانِ کاربر باشد، نه نامِ اپ
+    final organizationName = (user['organization_name'] ?? '').toString();
 
     return Drawer(
       // 🔧 طبق استانداردِ M3، دراور باید یک سطحِ «مرتفع‌تر» از پس‌زمینه‌ی
@@ -101,15 +121,16 @@ class AppDrawer extends StatelessWidget {
                                 overflow: TextOverflow.ellipsis,
                               ),
                               const SizedBox(height: 3),
-                              Text(
-                                'آوای شرق ملک',
-                                style: TextStyle(
-                                  color: c.textMuted,
-                                  fontSize: 12,
+                              if (organizationName.isNotEmpty)
+                                Text(
+                                  organizationName,
+                                  style: TextStyle(
+                                    color: c.textMuted,
+                                    fontSize: 12,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
                             ],
                           ),
                         ),
@@ -217,6 +238,7 @@ class AppDrawer extends StatelessWidget {
                   c: c,
                   icon: Icons.send_rounded,
                   label: 'کارهای واگذار شده',
+                  feature: PlanFeature.delegatedTasks,
                   onTap: () {
                     Get.back();
                     Get.to(() => const DelegatedTasksPage());
@@ -226,6 +248,8 @@ class AppDrawer extends StatelessWidget {
                   c: c,
                   icon: Icons.fingerprint_rounded,
                   label: 'ورود و خروج (به‌زودی)',
+                  planLabel: 'ورود و خروج',
+                  feature: PlanFeature.entryExit,
                   enabled: false,
                   onTap: () {},
                 ),
@@ -245,6 +269,8 @@ class AppDrawer extends StatelessWidget {
                       c: c,
                       icon: Icons.visibility_outlined,
                       label: 'نظارت',
+                      expanded: _expandedKey == 'نظارت',
+                      onToggle: () => _toggleExpanded('نظارت'),
                       children: [
                         _drawerItem(
                           c: c,
@@ -252,6 +278,8 @@ class AppDrawer extends StatelessWidget {
                           label: canManage
                               ? 'نظارت بر کارها'
                               : 'نظارت بر کارها (بدون دسترسی)',
+                          feature: PlanFeature.monitoringTasks,
+                          planLabel: 'نظارت بر کارها',
                           enabled: canManage,
                           onTap: () {
                             Get.back();
@@ -264,6 +292,8 @@ class AppDrawer extends StatelessWidget {
                           label: canManage
                               ? 'نظارت بر روتین‌های فعال'
                               : 'نظارت بر روتین‌های فعال (بدون دسترسی)',
+                          feature: PlanFeature.monitoringRoutines,
+                          planLabel: 'نظارت بر روتین‌های فعال',
                           enabled: canManage,
                           onTap: () {
                             Get.back();
@@ -276,6 +306,8 @@ class AppDrawer extends StatelessWidget {
                           label: canManage
                               ? 'گزارش حقوق پرسنل'
                               : 'گزارش حقوق پرسنل (بدون دسترسی)',
+                          feature: PlanFeature.monitoringPayroll,
+                          planLabel: 'گزارش حقوق پرسنل',
                           enabled: canManage,
                           onTap: () {
                             Get.back();
@@ -303,6 +335,8 @@ class AppDrawer extends StatelessWidget {
                       c: c,
                       icon: Icons.admin_panel_settings_outlined,
                       label: 'مدیریت',
+                      expanded: _expandedKey == 'مدیریت',
+                      onToggle: () => _toggleExpanded('مدیریت'),
                       children: [
                         _drawerItem(
                           c: c,
@@ -310,6 +344,8 @@ class AppDrawer extends StatelessWidget {
                           label: canManage
                               ? 'مدیریت کاربران'
                               : 'مدیریت کاربران (بدون دسترسی)',
+                          feature: PlanFeature.managementUsers,
+                          planLabel: 'مدیریت کاربران',
                           enabled: canManage,
                           onTap: () {
                             Get.back();
@@ -327,6 +363,8 @@ class AppDrawer extends StatelessWidget {
                           label: canManage
                               ? 'مدیریت واحدهای فعالیت'
                               : 'مدیریت واحدهای فعالیت (بدون دسترسی)',
+                          feature: PlanFeature.managementActivitySections,
+                          planLabel: 'مدیریت واحدهای فعالیت',
                           enabled: canManage,
                           onTap: () {
                             Get.back();
@@ -339,6 +377,8 @@ class AppDrawer extends StatelessWidget {
                           label: canManage
                               ? 'مدیریت گروه‌ها'
                               : 'مدیریت گروه‌ها (بدون دسترسی)',
+                          feature: PlanFeature.managementGroups,
+                          planLabel: 'مدیریت گروه‌ها',
                           enabled: canManage,
                           onTap: () {
                             Get.back();
@@ -356,6 +396,8 @@ class AppDrawer extends StatelessWidget {
                           label: canManage
                               ? 'دستگاه‌های حضور و غیاب'
                               : 'دستگاه‌های حضور و غیاب (بدون دسترسی)',
+                          feature: PlanFeature.managementAttendanceDevices,
+                          planLabel: 'دستگاه‌های حضور و غیاب',
                           enabled: canManage,
                           onTap: () {
                             Get.back();
@@ -370,6 +412,8 @@ class AppDrawer extends StatelessWidget {
                           label: canManage
                               ? 'روزهای تعطیل'
                               : 'روزهای تعطیل (بدون دسترسی)',
+                          feature: PlanFeature.managementHolidays,
+                          planLabel: 'روزهای تعطیل',
                           enabled: canManage,
                           onTap: () {
                             Get.back();
@@ -385,6 +429,8 @@ class AppDrawer extends StatelessWidget {
                           label: canManage
                               ? 'تنظیمات سیستم'
                               : 'تنظیمات سیستم (بدون دسترسی)',
+                          feature: PlanFeature.managementSystemSettings,
+                          planLabel: 'تنظیمات سیستم',
                           enabled: canManage,
                           onTap: () {
                             Get.back();
@@ -399,6 +445,8 @@ class AppDrawer extends StatelessWidget {
                   c: c,
                   icon: Icons.chat_bubble_outline_rounded,
                   label: 'گفتگو (به‌زودی)',
+                  planLabel: 'گفتگو',
+                  feature: PlanFeature.chat,
                   enabled: false,
                   onTap: () {},
                 ),
@@ -410,6 +458,8 @@ class AppDrawer extends StatelessWidget {
                   c: c,
                   icon: Icons.support_agent_rounded,
                   label: 'پشتیبانی',
+                  expanded: _expandedKey == 'پشتیبانی',
+                  onToggle: () => _toggleExpanded('پشتیبانی'),
                   children: [
                     _drawerItem(
                       c: c,
@@ -485,8 +535,12 @@ class AppDrawer extends StatelessWidget {
     bool selected = false,
     bool enabled = true,
     Color? color,
+    PlanFeature? feature,
+    String? planLabel,
     required VoidCallback onTap,
   }) {
+    // 🔧 قفل طبقِ پلن: کم‌رنگ می‌شود و با ضربه، شیتِ ارتقا باز می‌شود
+    final locked = feature != null && !PlanAccess.allows(feature);
     final itemColor = color ?? (selected ? c.primary : c.textStrong);
     // 🔧 طبقِ طرح: آیتمِ فعال یک قرصِ خطی (outline) دارد، نه پرشده —
     // بقیه‌ی آیتم‌ها ردیفِ ساده و بدون قاب هستند
@@ -495,7 +549,9 @@ class AppDrawer extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: onTap,
+          onTap: locked
+              ? () => showPlanUpgradeSheet(label: planLabel ?? label)
+              : onTap,
           borderRadius: BorderRadius.circular(12),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
@@ -525,6 +581,8 @@ class AppDrawer extends StatelessWidget {
     );
     // 🔧 گزینه‌های بدون قابلیتِ واقعی، به‌جای پنهان یا جعلی‌بودن، فقط
     // کم‌رنگ و غیرقابلِ‌لمس نمایش داده می‌شوند
+    if (locked) return Opacity(opacity: 0.5, child: row);
+    // گزینه‌ای که هنوز «به‌زودی» است و قفلِ پلن ندارد، فقط غیرفعال می‌ماند
     if (!enabled)
       return Opacity(opacity: 0.5, child: IgnorePointer(child: row));
     return row;
@@ -624,11 +682,17 @@ class _ExpandableDrawerItem extends StatefulWidget {
   final String label;
   final List<Widget> children;
 
+  /// 🔧 کنترل‌شده از والد (AppDrawer) — تا هم‌زمان فقط یکی باز بماند
+  final bool expanded;
+  final VoidCallback onToggle;
+
   const _ExpandableDrawerItem({
     required this.c,
     required this.icon,
     required this.label,
     required this.children,
+    required this.expanded,
+    required this.onToggle,
   });
 
   @override
@@ -636,12 +700,12 @@ class _ExpandableDrawerItem extends StatefulWidget {
 }
 
 class _ExpandableDrawerItemState extends State<_ExpandableDrawerItem> {
-  bool _expanded = false;
   final _key = GlobalKey();
 
-  void _toggle() {
-    setState(() => _expanded = !_expanded);
-    if (_expanded) {
+  @override
+  void didUpdateWidget(covariant _ExpandableDrawerItem oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.expanded && !oldWidget.expanded) {
       // 🔧 طبق درخواست: با بازشدنِ منو، خودکار به‌اندازه‌ای اسکرول شود
       // که زیرمنوها هم دیده شوند. باید تا بعد از رندرِ فریمِ بعدی صبر
       // کنیم چون ارتفاعِ جدید (با زیرمنوهایِ باز‌شده) هنوز لِی‌اوت نشده
@@ -661,6 +725,7 @@ class _ExpandableDrawerItemState extends State<_ExpandableDrawerItem> {
   @override
   Widget build(BuildContext context) {
     final c = widget.c;
+    final expanded = widget.expanded;
     return Column(
       key: _key,
       children: [
@@ -669,7 +734,7 @@ class _ExpandableDrawerItemState extends State<_ExpandableDrawerItem> {
           child: Material(
             color: Colors.transparent,
             child: InkWell(
-              onTap: _toggle,
+              onTap: widget.onToggle,
               borderRadius: BorderRadius.circular(12),
               child: Container(
                 padding: const EdgeInsets.symmetric(
@@ -691,7 +756,7 @@ class _ExpandableDrawerItemState extends State<_ExpandableDrawerItem> {
                       ),
                     ),
                     Icon(
-                      _expanded
+                      expanded
                           ? Icons.expand_less_rounded
                           : Icons.expand_more_rounded,
                       size: 20,
@@ -703,7 +768,7 @@ class _ExpandableDrawerItemState extends State<_ExpandableDrawerItem> {
             ),
           ),
         ),
-        if (_expanded)
+        if (expanded)
           // 🔧 موقتاً: زیرمنوها داخلِ یک کادرِ متمایز با خطِ رنگیِ کنارشون
           // قرار گرفتند تا از منوهایِ اصلی جدا دیده شوند
           Padding(

@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import '../../core/widgets/app_snack.dart';
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_colors.dart';
+import '../shell/widgets/app_bottom_nav.dart';
 
 /// صفحه‌ی «تغییر رمز عبور» — طبق طرح ارسالی (روشن + تاریک)
 ///
@@ -102,190 +103,197 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
   @override
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
-    return Scaffold(
-      backgroundColor: c.bgPage,
-      appBar: AppBar(
+    return AppShellOverlays(
+      child: Scaffold(
         backgroundColor: c.bgPage,
-        elevation: 0,
-        centerTitle: true,
-        iconTheme: IconThemeData(color: c.textStrong),
-        title: Text(
-          'تغییر رمز عبور',
-          style: TextStyle(
-            color: c.textStrong,
-            fontWeight: FontWeight.bold,
-            fontSize: 16,
+        appBar: AppBar(
+          backgroundColor: c.bgPage,
+          elevation: 0,
+          centerTitle: true,
+          iconTheme: IconThemeData(color: c.textStrong),
+          title: Text(
+            'تغییر رمز عبور',
+            style: TextStyle(
+              color: c.textStrong,
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+            ),
+          ),
+          leading: IconButton(
+            icon: Transform.rotate(
+              angle: math.pi, // 🔧 طبق درخواست: ۱۸۰ درجه چرخید
+              child: const Icon(Icons.arrow_forward_ios_rounded, size: 20),
+            ),
+            onPressed: () => Get.back(),
           ),
         ),
-        leading: IconButton(
-          icon: Transform.rotate(
-            angle: math.pi, // 🔧 طبق درخواست: ۱۸۰ درجه چرخید
-            child: const Icon(Icons.arrow_forward_ios_rounded, size: 20),
-          ),
-          onPressed: () => Get.back(),
-        ),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // ── بنر راهنما ──
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: c.surface,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: c.borderSoft),
-              ),
-              child: Row(
-                children: [
-                  // 🔧 طبق درخواست: آیکن سمتِ راست، متن بلافاصله بعدش
-                  // در همان خط (نه در دو سرِ مخالفِ کادر)
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: LinearGradient(
-                        colors: [c.primaryLight, c.primary],
-                      ),
-                    ),
-                    child: const Icon(
-                      Icons.shield_outlined,
-                      color: Colors.white,
-                      size: 22,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Flexible(
-                    child: Text(
-                      'برای امنیت بیشتر، رمز جدید باید قوی باشد',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: c.textStrong,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            _passwordField(
-              c: c,
-              label: 'رمز فعلی',
-              controller: _currentController,
-              obscure: _obscureCurrent,
-              onToggle: () =>
-                  setState(() => _obscureCurrent = !_obscureCurrent),
-              onChanged: (_) => setState(() {}),
-            ),
-            const SizedBox(height: 10),
-
-            _passwordField(
-              c: c,
-              label: 'رمز جدید',
-              controller: _newController,
-              obscure: _obscureNew,
-              onToggle: () => setState(() => _obscureNew = !_obscureNew),
-              onChanged: (_) => setState(() {}),
-            ),
-            const SizedBox(height: 8),
-            _strengthBar(c),
-            const SizedBox(height: 6),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: Text(
-                'رمز پیشنهادی: حداقل ۸ کاراکتر، شامل عدد و حرف',
-                style: TextStyle(fontSize: 11.5, color: c.textMuted),
-              ),
-            ),
-            const SizedBox(height: 14),
-
-            _passwordField(
-              c: c,
-              label: 'تکرار رمز جدید',
-              controller: _confirmController,
-              obscure: _obscureConfirm,
-              onToggle: () =>
-                  setState(() => _obscureConfirm = !_obscureConfirm),
-              onChanged: (_) => setState(() {}),
-            ),
-            const SizedBox(height: 16),
-
-            // ── چک‌لیست الزامات ──
-            Container(
-              decoration: BoxDecoration(
-                color: c.surface,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: c.borderSoft),
-              ),
-              child: Column(
-                children: [
-                  _ruleRow(c, 'حداقل ۸ کاراکتر', _hasMinLength),
-                  _ruleRow(c, 'شامل حرف', _hasLetter),
-                  _ruleRow(c, 'شامل عدد', _hasDigit, isLast: true),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-
-            SizedBox(
-              height: 52,
-              child: ElevatedButton(
-                onPressed: _isSaving ? null : _save,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: c.primary,
-                  disabledBackgroundColor: c.primary.withValues(alpha: 0.35),
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // ── بنر راهنما ──
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: c.surface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: c.borderSoft),
                 ),
-                child: _isSaving
-                    ? const SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2.4,
+                child: Row(
+                  children: [
+                    // 🔧 طبق درخواست: آیکن سمتِ راست، متن بلافاصله بعدش
+                    // در همان خط (نه در دو سرِ مخالفِ کادر)
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: LinearGradient(
+                          colors: [c.primaryLight, c.primary],
                         ),
-                      )
-                    : const Text(
-                        'ذخیره رمز جدید',
+                      ),
+                      child: const Icon(
+                        Icons.shield_outlined,
+                        color: Colors.white,
+                        size: 22,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Flexible(
+                      child: Text(
+                        'برای امنیت بیشتر، رمز جدید باید قوی باشد',
                         style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                          color: c.textStrong,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
-              ),
-            ),
-            const SizedBox(height: 10),
-            SizedBox(
-              height: 48,
-              child: OutlinedButton(
-                onPressed: () => Get.back(),
-                style: OutlinedButton.styleFrom(
-                  side: BorderSide(color: c.primary.withValues(alpha: 0.5)),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
+                    ),
+                  ],
                 ),
+              ),
+              const SizedBox(height: 16),
+
+              _passwordField(
+                c: c,
+                label: 'رمز فعلی',
+                controller: _currentController,
+                obscure: _obscureCurrent,
+                onToggle: () =>
+                    setState(() => _obscureCurrent = !_obscureCurrent),
+                onChanged: (_) => setState(() {}),
+              ),
+              const SizedBox(height: 10),
+
+              _passwordField(
+                c: c,
+                label: 'رمز جدید',
+                controller: _newController,
+                obscure: _obscureNew,
+                onToggle: () => setState(() => _obscureNew = !_obscureNew),
+                onChanged: (_) => setState(() {}),
+              ),
+              const SizedBox(height: 8),
+              _strengthBar(c),
+              const SizedBox(height: 6),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
                 child: Text(
-                  'انصراف',
-                  style: TextStyle(
-                    color: c.primary,
-                    fontSize: 14.5,
-                    fontWeight: FontWeight.w600,
+                  'رمز پیشنهادی: حداقل ۸ کاراکتر، شامل عدد و حرف',
+                  style: TextStyle(fontSize: 11.5, color: c.textMuted),
+                ),
+              ),
+              const SizedBox(height: 14),
+
+              _passwordField(
+                c: c,
+                label: 'تکرار رمز جدید',
+                controller: _confirmController,
+                obscure: _obscureConfirm,
+                onToggle: () =>
+                    setState(() => _obscureConfirm = !_obscureConfirm),
+                onChanged: (_) => setState(() {}),
+              ),
+              const SizedBox(height: 16),
+
+              // ── چک‌لیست الزامات ──
+              Container(
+                decoration: BoxDecoration(
+                  color: c.surface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: c.borderSoft),
+                ),
+                child: Column(
+                  children: [
+                    _ruleRow(c, 'حداقل ۸ کاراکتر', _hasMinLength),
+                    _ruleRow(c, 'شامل حرف', _hasLetter),
+                    _ruleRow(c, 'شامل عدد', _hasDigit, isLast: true),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              SizedBox(
+                height: 52,
+                child: ElevatedButton(
+                  onPressed: _isSaving ? null : _save,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: c.primary,
+                    disabledBackgroundColor: c.primary.withValues(alpha: 0.35),
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  child: _isSaving
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2.4,
+                          ),
+                        )
+                      : const Text(
+                          'ذخیره رمز جدید',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                height: 48,
+                child: OutlinedButton(
+                  onPressed: () => Get.back(),
+                  style: OutlinedButton.styleFrom(
+                    side: BorderSide(color: c.primary.withValues(alpha: 0.5)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  child: Text(
+                    'انصراف',
+                    style: TextStyle(
+                      color: c.primary,
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
+        // 🔧 طبق درخواست: نوارِ ناوبرییِ پایین در همه‌ی صفحاتِ اپ — چون این صفحه با Get.to باز می‌شود، Scaffoldِ پوسته‌ی اصلی را نمی‌بیند
+        // 🔧 طبق درخواست: دکمهِ شناورِ افزودنِ کار هم مثلِ پوستهِ اصلی
+        floatingActionButton: const AppCreateTaskFab(),
+        floatingActionButtonLocation: const LoweredDockedFabLocation(),
+        bottomNavigationBar: const AppBottomNav(),
       ),
     );
   }
