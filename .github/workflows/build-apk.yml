@@ -1,0 +1,50 @@
+name: Build APK
+
+# طبق درخواست: چون شبکه‌ی لوکال به pub.dev/dl.google.com/Maven به‌طورِ
+# پایدار دسترسی نداشت، این بیلد روی سرورهایِ خودِ گیت‌هاب اجرا می‌شود که
+# دسترسیِ اینترنتِ کاملاً سالم دارند — پس همان مشکلِ قطعیِ دانلود دیگر
+# رخ نمی‌دهد.
+#
+# پیش‌فرض فقط دستی (workflow_dispatch) اجرا می‌شود تا هر پوش به‌طورِ
+# خودکار دقیقه‌هایِ اکشنز را مصرف نکند؛ از تبِ Actions در گیت‌هاب،
+# «Run workflow» را بزنید.
+on:
+  workflow_dispatch:
+    inputs:
+      build_mode:
+        description: "نوع بیلد"
+        required: true
+        default: release
+        type: choice
+        options:
+          - release
+          - debug
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          # 🔧 همان نسخه‌ای که لوکال نصب است (برایِ دورزدنِ باگِ شناخته‌شده‌ی
+          # «security advisories» در نسخه‌هایِ جدیدترِ ابزارِ pub)
+          flutter-version: "3.41.9"
+          channel: "stable"
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build APK
+        run: flutter build apk --${{ inputs.build_mode }}
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-${{ inputs.build_mode }}-apk
+          path: build/app/outputs/flutter-apk/app-${{ inputs.build_mode }}.apk
+          retention-days: 30
