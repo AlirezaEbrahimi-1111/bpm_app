@@ -8,6 +8,9 @@ import '../../core/utils/task_search.dart';
 import '../../core/utils/task_preload.dart';
 import '../../core/utils/task_labels.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/plan/plan_access.dart';
+import '../../core/plan/org_permissions.dart';
+import '../subscription/plan_gate.dart';
 import 'task_detail_page.dart';
 import 'create_task_page.dart';
 import 'widgets/task_group_management_sheet.dart';
@@ -542,23 +545,36 @@ class MyTasksPageState extends State<MyTasksPage> {
               onTap: () => setState(() => _selectedGroupId = g['id']),
             );
           }),
-          GestureDetector(
-            onTap: () =>
-                showTaskGroupManagementSheet(context, onChanged: _fetchGroups),
-            child: Container(
-              margin: const EdgeInsets.only(left: 8),
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: c.surfaceContainerHigh,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Icon(
-                Icons.settings_outlined,
-                size: 16,
-                color: c.textMuted,
+          // 🔧 این آیکون دقیقاً همان شیتِ مدیریتیِ کاملِ گروه‌هاست (مثلِ
+          // منوی کناری) — پس همان دو محورِ نقش+پلن را دارد: اگر نقش اجازه
+          // ندهد، آیکون کاملاً مخفی می‌شود؛ اگر پلن قفل کند، کم‌رنگ+قفل‌دار می‌ماند
+          if (hasOrgPermission(
+            ApiClient.currentUser?['role']?.toString(),
+            OrgPermission.manageTaskGroups,
+          ))
+            PlanGate(
+              feature: PlanFeature.managementGroups,
+              label: 'مدیریت گروه‌ها',
+              child: GestureDetector(
+                onTap: () => showTaskGroupManagementSheet(
+                  context,
+                  onChanged: _fetchGroups,
+                ),
+                child: Container(
+                  margin: const EdgeInsets.only(left: 8),
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: c.surfaceContainerHigh,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Icon(
+                    Icons.settings_outlined,
+                    size: 16,
+                    color: c.textMuted,
+                  ),
+                ),
               ),
             ),
-          ),
         ],
       ),
     );

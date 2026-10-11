@@ -95,6 +95,10 @@ class PlanAccess {
       PlanFeature.monitoringRoutines,
       PlanFeature.monitoringPayroll,
       PlanFeature.managementActivitySections,
+      // 🔧 رفعِ باگ: این مورد جا افتاده بود — دقیقاً مثلِ خواهرش
+      // managementActivitySections، مدیریتِ گروه‌هایِ سازمانی هم باید
+      // فقط در پلنِ طلایی باز باشد
+      PlanFeature.managementGroups,
       PlanFeature.managementAttendanceDevices,
       PlanFeature.managementHolidays,
       PlanFeature.managementSystemSettings,
@@ -114,6 +118,8 @@ class PlanAccess {
       PlanFeature.monitoringPayroll,
       PlanFeature.managementUsers,
       PlanFeature.managementActivitySections,
+      // 🔧 رفعِ باگ: همان موردِ جا افتاده، برایِ پلنِ رایگان هم
+      PlanFeature.managementGroups,
       PlanFeature.managementAttendanceDevices,
       PlanFeature.managementHolidays,
       PlanFeature.managementSystemSettings,

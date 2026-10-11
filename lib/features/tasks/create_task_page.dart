@@ -9,6 +9,7 @@ import 'package:file_picker/file_picker.dart';
 import '../../core/utils/persian_number.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/plan/plan_access.dart';
+import '../../core/plan/org_permissions.dart';
 import '../subscription/plan_gate.dart';
 import '../../core/widgets/app_switch.dart';
 import 'widgets/persian_date_picker_sheet.dart';
@@ -1124,25 +1125,38 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
                     },
                   );
                 }),
-                Divider(height: 12, color: c.borderSoft),
-                ListTile(
-                  leading: Icon(
-                    Icons.settings_outlined,
-                    color: c.primary,
-                    size: 20,
+                // 🔧 این میانبر دقیقاً همان شیتِ مدیریتیِ کاملِ گروه‌هاست
+                // (مثلِ منوی کناری) — پس همان دو محورِ نقش+پلن را دارد:
+                // اگر نقش اجازه ندهد، میانبر کاملاً مخفی می‌شود؛ اگر پلن
+                // قفل کند، کم‌رنگ+قفل‌دار می‌ماند
+                if (hasOrgPermission(
+                  _myRole,
+                  OrgPermission.manageTaskGroups,
+                )) ...[
+                  Divider(height: 12, color: c.borderSoft),
+                  PlanGate(
+                    feature: PlanFeature.managementGroups,
+                    label: 'مدیریت گروه‌ها',
+                    child: ListTile(
+                      leading: Icon(
+                        Icons.settings_outlined,
+                        color: c.primary,
+                        size: 20,
+                      ),
+                      title: Text(
+                        'مدیریت گروه‌ها',
+                        style: TextStyle(color: c.primary),
+                      ),
+                      onTap: () {
+                        Get.back();
+                        showTaskGroupManagementSheet(
+                          context,
+                          onChanged: _loadGroups,
+                        );
+                      },
+                    ),
                   ),
-                  title: Text(
-                    'مدیریت گروه‌ها',
-                    style: TextStyle(color: c.primary),
-                  ),
-                  onTap: () {
-                    Get.back();
-                    showTaskGroupManagementSheet(
-                      context,
-                      onChanged: _loadGroups,
-                    );
-                  },
-                ),
+                ],
               ],
             ),
           ),
