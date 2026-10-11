@@ -71,6 +71,7 @@ class AppBottomNav extends StatelessWidget {
                         label: 'اعلان‌ها',
                         selected: selectedIndex == 2,
                         locked: !PlanAccess.allows(PlanFeature.notifications),
+                        feature: PlanFeature.notifications,
                         showBadge: unreadCount > 0,
                         onTap: () => navigateToShellTab(2),
                       ),
@@ -100,9 +101,12 @@ class AppBottomNav extends StatelessWidget {
     required VoidCallback onTap,
     bool showBadge = false,
     bool locked = false,
+    PlanFeature? feature,
   }) {
     return GestureDetector(
-      onTap: locked ? () => showPlanUpgradeSheet(label: label) : onTap,
+      onTap: locked
+          ? () => showPlanUpgradeSheet(label: label, feature: feature)
+          : onTap,
       behavior: HitTestBehavior.opaque,
       child: Opacity(
         opacity: locked ? 0.5 : 1,
@@ -122,7 +126,27 @@ class AppBottomNav extends StatelessWidget {
                       size: 26,
                       color: selected ? c.primary : c.textMuted,
                     ),
-                    if (showBadge)
+                    // 🔧 طبق درخواست: آیکونِ قفل برایِ گزینه‌هایِ قفل‌شده
+                    // به‌خاطرِ پلن — روی بجِ تعدادِ نخوانده اولویت دارد
+                    if (locked)
+                      Positioned(
+                        right: -4,
+                        top: -2,
+                        child: Container(
+                          padding: const EdgeInsets.all(2),
+                          decoration: BoxDecoration(
+                            color: c.navBarBg,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: c.navBarBg, width: 1.5),
+                          ),
+                          child: Icon(
+                            Icons.lock_rounded,
+                            size: 11,
+                            color: c.textMuted,
+                          ),
+                        ),
+                      )
+                    else if (showBadge)
                       Positioned(
                         right: -6,
                         top: -4,

@@ -8,6 +8,7 @@ import '../../core/network/connectivity_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/plan/plan_access.dart';
 import '../../core/theme/starred_tasks_preference.dart';
+import '../../core/theme/dashboard_filter_pin_preference.dart';
 import '../subscription/plan_gate.dart';
 import '../tasks/widgets/task_badges.dart';
 import '../tasks/widgets/task_quick_actions_sheet.dart';
@@ -97,6 +98,24 @@ class DashboardPageState extends State<DashboardPage> {
   void initState() {
     super.initState();
     _loadData();
+    // 🔧 طبق درخواست: اگر کاربر یکی از فیلترها را پین کرده، همان به‌عنوانِ
+    // پیش‌فرضِ داشبورد بارگذاری شود — چون خواندنِ ذخیره‌سازیِ محلی async
+    // است، اگر از قبل آماده بود همین‌جا، وگرنه با یک شنونده‌ی یک‌باره
+    // به‌محضِ آماده‌شدن اعمال می‌شود
+    final pinned = DashboardFilterPinPreference.pinnedNotifier.value;
+    if (pinned != null) {
+      _filter = pinned;
+    } else {
+      late final VoidCallback listener;
+      listener = () {
+        final p = DashboardFilterPinPreference.pinnedNotifier.value;
+        if (p != null && mounted) {
+          setState(() => _filter = p);
+        }
+        DashboardFilterPinPreference.pinnedNotifier.removeListener(listener);
+      };
+      DashboardFilterPinPreference.pinnedNotifier.addListener(listener);
+    }
     // 🔧 با viewportFraction=۰.۲ (=۱/۵)، صفحه‌ی جاری همیشه خودش در
     // وسطِ ویوپورت می‌نشیند — یعنی «امروز» از همان اول، وسطِ ۵تایی است
     _dayPageController = PageController(
@@ -651,25 +670,32 @@ class DashboardPageState extends State<DashboardPage> {
         // 🔧 طبق درخواست: چپ‌چین — centerEnd در راست‌به‌چپ یعنی چپ
         Align(
           alignment: AlignmentDirectional.centerEnd,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _filterChip(c, 'همه'),
-              const SizedBox(width: 8),
-              _filterChip(c, 'امروز'),
-              const SizedBox(width: 8),
-              _filterChip(c, 'عقب افتاده'),
-              const SizedBox(width: 8),
-              _filterChip(c, 'منتخب'),
-            ],
+          // 🔧 طبق درخواست: مثلِ نسخه‌ی وب، هر فیلتر یک سنجاقِ پین دارد —
+          // فیلترِ پین‌شده همیشه با بازشدنِ دوباره‌ی اپ، پیش‌فرض می‌ماند
+          // (محلی و دائمی روی گوشی، نه فقط تا پایانِ روز مثلِ وب)
+          child: ValueListenableBuilder<String?>(
+            valueListenable: DashboardFilterPinPreference.pinnedNotifier,
+            builder: (context, pinned, _) => Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _filterChip(c, 'همه', pinned),
+                const SizedBox(width: 8),
+                _filterChip(c, 'امروز', pinned),
+                const SizedBox(width: 8),
+                _filterChip(c, 'عقب افتاده', pinned),
+                const SizedBox(width: 8),
+                _filterChip(c, 'منتخب', pinned),
+              ],
+            ),
           ),
         ),
       ],
     );
   }
 
-  Widget _filterChip(AppColors c, String label) {
+  Widget _filterChip(AppColors c, String label, String? pinned) {
     final selected = _filter == label;
+    final isPinned = pinned == label;
     return GestureDetector(
       onTap: () => setState(() {
         _filter = label;
@@ -679,7 +705,7 @@ class DashboardPageState extends State<DashboardPage> {
       }),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
         decoration: BoxDecoration(
           color: selected ? Colors.transparent : Colors.transparent,
           border: Border.all(
@@ -688,13 +714,28 @@ class DashboardPageState extends State<DashboardPage> {
           ),
           borderRadius: BorderRadius.circular(12),
         ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: selected ? c.primary : c.textMuted,
-          ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => DashboardFilterPinPreference.toggle(label),
+              child: Icon(
+                isPinned ? Icons.push_pin_rounded : Icons.push_pin_outlined,
+                size: 13,
+                color: isPinned ? const Color(0xFFF59E0B) : c.textMuted,
+              ),
+            ),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: selected ? c.primary : c.textMuted,
+              ),
+            ),
+          ],
         ),
       ),
     );

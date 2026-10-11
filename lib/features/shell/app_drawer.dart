@@ -17,6 +17,7 @@ import '../admin/payroll_report_page.dart';
 import '../subscription/subscription_page.dart';
 import '../subscription/plan_gate.dart';
 import '../../core/plan/plan_access.dart';
+import '../../core/plan/org_permissions.dart';
 import 'widgets/about_sheet.dart';
 import '../../main.dart';
 import '../../core/theme/theme_controller.dart';
@@ -253,18 +254,41 @@ class _AppDrawerState extends State<AppDrawer> {
                   enabled: false,
                   onTap: () {},
                 ),
-                // 🔧 طبق درخواست: منوی «نظارت» — دقیقاً مثلِ وب یک منویِ
-                // بالادستیِ جدا از «مدیریت» است (نه زیرِمجموعه‌اش)، با سه
-                // زیرگزینه: نظارت بر کارها، نظارت بر روتین‌های فعال، گزارش
-                // حقوق پرسنل
+                // 🔧 طبق درخواست: گزینه‌هایِ این دو منو دو محورِ کاملاً جدا
+                // دارند — (الف) دسترسیِ نقشِ سازمانی (`org_permissions.dart`؛
+                // اگر نقش اجازه ندهد، گزینه کاملاً مخفی می‌شود، نه کم‌رنگ)
+                // و (ب) قفلِ پلن (`PlanAccess`؛ اگر پلن قفل کند، گزینه
+                // کم‌رنگ+قفل‌دار می‌ماند و با ضربه پیامِ ارتقا می‌دهد —
+                // مستقلِ از نقش). اگر همه‌ی زیرگزینه‌هایِ یک منو به‌خاطرِ
+                // نقش مخفی شوند، خودِ منو هم مخفی می‌شود.
                 Builder(
                   builder: (context) {
                     final role = (user['role'] ?? '').toString();
-                    final canManage = [
-                      'manager',
-                      'supervisor',
-                      'admin',
-                    ].contains(role);
+                    final canViewTasks =
+                        hasOrgPermission(role, OrgPermission.viewAllOrgTasks) ||
+                        hasOrgPermission(role, OrgPermission.viewSectionTasks);
+                    final canMonitorRoutines = hasOrgPermission(
+                      role,
+                      OrgPermission.monitorAllWorkflows,
+                    );
+                    final canViewPayroll = hasOrgPermission(
+                      role,
+                      OrgPermission.viewPayroll,
+                    );
+                    final anyVisible =
+                        _itemVisible(
+                          feature: PlanFeature.monitoringTasks,
+                          roleAllowed: canViewTasks,
+                        ) ||
+                        _itemVisible(
+                          feature: PlanFeature.monitoringRoutines,
+                          roleAllowed: canMonitorRoutines,
+                        ) ||
+                        _itemVisible(
+                          feature: PlanFeature.monitoringPayroll,
+                          roleAllowed: canViewPayroll,
+                        );
+                    if (!anyVisible) return const SizedBox.shrink();
                     return _ExpandableDrawerItem(
                       c: c,
                       icon: Icons.visibility_outlined,
@@ -275,12 +299,10 @@ class _AppDrawerState extends State<AppDrawer> {
                         _drawerItem(
                           c: c,
                           icon: Icons.list_alt_rounded,
-                          label: canManage
-                              ? 'نظارت بر کارها'
-                              : 'نظارت بر کارها (بدون دسترسی)',
+                          label: 'نظارت بر کارها',
                           feature: PlanFeature.monitoringTasks,
                           planLabel: 'نظارت بر کارها',
-                          enabled: canManage,
+                          roleAllowed: canViewTasks,
                           onTap: () {
                             Get.back();
                             Get.to(() => const TasksOverviewPage());
@@ -289,12 +311,10 @@ class _AppDrawerState extends State<AppDrawer> {
                         _drawerItem(
                           c: c,
                           icon: Icons.account_tree_outlined,
-                          label: canManage
-                              ? 'نظارت بر روتین‌های فعال'
-                              : 'نظارت بر روتین‌های فعال (بدون دسترسی)',
+                          label: 'نظارت بر روتین‌های فعال',
                           feature: PlanFeature.monitoringRoutines,
                           planLabel: 'نظارت بر روتین‌های فعال',
-                          enabled: canManage,
+                          roleAllowed: canMonitorRoutines,
                           onTap: () {
                             Get.back();
                             Get.to(() => const WorkflowMonitorPage());
@@ -303,12 +323,10 @@ class _AppDrawerState extends State<AppDrawer> {
                         _drawerItem(
                           c: c,
                           icon: Icons.payments_outlined,
-                          label: canManage
-                              ? 'گزارش حقوق پرسنل'
-                              : 'گزارش حقوق پرسنل (بدون دسترسی)',
+                          label: 'گزارش حقوق پرسنل',
                           feature: PlanFeature.monitoringPayroll,
                           planLabel: 'گزارش حقوق پرسنل',
-                          enabled: canManage,
+                          roleAllowed: canViewPayroll,
                           onTap: () {
                             Get.back();
                             Get.to(() => const PayrollReportPage());
@@ -318,19 +336,56 @@ class _AppDrawerState extends State<AppDrawer> {
                     );
                   },
                 ),
-                // 🔧 طبق درخواست: زیرمنویِ «مدیریتِ کاربران» — دقیقاً همان
-                // API/فیلدهایِ صفحه‌ی وب (pages/users.php)، فقط برایِ
-                // کاربرانی که نقششان اجازه‌ی مدیریت می‌دهد (سرور هم خودش
-                // با requirePermission نهایی چک می‌کند؛ این فقط برایِ
-                // پنهان‌نگه‌داشتنِ گزینه از کارمندانِ عادی است)
+                // 🔧 طبق درخواست: زیرمنویِ «مدیریت» — همان توضیحِ بالا؛
+                // دسترسیِ نقش از `org_permissions.dart`، مستقل از قفلِ پلن
                 Builder(
                   builder: (context) {
                     final role = (user['role'] ?? '').toString();
-                    final canManage = [
-                      'manager',
-                      'supervisor',
-                      'admin',
-                    ].contains(role);
+                    final canManageUsers = hasOrgPermission(
+                      role,
+                      OrgPermission.manageUsers,
+                    );
+                    final canManageSections = hasOrgPermission(
+                      role,
+                      OrgPermission.manageActivitySections,
+                    );
+                    final canManageGroups = hasOrgPermission(
+                      role,
+                      OrgPermission.manageTaskGroups,
+                    );
+                    // 🔧 سه گزینه‌یِ آخر («دستگاه‌های حضور و غیاب»، «روزهای
+                    // تعطیل»، «تنظیمات سیستم») هر سه دقیقاً همین یک مجوز
+                    // را لازم دارند، عیناً مطابقِ سرورِ وب
+                    final canViewOrgSettings = hasOrgPermission(
+                      role,
+                      OrgPermission.viewOrgSettings,
+                    );
+                    final anyVisible =
+                        _itemVisible(
+                          feature: PlanFeature.managementUsers,
+                          roleAllowed: canManageUsers,
+                        ) ||
+                        _itemVisible(
+                          feature: PlanFeature.managementActivitySections,
+                          roleAllowed: canManageSections,
+                        ) ||
+                        _itemVisible(
+                          feature: PlanFeature.managementGroups,
+                          roleAllowed: canManageGroups,
+                        ) ||
+                        _itemVisible(
+                          feature: PlanFeature.managementAttendanceDevices,
+                          roleAllowed: canViewOrgSettings,
+                        ) ||
+                        _itemVisible(
+                          feature: PlanFeature.managementHolidays,
+                          roleAllowed: canViewOrgSettings,
+                        ) ||
+                        _itemVisible(
+                          feature: PlanFeature.managementSystemSettings,
+                          roleAllowed: canViewOrgSettings,
+                        );
+                    if (!anyVisible) return const SizedBox.shrink();
                     return _ExpandableDrawerItem(
                       c: c,
                       icon: Icons.admin_panel_settings_outlined,
@@ -341,12 +396,10 @@ class _AppDrawerState extends State<AppDrawer> {
                         _drawerItem(
                           c: c,
                           icon: Icons.people_alt_outlined,
-                          label: canManage
-                              ? 'مدیریت کاربران'
-                              : 'مدیریت کاربران (بدون دسترسی)',
+                          label: 'مدیریت کاربران',
                           feature: PlanFeature.managementUsers,
                           planLabel: 'مدیریت کاربران',
-                          enabled: canManage,
+                          roleAllowed: canManageUsers,
                           onTap: () {
                             Get.back();
                             Get.to(
@@ -360,12 +413,10 @@ class _AppDrawerState extends State<AppDrawer> {
                         _drawerItem(
                           c: c,
                           icon: Icons.account_tree_outlined,
-                          label: canManage
-                              ? 'مدیریت واحدهای فعالیت'
-                              : 'مدیریت واحدهای فعالیت (بدون دسترسی)',
+                          label: 'مدیریت واحدهای فعالیت',
                           feature: PlanFeature.managementActivitySections,
                           planLabel: 'مدیریت واحدهای فعالیت',
-                          enabled: canManage,
+                          roleAllowed: canManageSections,
                           onTap: () {
                             Get.back();
                             showManageActivitySectionsSheet(context);
@@ -374,12 +425,10 @@ class _AppDrawerState extends State<AppDrawer> {
                         _drawerItem(
                           c: c,
                           icon: Icons.folder_copy_outlined,
-                          label: canManage
-                              ? 'مدیریت گروه‌ها'
-                              : 'مدیریت گروه‌ها (بدون دسترسی)',
+                          label: 'مدیریت گروه‌ها',
                           feature: PlanFeature.managementGroups,
                           planLabel: 'مدیریت گروه‌ها',
-                          enabled: canManage,
+                          roleAllowed: canManageGroups,
                           onTap: () {
                             Get.back();
                             showTaskGroupManagementSheet(
@@ -393,12 +442,10 @@ class _AppDrawerState extends State<AppDrawer> {
                         _drawerItem(
                           c: c,
                           icon: Icons.devices_other_outlined,
-                          label: canManage
-                              ? 'دستگاه‌های حضور و غیاب'
-                              : 'دستگاه‌های حضور و غیاب (بدون دسترسی)',
+                          label: 'دستگاه‌های حضور و غیاب',
                           feature: PlanFeature.managementAttendanceDevices,
                           planLabel: 'دستگاه‌های حضور و غیاب',
-                          enabled: canManage,
+                          roleAllowed: canViewOrgSettings,
                           onTap: () {
                             Get.back();
                             Get.to(() => const AttendanceDevicesPage());
@@ -409,12 +456,10 @@ class _AppDrawerState extends State<AppDrawer> {
                         _drawerItem(
                           c: c,
                           icon: Icons.event_busy_outlined,
-                          label: canManage
-                              ? 'روزهای تعطیل'
-                              : 'روزهای تعطیل (بدون دسترسی)',
+                          label: 'روزهای تعطیل',
                           feature: PlanFeature.managementHolidays,
                           planLabel: 'روزهای تعطیل',
-                          enabled: canManage,
+                          roleAllowed: canViewOrgSettings,
                           onTap: () {
                             Get.back();
                             Get.to(() => const HolidaysPage());
@@ -426,12 +471,10 @@ class _AppDrawerState extends State<AppDrawer> {
                         _drawerItem(
                           c: c,
                           icon: Icons.tune_rounded,
-                          label: canManage
-                              ? 'تنظیمات سیستم'
-                              : 'تنظیمات سیستم (بدون دسترسی)',
+                          label: 'تنظیمات سیستم',
                           feature: PlanFeature.managementSystemSettings,
                           planLabel: 'تنظیمات سیستم',
-                          enabled: canManage,
+                          roleAllowed: canViewOrgSettings,
                           onTap: () {
                             Get.back();
                             Get.to(() => const SystemSettingsPage());
@@ -528,19 +571,39 @@ class _AppDrawerState extends State<AppDrawer> {
     );
   }
 
+  // 🔧 آیتمِ منو کِی قابلِ‌مشاهده است؟ — یا به‌خاطرِ پلن قفل است (که
+  // همیشه با قفل نشان داده می‌شود)، یا نقش اجازه می‌دهد. از این هم برایِ
+  // خودِ `_drawerItem` و هم برایِ تشخیصِ «همه‌ی زیرگزینه‌ها مخفی‌اند» در
+  // گروه‌هایِ بالادستی («نظارت»/«مدیریت») استفاده می‌شود
+  bool _itemVisible({
+    required PlanFeature? feature,
+    required bool roleAllowed,
+  }) {
+    final locked = feature != null && !PlanAccess.allows(feature);
+    return locked || roleAllowed;
+  }
+
   Widget _drawerItem({
     required AppColors c,
     required IconData icon,
     required String label,
     bool selected = false,
     bool enabled = true,
+    // 🔧 طبق درخواست: دسترسیِ نقشِ سازمانی (مدیر/سوپروایزر در مقابلِ
+    // کارمندِ عادی) — مستقل از پلن. اگر false باشد و قفلِ پلن هم در کار
+    // نباشد، گزینه کاملاً از منو حذف می‌شود (نه کم‌رنگ)
+    bool roleAllowed = true,
     Color? color,
     PlanFeature? feature,
     String? planLabel,
     required VoidCallback onTap,
   }) {
-    // 🔧 قفل طبقِ پلن: کم‌رنگ می‌شود و با ضربه، شیتِ ارتقا باز می‌شود
+    // 🔧 قفل طبقِ پلن: کم‌رنگ+قفل‌دار می‌شود و با ضربه، پیامِ دقیقِ پلنِ
+    // لازم را نشان می‌دهد — این همیشه اولویت دارد، چون مستقل از نقش است
     final locked = feature != null && !PlanAccess.allows(feature);
+    // 🔧 اگر نه قفلِ پلن در کار است و نه نقش اجازه می‌دهد، گزینه اصلاً
+    // رندر نمی‌شود
+    if (!locked && !roleAllowed) return const SizedBox.shrink();
     final itemColor = color ?? (selected ? c.primary : c.textStrong);
     // 🔧 طبقِ طرح: آیتمِ فعال یک قرصِ خطی (outline) دارد، نه پرشده —
     // بقیه‌ی آیتم‌ها ردیفِ ساده و بدون قاب هستند
@@ -550,7 +613,10 @@ class _AppDrawerState extends State<AppDrawer> {
         color: Colors.transparent,
         child: InkWell(
           onTap: locked
-              ? () => showPlanUpgradeSheet(label: planLabel ?? label)
+              ? () => showPlanUpgradeSheet(
+                  label: planLabel ?? label,
+                  feature: feature,
+                )
               : onTap,
           borderRadius: BorderRadius.circular(12),
           child: Container(
@@ -565,22 +631,30 @@ class _AppDrawerState extends State<AppDrawer> {
               children: [
                 Icon(icon, size: 21, color: itemColor),
                 const SizedBox(width: 14),
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 14.5,
-                    fontWeight: selected ? FontWeight.bold : FontWeight.w500,
-                    color: itemColor,
+                Expanded(
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 14.5,
+                      fontWeight: selected ? FontWeight.bold : FontWeight.w500,
+                      color: itemColor,
+                    ),
                   ),
                 ),
+                // 🔧 طبق درخواست: آیکونِ قفل بعدِ هر گزینه‌ای که فقط به‌خاطرِ
+                // پلن غیرفعال است
+                if (locked) ...[
+                  const SizedBox(width: 8),
+                  Icon(Icons.lock_outline_rounded, size: 17, color: itemColor),
+                ],
               ],
             ),
           ),
         ),
       ),
     );
-    // 🔧 گزینه‌های بدون قابلیتِ واقعی، به‌جای پنهان یا جعلی‌بودن، فقط
-    // کم‌رنگ و غیرقابلِ‌لمس نمایش داده می‌شوند
+    // 🔧 گزینه‌های قفل‌شده به‌خاطرِ پلن، کم‌رنگ ولی قابل‌لمس می‌مانند
+    // (با ضربه، پیامِ ارتقا را نشان می‌دهند)
     if (locked) return Opacity(opacity: 0.5, child: row);
     // گزینه‌ای که هنوز «به‌زودی» است و قفلِ پلن ندارد، فقط غیرفعال می‌ماند
     if (!enabled)

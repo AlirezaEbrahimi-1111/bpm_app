@@ -24,7 +24,7 @@ class PlanGate extends StatelessWidget {
     if (PlanAccess.allows(feature)) return child;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => showPlanUpgradeSheet(label: label),
+      onTap: () => showPlanUpgradeSheet(label: label, feature: feature),
       child: Opacity(opacity: 0.5, child: IgnorePointer(child: child)),
     );
   }
@@ -34,15 +34,21 @@ class PlanGate extends StatelessWidget {
 /// اگر امکان قفل بود، شیتِ ارتقا را نشان می‌دهد و false برمی‌گرداند.
 bool checkPlanAccess(PlanFeature feature, {String? label}) {
   if (PlanAccess.allows(feature)) return true;
-  showPlanUpgradeSheet(label: label);
+  showPlanUpgradeSheet(label: label, feature: feature);
   return false;
 }
 
 /// [message] پیامِ خودِ سرور (فیلدِ message در خطای PLAN_RESTRICTED) است؛
-/// اگر باشد به‌جای متنِ پیش‌فرض نشان داده می‌شود.
-void showPlanUpgradeSheet({String? label, String? message}) {
+/// اگر باشد به‌جای متنِ پیش‌فرض نشان داده می‌شود. [feature] وقتی مشخص
+/// باشد (و [message] نباشد)، طبقِ درخواست، پیام دقیقاً پلنِ لازم (نقره‌ای
+/// یا طلایی، یا فقط طلایی) را می‌گوید، نه عبارتِ کلی.
+void showPlanUpgradeSheet({
+  String? label,
+  String? message,
+  PlanFeature? feature,
+}) {
   Get.bottomSheet(
-    _PlanUpgradeSheet(label: label, message: message),
+    _PlanUpgradeSheet(label: label, message: message, feature: feature),
     backgroundColor: Colors.transparent,
   );
 }
@@ -50,8 +56,9 @@ void showPlanUpgradeSheet({String? label, String? message}) {
 class _PlanUpgradeSheet extends StatelessWidget {
   final String? label;
   final String? message;
+  final PlanFeature? feature;
 
-  const _PlanUpgradeSheet({this.label, this.message});
+  const _PlanUpgradeSheet({this.label, this.message, this.feature});
 
   static const _goldColor = Color(0xFFF5B94D);
 
@@ -59,11 +66,18 @@ class _PlanUpgradeSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final planLabel = feature != null
+        ? PlanAccess.requiredPlanLabel(feature!)
+        : null;
     final featureLine = (message != null && message!.trim().isNotEmpty)
         ? message!.trim()
         : label == null
-        ? 'این امکان در پلن فعلی شما فعال نیست.'
-        : '«$label» در پلن فعلی شما فعال نیست.';
+        ? (planLabel != null
+              ? 'این امکان فقط در پلن $planLabel قابل استفاده است.'
+              : 'این امکان در پلن فعلی شما فعال نیست.')
+        : (planLabel != null
+              ? '«$label» فقط در پلن $planLabel قابل استفاده است.'
+              : '«$label» در پلن فعلی شما فعال نیست.');
 
     return SafeArea(
       top: false,

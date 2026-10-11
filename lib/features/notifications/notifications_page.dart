@@ -166,9 +166,14 @@ class _NotificationsPageState extends State<NotificationsPage> {
 
   Future<void> _markAsRead(int notifId) async {
     try {
+      // 🔧 رفعِ باگ: بک‌اند (api/notifications/mark-read.php) کلیدِ
+      // 'id' را انتظار دارد، نه 'notification_id' — با کلیدِ قبلی،
+      // درخواست همیشه با ۴۰۰ رد می‌شد (بی‌صدا، چون در catch خورده
+      // می‌شد) و اعلان هیچ‌وقت واقعاً در سرور خوانده‌شده ثبت نمی‌شد؛
+      // با بارگذاریِ بعدیِ لیست از سرور، به‌حالتِ خوانده‌نشده برمی‌گشت
       await ApiClient.dio.post(
         '/api/notifications/mark-read.php',
-        data: {'notification_id': notifId},
+        data: {'id': notifId},
       );
     } catch (_) {}
   }
@@ -198,12 +203,22 @@ class _NotificationsPageState extends State<NotificationsPage> {
       });
       widget.onUnreadCountChanged?.call(_unreadCount);
     }
-    if (notif['related_type'] == 'task' && notif['related_id'] != null) {
+    final relatedType = notif['related_type']?.toString();
+    if (relatedType == 'task' && notif['related_id'] != null) {
       final taskId = int.tryParse(notif['related_id'].toString());
       if (taskId != null) {
         await Get.to(() => TaskDetailPage(taskId: taskId));
         _loadNotifications();
       }
+    } else if (relatedType != null && relatedType.isNotEmpty) {
+      // 🔧 طبق درخواست: اعلان‌هایی که به چیزی غیر از «کار» مرتبط‌اند
+      // (تیکت، فرآیند، درخواستِ مرخصی/مأموریت و...) چون صفحه‌ی
+      // جزئیاتشان هنوز در این اپ ساخته نشده، حداقل پیامِ واضح بدهیم
+      // به‌جایِ اینکه با زدن روی اعلان هیچ‌چیز اتفاق نیفتد
+      AppSnack.info(
+        'به‌زودی',
+        'نمایشِ جزئیاتِ این نوع اعلان هنوز در اپ موجود نیست.',
+      );
     }
   }
 

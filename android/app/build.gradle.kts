@@ -3,8 +3,21 @@ import java.io.FileInputStream
 
 plugins {
     id("com.android.application")
+    // 🔧 رفعِ باگ: این پلاگین لازم است تا بلوکِ «kotlin { compilerOptions {...} } »
+    // در پایینِ همین فایل قابلِ‌شناسایی باشد — بدونش آن بلوک با خطایِ
+    // «Unresolved reference» شکست می‌خورد
+    id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+// 🔧 موقت: به‌خاطرِ قطعیِ ناپایدارِ شبکه در رسیدن به repo های گوگل/میون،
+// جارهایِ از قبل کش‌شده را از یک پوشه‌ی محلی هم جست‌وجو می‌کند، و
+// چندتایی از AARهایِ androidx که دانلودشان موفق نمی‌شد را به‌صورتِ یک
+// مخزنِ محلیِ واقعیِ Maven (با pom درست) اضافه می‌کند
+repositories {
+    maven { url = uri("../local-maven-repo") }
+    flatDir { dirs("../local-libs") }
 }
 
 // 🔧 اطلاعات امضای نسخه‌ی release — از android/key.properties خوانده می‌شود

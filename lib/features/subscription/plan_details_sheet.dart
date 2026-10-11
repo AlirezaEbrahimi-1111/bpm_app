@@ -4,6 +4,7 @@ import 'package:shamsi_date/shamsi_date.dart';
 import '../../core/plan/plan_access.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/persian_number.dart';
+import 'plan_feature_list.dart';
 
 /// تاریخِ شمسیِ کوتاه، مثلاً ۱۴۰۵/۰۷/۱۲
 String formatPlanDate(DateTime d) {
@@ -28,10 +29,18 @@ void showPlanDetailsSheet() {
   );
 }
 
-class _PlanDetailsSheet extends StatelessWidget {
+class _PlanDetailsSheet extends StatefulWidget {
   const _PlanDetailsSheet();
 
+  @override
+  State<_PlanDetailsSheet> createState() => _PlanDetailsSheetState();
+}
+
+class _PlanDetailsSheetState extends State<_PlanDetailsSheet> {
   static const _goldColor = Color(0xFFF5B94D);
+
+  // 🔧 طبق درخواست: آکاردئونِ «جزئیات و امکاناتِ پلن» پیش‌فرض بسته است
+  bool _featuresExpanded = false;
 
   @override
   Widget build(BuildContext context) {
@@ -73,132 +82,240 @@ class _PlanDetailsSheet extends StatelessWidget {
         ? (used / cap).clamp(0.0, 1.0)
         : null;
 
+    // 🔧 طبق درخواست: افزودنِ آکاردئونِ «جزئیات و امکاناتِ پلن» (که می‌تواند
+    // تا ۲۶ ردیف باشد) ممکن است از ارتفاعِ صفحه بیشتر شود — چون این شیت
+    // قبلاً اصلاً اسکرول نمی‌شد، سقفی برایِ ارتفاع و اسکرولِ داخلی لازم شد
     return SafeArea(
       top: false,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(22, 12, 22, 22),
-        decoration: BoxDecoration(
-          color: c.surface,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.85,
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: c.borderSoft,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Row(
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(22, 12, 22, 22),
+          decoration: BoxDecoration(
+            color: c.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Icon(
-                  Icons.workspace_premium_rounded,
-                  color: _goldColor,
-                  size: 28,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'پلن ${planLevelLabel(level)}',
-                    style: TextStyle(
-                      color: c.textStrong,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: c.borderSoft,
+                      borderRadius: BorderRadius.circular(2),
                     ),
                   ),
                 ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: c.success.withValues(alpha: 0.14),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    'فعال',
-                    style: TextStyle(
-                      color: c.success,
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            _row(c, Icons.event_outlined, 'تاریخ انقضا', expiryValue),
-            _row(c, Icons.group_outlined, 'سقف کاربر', capValue),
-            _row(c, Icons.person_outline_rounded, 'کاربران فعلی', usedValue),
-            if (ratio != null) ...[
-              const SizedBox(height: 6),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(6),
-                child: LinearProgressIndicator(
-                  value: ratio,
-                  minHeight: 6,
-                  backgroundColor: c.borderSoft,
-                  color: ratio >= 1 ? c.danger : c.primary,
-                ),
-              ),
-            ],
-            _row(c, Icons.language_rounded, 'دسترسی به پنل وب', webValue),
-            if (renewLine != null) ...[
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: c.primary.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
+                const SizedBox(height: 16),
+                Row(
                   children: [
-                    Icon(Icons.autorenew_rounded, size: 18, color: c.primary),
-                    const SizedBox(width: 8),
+                    Icon(
+                      Icons.workspace_premium_rounded,
+                      color: _goldColor,
+                      size: 28,
+                    ),
+                    const SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        renewLine,
+                        'پلن ${planLevelLabel(level)}',
                         style: TextStyle(
                           color: c.textStrong,
-                          fontSize: 12.5,
-                          height: 1.5,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: c.success.withValues(alpha: 0.14),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        'فعال',
+                        style: TextStyle(
+                          color: c.success,
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
                     ),
                   ],
                 ),
-              ),
-            ],
-            const SizedBox(height: 18),
-            SizedBox(
-              height: 46,
-              child: OutlinedButton(
-                onPressed: () => Get.back(),
-                style: OutlinedButton.styleFrom(
-                  side: BorderSide(color: c.borderSoft),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
+                const SizedBox(height: 16),
+                _row(c, Icons.event_outlined, 'تاریخ انقضا', expiryValue),
+                _row(c, Icons.group_outlined, 'سقف کاربر', capValue),
+                _row(
+                  c,
+                  Icons.person_outline_rounded,
+                  'کاربران فعلی',
+                  usedValue,
+                ),
+                if (ratio != null) ...[
+                  const SizedBox(height: 6),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: LinearProgressIndicator(
+                      value: ratio,
+                      minHeight: 6,
+                      backgroundColor: c.borderSoft,
+                      color: ratio >= 1 ? c.danger : c.primary,
+                    ),
+                  ),
+                ],
+                _row(c, Icons.language_rounded, 'دسترسی به پنل وب', webValue),
+                if (renewLine != null) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: c.primary.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.autorenew_rounded,
+                          size: 18,
+                          color: c.primary,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            renewLine,
+                            style: TextStyle(
+                              color: c.textStrong,
+                              fontSize: 12.5,
+                              height: 1.5,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                // 🔧 طبق درخواست: کسی که پلنی خریده یا از پلنِ رایگان استفاده
+                // می‌کند هم بازم بتواند جزئیاتِ کاملِ همین پلن (امکانات) را
+                // همین‌جا در شیت ببیند — به‌صورتِ آکاردئونِ پیش‌فرض‌بسته
+                const SizedBox(height: 14),
+                _featuresAccordion(c, level),
+                const SizedBox(height: 18),
+                SizedBox(
+                  height: 46,
+                  child: OutlinedButton(
+                    onPressed: () => Get.back(),
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(color: c.borderSoft),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    child: Text(
+                      'بستن',
+                      style: TextStyle(
+                        color: c.textStrong,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ),
                 ),
-                child: Text(
-                  'بستن',
-                  style: TextStyle(
-                    color: c.textStrong,
-                    fontWeight: FontWeight.bold,
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _featuresAccordion(AppColors c, PlanLevel level) {
+    final features = planFeatureList(level);
+    return Container(
+      decoration: BoxDecoration(
+        color: c.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          InkWell(
+            onTap: () => setState(() => _featuresExpanded = !_featuresExpanded),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.check_circle_outline_rounded,
+                    size: 17,
+                    color: c.textMuted,
                   ),
-                ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'جزئیات و امکانات پلن',
+                      style: TextStyle(
+                        color: c.textStrong,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  AnimatedRotation(
+                    turns: _featuresExpanded ? 0.5 : 0,
+                    duration: const Duration(milliseconds: 180),
+                    child: Icon(
+                      Icons.expand_more_rounded,
+                      size: 20,
+                      color: c.textMuted,
+                    ),
+                  ),
+                ],
               ),
             ),
-          ],
-        ),
+          ),
+          if (_featuresExpanded)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+              child: Column(
+                children: features
+                    .map(
+                      (f) => Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 5),
+                        child: Row(
+                          children: [
+                            Icon(f.$1, size: 15, color: c.textMuted),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                f.$2,
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  color: c.textStrong,
+                                ),
+                              ),
+                            ),
+                            Icon(
+                              Icons.check_circle_rounded,
+                              size: 14,
+                              color: c.success,
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                    .toList(),
+              ),
+            ),
+        ],
       ),
     );
   }

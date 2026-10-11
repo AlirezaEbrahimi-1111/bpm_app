@@ -13,6 +13,7 @@ import '../subscription/plan_gate.dart';
 import '../../core/widgets/app_switch.dart';
 import 'widgets/persian_date_picker_sheet.dart';
 import 'widgets/task_group_management_sheet.dart';
+import 'widgets/attachment_picker.dart';
 import '../shell/widgets/app_bottom_nav.dart';
 
 /// صفحه‌ی «تعریف کار جدید» — طبق طرح ارسالی (روشن + تاریک).
@@ -56,7 +57,9 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
   String _groupLabel = 'بدون گروه';
   bool _isLoading = false;
   // چک‌لیست
-  final List<String> _checklistItems = [];
+  // 🔧 طبق درخواست: هر آیتم علاوه‌بر عنوان، توضیحِ اختیاری هم دارد —
+  // دقیقاً مثلِ نسخه‌ی وب که با آیکنِ گفتگو کنارِ هر آیتم اضافه می‌شود
+  final List<({String title, String description})> _checklistItems = [];
   final _checklistController = TextEditingController();
   // داده‌های assignee
   List<dynamic> _users = [];
@@ -73,6 +76,12 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
   // 🔧 اشتراکِ تاریخچه با ارجاع‌شوندگان — endpoint از قبل پشتیبانی
   // می‌کند (share_history)، فقط تا الان در فرمِ موبایل نبود
   bool _shareHistory = true;
+
+  // 🔧 طبق درخواست: عیناً طبقِ نسخه‌ی وب — وقتی کار برایِ خودِ
+  // تعریف‌کننده است (نه ارجاع به کسِ دیگر)، موعد اختیاری می‌شود
+  bool get _isSelfTask =>
+      _assigneeType == 'self' ||
+      (_assigneeType == 'user' && _assigneeValue == widget.currentUserId);
 
   @override
   void initState() {
@@ -91,7 +100,9 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
             : 'بدون گروه';
       }
       final checklistTitles = (rf['checklist_titles'] as List?) ?? [];
-      _checklistItems.addAll(checklistTitles.map((e) => e.toString()));
+      _checklistItems.addAll(
+        checklistTitles.map((e) => (title: e.toString(), description: '')),
+      );
       // 🔧 تاریخ/موعد و مسئولِ انجام عمداً خالی می‌مانند — باید تازه
       // انتخاب شوند، درست مثلِ رفتارِ «بازتعریف» در نسخهٔ دسکتاپ
     }
@@ -181,8 +192,14 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       AppSnack.error('خطا', 'عنوان کار الزامی است');
       return;
     }
-    if (_taskType == 'periodic' && _dueDate == null) {
-      AppSnack.error('خطا', 'تاریخ انجام الزامی است');
+    // 🔧 طبق درخواست: عیناً طبقِ نسخه‌ی وب — موعد فقط وقتی الزامی است که
+    // کار به کسِ دیگری ارجاع داده شود؛ اگر خودِ تعریف‌کننده مسئولِ
+    // انجامش هم باشد، می‌تواند بدونِ موعد ثبت کند
+    if (_taskType == 'periodic' && _dueDate == null && !_isSelfTask) {
+      AppSnack.error(
+        'خطا',
+        'تاریخ انجام برای کارهای مقطعی ارجاع‌داده‌شده الزامی است',
+      );
       return;
     }
     if (_taskType == 'continuous' && _startDate == null) {
@@ -250,31 +267,57 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     }
   }
 
-  Future<void> _pickFile() async {
+  // 🔧 طبقِ بک‌اند (api/tasks/upload-attachment.php): عکس/سند، صوتی
+  // (mp3/m4a/ogg) و حالا ویدیو (mp4/mov) هم پشتیبانی می‌شود
+  static const _allowedAttachmentExtensions = [
+    'jpg',
+    'jpeg',
+    'png',
+    'pdf',
+    'doc',
+    'docx',
+    'xls',
+    'xlsx',
+    'mp3',
+    'm4a',
+    'ogg',
+    'mp4',
+    'mov',
+  ];
+
+  // 🔧 طبق درخواست: علاوه‌بر انتخاب از فایل‌ها، گرفتنِ عکسِ مستقیم با
+  // دوربین و ضبطِ صدای مستقیم هم به‌عنوانِ پیوست امکان‌پذیر شد — هر سه
+  // مسیر به یک PlatformFile می‌رسند
+  Future<void> _openAttachmentSheet() async {
     try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: [
-          'jpg',
-          'jpeg',
-          'png',
-          'pdf',
-          'doc',
-          'docx',
-          'xls',
-          'xlsx',
-        ],
-        withData: true,
+      final file = await showAttachmentSourceSheet(
+        context,
+        allowedExtensions: _allowedAttachmentExtensions,
       );
-      if (result != null && result.files.isNotEmpty) {
-        setState(() => _pickedFiles.add(result.files.first));
+      if (file == null) return;
+      final ext = (file.extension ?? file.name.split('.').last).toLowerCase();
+      // 🔧 رفعِ باگ: برخی پیکرهای فایل (مخصوصاً وقتی کاربر از «Browse»ی
+      // سیستمی به‌جای فیلترِ اپ استفاده می‌کند) فیلترِ allowedExtensions
+      // را رعایت نمی‌کنند — پس خودمان هم باید اینجا چک کنیم، نه فقط
+      // منتظرِ ردِ سرور بمانیم
+      if (!_allowedAttachmentExtensions.contains(ext)) {
+        AppSnack.error(
+          'فرمتِ فایل پشتیبانی نمی‌شود',
+          'فقط عکس، PDF، Word، Excel، فایلِ صوتیِ mp3/m4a/ogg و ویدیوی mp4/mov مجاز است.',
+        );
+        return;
       }
+      setState(() => _pickedFiles.add(file));
     } catch (_) {
       AppSnack.error('خطا', 'خطا در انتخاب فایل');
     }
   }
 
   Future<void> _uploadFiles(dynamic taskId) async {
+    // 🔧 رفعِ باگ: قبلاً خطای آپلود کاملاً بی‌صدا نادیده گرفته می‌شد — کار
+    // ساخته می‌شد اما پیوست (مثلاً ویدیو که سمتِ سرور پشتیبانی نمی‌شود، یا
+    // فایلِ حجیم) بدون هیچ پیامی گم می‌شد. حالا خطای هر فایل به کاربر
+    // نشان داده می‌شود
     for (final file in _pickedFiles) {
       try {
         final formData = dio.FormData.fromMap({
@@ -285,7 +328,12 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
           '/api/tasks/upload-attachment.php',
           data: formData,
         );
-      } catch (_) {}
+      } catch (e) {
+        AppSnack.error(
+          'خطا در پیوست',
+          '«${file.name}»: ${ApiClient.errorMessage(e, 'آپلود نشد')}',
+        );
+      }
     }
   }
 
@@ -293,9 +341,60 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     final text = _checklistController.text.trim();
     if (text.isEmpty) return;
     setState(() {
-      _checklistItems.add(text);
+      _checklistItems.add((title: text, description: ''));
       _checklistController.clear();
     });
+  }
+
+  // 🔧 طبق درخواست: افزودن/ویرایشِ توضیحِ یک آیتمِ چک‌لیست — قبل از
+  // ذخیره‌ی کار، فقط در حافظه نگه داشته می‌شود و همراهِ عنوان ارسال می‌شود
+  void _editChecklistItemDescription(int index) {
+    final controller = TextEditingController(
+      text: _checklistItems[index].description,
+    );
+    final c = AppColors.of(context);
+    Get.dialog(
+      AlertDialog(
+        backgroundColor: c.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          'توضیحِ آیتمِ چک‌لیست',
+          style: TextStyle(fontSize: 16, color: c.textStrong),
+        ),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLines: 3,
+          textAlign: TextAlign.right,
+          style: TextStyle(color: c.textStrong),
+          decoration: InputDecoration(
+            hintText: 'توضیحات (اختیاری)...',
+            hintStyle: TextStyle(color: c.textMuted, fontSize: 13),
+            filled: true,
+            fillColor: c.surfaceContainerLow,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide.none,
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Get.back(), child: const Text('انصراف')),
+          TextButton(
+            onPressed: () {
+              setState(() {
+                _checklistItems[index] = (
+                  title: _checklistItems[index].title,
+                  description: controller.text.trim(),
+                );
+              });
+              Get.back();
+            },
+            child: const Text('ذخیره'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _saveChecklist(dynamic taskId) async {
@@ -307,7 +406,13 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
           'items': _checklistItems
               .asMap()
               .entries
-              .map((e) => {'title': e.value, 'sort_order': e.key})
+              .map(
+                (e) => {
+                  'title': e.value.title,
+                  'description': e.value.description,
+                  'sort_order': e.key,
+                },
+              )
               .toList(),
         },
       );
@@ -451,9 +556,9 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
                 _dateTile(
                   c,
                   icon: Icons.calendar_today_outlined,
-                  label: 'موعد انجام',
+                  label: _isSelfTask ? 'موعد انجام (اختیاری)' : 'موعد انجام',
                   value: _dueDate != null ? _toShamsi(_dueDate!) : null,
-                  hint: 'انتخاب تاریخ',
+                  hint: _isSelfTask ? 'بدون موعد' : 'انتخاب تاریخ',
                   onTap: () async {
                     final d = await _pickDate();
                     if (d != null) setState(() => _dueDate = d);
@@ -522,57 +627,33 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
             ],
           ),
         ),
-        // 🔧 طبق درخواست: دکمه‌ی ذخیره دیگر داخل اسکرول نیست — ثابت،
-        // چسبیده به بالای نوار/دکمه‌های سیستمِ گوشی. نوارِ ناوبریِ پوسته‌ی
-        // اصلی هم زیرِ همین دکمه اضافه شد (طبق درخواست، در همه‌ی صفحات)
-        bottomNavigationBar: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SafeArea(
-              bottom: false,
-              child: Container(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-                decoration: BoxDecoration(
-                  color: c.bgPage,
-                  border: Border(top: BorderSide(color: c.borderSoft)),
+        // 🔧 طبق درخواست: دکمه‌ی ذخیره مثلِ دکمه‌ی تنظیماتِ سیستم — اکشن‌باتنِ
+        // گردِ کوچکِ شناور، سمتِ چپ (نه نوارِ تمام‌عرضِ قبلی)
+        floatingActionButton: _saveActionButton(c),
+        // 🔧 رفعِ باگ: چون اپ RTL است، startFloat یعنی سمتِ راست؛ برایِ
+        // سمتِ چپِ واقعی باید endFloat باشد
+        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+        bottomNavigationBar: const AppBottomNav(),
+      ),
+    );
+  }
+
+  Widget _saveActionButton(AppColors c) {
+    return GestureDetector(
+      onTap: _isLoading ? null : _submit,
+      child: Container(
+        width: 62,
+        height: 62,
+        decoration: BoxDecoration(color: c.primary, shape: BoxShape.circle),
+        child: _isLoading
+            ? const Padding(
+                padding: EdgeInsets.all(18),
+                child: CircularProgressIndicator(
+                  color: Colors.white,
+                  strokeWidth: 2.4,
                 ),
-                child: SizedBox(
-                  height: 52,
-                  child: ElevatedButton(
-                    onPressed: _isLoading ? null : _submit,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: c.primary,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                    ),
-                    child: _isLoading
-                        ? const SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: CircularProgressIndicator(
-                              color: Colors.white,
-                              strokeWidth: 2,
-                            ),
-                          )
-                        : Text(
-                            widget.redefineFrom != null
-                                ? 'بازتعریف کار'
-                                : 'ذخیره کار',
-                            style: const TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                  ),
-                ),
-              ),
-            ),
-            const AppBottomNav(),
-          ],
-        ),
+              )
+            : const Icon(Icons.check_rounded, color: Colors.white, size: 30),
       ),
     );
   }
@@ -1168,7 +1249,8 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: _checklistItems.asMap().entries.map((entry) {
         final i = entry.key;
-        final text = entry.value;
+        final item = entry.value;
+        final hasDesc = item.description.trim().isNotEmpty;
         return Container(
           margin: const EdgeInsets.only(bottom: 8),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -1184,14 +1266,40 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: Text(
-                  text,
-                  textAlign: TextAlign.right,
-                  style: TextStyle(fontSize: 13, color: c.textStrong),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      item.title,
+                      textAlign: TextAlign.right,
+                      style: TextStyle(fontSize: 13, color: c.textStrong),
+                    ),
+                    if (hasDesc) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        item.description,
+                        textAlign: TextAlign.right,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 11.5, color: c.textMuted),
+                      ),
+                    ],
+                  ],
                 ),
               ),
               const SizedBox(width: 10),
-              Icon(Icons.radio_button_unchecked, size: 18, color: c.textMuted),
+              // 🔧 طبق درخواست: افزودن/ویرایشِ توضیحِ آیتم — مثلِ آیکنِ
+              // گفتگویِ نسخه‌ی وب
+              GestureDetector(
+                onTap: () => _editChecklistItemDescription(i),
+                child: Icon(
+                  hasDesc
+                      ? Icons.chat_bubble_rounded
+                      : Icons.chat_bubble_outline_rounded,
+                  size: 16,
+                  color: hasDesc ? c.primary : c.textMuted,
+                ),
+              ),
             ],
           ),
         );
@@ -1219,7 +1327,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
         ),
         const SizedBox(width: 8),
         GestureDetector(
-          onTap: _pickFile,
+          onTap: _openAttachmentSheet,
           child: Container(
             padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(

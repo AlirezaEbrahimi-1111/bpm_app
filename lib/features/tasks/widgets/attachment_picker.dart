@@ -1,0 +1,328 @@
+import 'dart:async';
+import 'dart:io';
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:record/record.dart';
+import '../../../core/theme/app_colors.dart';
+import '../../../core/widgets/app_snack.dart';
+
+/// سه‌راهیِ افزودنِ پیوست — طبق درخواست: هم انتخابِ فایلِ موجود، هم
+/// گرفتنِ عکسِ مستقیم با دوربین، هم ضبطِ صدای مستقیم با میکروفون؛ هر
+/// سه مسیر یک خروجیِ یکسان (PlatformFile یا null اگر لغو شود) برمی‌گردانند
+/// تا تماس‌گیرنده با یک مسیرِ آپلودِ واحد کار کند.
+Future<PlatformFile?> showAttachmentSourceSheet(
+  BuildContext context, {
+  List<String>? allowedExtensions,
+}) async {
+  final c = AppColors.of(context);
+  // 🔧 شیت فقط انتخابِ «منبع» را برمی‌گرداند؛ خودِ عملیات (فایل‌پیکر/
+  // دوربین/ضبط) بعد از بسته‌شدنِ شیت اجرا می‌شود — چون ضبطِ صدا خودش
+  // یک شیتِ دیگر باز می‌کند و تویِ همدیگر تداخل پیدا می‌کردند
+  final choice = await Get.bottomSheet<String>(
+    Container(
+      decoration: BoxDecoration(
+        color: c.surfaceContainerLow,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      padding: EdgeInsets.fromLTRB(
+        0,
+        12,
+        0,
+        12 + MediaQuery.of(context).padding.bottom,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: c.borderSoft,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Text(
+              'افزودنِ پیوست',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+                color: c.textStrong,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          ListTile(
+            leading: Icon(Icons.folder_outlined, color: c.primary),
+            title: Text(
+              'انتخاب از فایل‌ها',
+              style: TextStyle(fontSize: 14, color: c.textStrong),
+            ),
+            onTap: () => Get.back(result: 'file'),
+          ),
+          ListTile(
+            leading: Icon(Icons.camera_alt_outlined, color: c.primary),
+            title: Text(
+              'گرفتن عکس با دوربین',
+              style: TextStyle(fontSize: 14, color: c.textStrong),
+            ),
+            onTap: () => Get.back(result: 'camera'),
+          ),
+          ListTile(
+            leading: Icon(Icons.mic_none_rounded, color: c.primary),
+            title: Text(
+              'ضبط صدا',
+              style: TextStyle(fontSize: 14, color: c.textStrong),
+            ),
+            onTap: () => Get.back(result: 'audio'),
+          ),
+        ],
+      ),
+    ),
+    backgroundColor: Colors.transparent,
+  );
+
+  switch (choice) {
+    case 'file':
+      final result = await FilePicker.platform.pickFiles(
+        type: allowedExtensions == null ? FileType.any : FileType.custom,
+        allowedExtensions: allowedExtensions,
+        withData: true,
+      );
+      return (result != null && result.files.isNotEmpty)
+          ? result.files.first
+          : null;
+    case 'camera':
+      return pickCameraPhoto();
+    case 'audio':
+      if (!context.mounted) return null;
+      return showAudioRecorderSheet(context);
+    default:
+      return null;
+  }
+}
+
+/// گرفتنِ عکس با دوربین و تبدیلِ آن به PlatformFile (همانِ نوعی که
+/// file_picker برمی‌گرداند) تا مسیرِ آپلود مشترک بماند.
+Future<PlatformFile?> pickCameraPhoto() async {
+  try {
+    final picked = await ImagePicker().pickImage(
+      source: ImageSource.camera,
+      imageQuality: 85,
+    );
+    if (picked == null) return null;
+    final bytes = await picked.readAsBytes();
+    final name = picked.name.isNotEmpty
+        ? picked.name
+        : 'photo_${DateTime.now().millisecondsSinceEpoch}.jpg';
+    return PlatformFile(name: name, size: bytes.length, bytes: bytes);
+  } catch (_) {
+    AppSnack.error('خطا', 'خطا در گرفتنِ عکس با دوربین');
+    return null;
+  }
+}
+
+/// شیتِ ضبطِ صدا — شروعِ خودکارِ ضبط با بازشدن، نمایشِ تایمر، و
+/// دکمه‌های توقف/لغو/ارسال. خروجی: PlatformFileِ فایلِ صوتیِ ضبط‌شده
+/// (فرمتِ m4a — طبقِ بک‌اند مجاز) یا null اگر لغو شود.
+Future<PlatformFile?> showAudioRecorderSheet(BuildContext context) {
+  return Get.bottomSheet<PlatformFile?>(
+    const _AudioRecorderSheet(),
+    backgroundColor: Colors.transparent,
+    isDismissible: false,
+  );
+}
+
+class _AudioRecorderSheet extends StatefulWidget {
+  const _AudioRecorderSheet();
+
+  @override
+  State<_AudioRecorderSheet> createState() => _AudioRecorderSheetState();
+}
+
+class _AudioRecorderSheetState extends State<_AudioRecorderSheet> {
+  final _recorder = AudioRecorder();
+  Timer? _timer;
+  Duration _elapsed = Duration.zero;
+  bool _isRecording = false;
+  bool _isStopped = false;
+  String? _path;
+
+  @override
+  void initState() {
+    super.initState();
+    _start();
+  }
+
+  Future<void> _start() async {
+    try {
+      if (!await _recorder.hasPermission()) {
+        AppSnack.error('خطا', 'دسترسیِ میکروفون داده نشد');
+        Get.back();
+        return;
+      }
+      final dir = await getTemporaryDirectory();
+      final path =
+          '${dir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
+      await _recorder.start(
+        const RecordConfig(encoder: AudioEncoder.aacLc),
+        path: path,
+      );
+      setState(() {
+        _isRecording = true;
+        _path = path;
+      });
+      _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+        setState(() => _elapsed += const Duration(seconds: 1));
+      });
+    } catch (_) {
+      AppSnack.error('خطا', 'خطا در شروعِ ضبطِ صدا');
+      if (mounted) Get.back();
+    }
+  }
+
+  Future<void> _stop() async {
+    _timer?.cancel();
+    await _recorder.stop();
+    setState(() {
+      _isRecording = false;
+      _isStopped = true;
+    });
+  }
+
+  Future<void> _cancel() async {
+    _timer?.cancel();
+    if (_isRecording) await _recorder.stop();
+    final path = _path;
+    if (path != null) {
+      final f = File(path);
+      if (await f.exists()) await f.delete();
+    }
+    if (mounted) Get.back();
+  }
+
+  Future<void> _send() async {
+    final path = _path;
+    if (path == null) {
+      Get.back();
+      return;
+    }
+    final file = File(path);
+    final bytes = await file.readAsBytes();
+    if (mounted) {
+      Get.back(
+        result: PlatformFile(
+          name: 'voice_${DateTime.now().millisecondsSinceEpoch}.m4a',
+          size: bytes.length,
+          bytes: bytes,
+        ),
+      );
+    }
+  }
+
+  String _fmt(Duration d) {
+    final m = d.inMinutes.toString().padLeft(2, '0');
+    final s = (d.inSeconds % 60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _recorder.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppColors.of(context);
+    return Container(
+      decoration: BoxDecoration(
+        color: c.surfaceContainerLow,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      padding: EdgeInsets.fromLTRB(
+        20,
+        20,
+        20,
+        24 + MediaQuery.of(context).padding.bottom,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              color: _isRecording
+                  ? c.danger.withValues(alpha: 0.12)
+                  : c.primary.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.mic_rounded,
+              size: 30,
+              color: _isRecording ? c.danger : c.primary,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            _fmt(_elapsed),
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+              color: c.textStrong,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            _isRecording ? 'در حالِ ضبط...' : 'ضبط متوقف شد',
+            style: TextStyle(fontSize: 12.5, color: c.textMuted),
+          ),
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: _cancel,
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    side: BorderSide(color: c.borderSoft),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  child: Text('لغو', style: TextStyle(color: c.textMuted)),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: _isRecording ? _stop : (_isStopped ? _send : null),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: c.primary,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  child: Text(
+                    _isRecording ? 'توقف' : 'ارسال',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}

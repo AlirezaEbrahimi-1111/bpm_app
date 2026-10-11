@@ -5,6 +5,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/utils/persian_number.dart';
 import '../../core/widgets/app_snack.dart';
 import '../shell/widgets/app_bottom_nav.dart';
+import 'plan_feature_list.dart';
 
 enum SubscriptionPlanType { gold, silver }
 
@@ -484,65 +485,7 @@ class _PlanDetailPageState extends State<PlanDetailPage> {
 
   // ── لیستِ ویژگی‌ها ──
   Widget _featuresCard(AppColors c) {
-    final goldFeatures = const [
-      (Icons.add_task_rounded, 'ایجادِ کار (مقطعی، دوره‌ای)'),
-      (Icons.task_alt_rounded, 'مشاهده و مدیریتِ کارها'),
-      (Icons.flag_outlined, 'تعیینِ اولویت برایِ کارها'),
-      (Icons.play_circle_outline_rounded, 'شروع و تکمیلِ کار'),
-      (Icons.checklist_rounded, 'افزودنِ چک‌لیستِ گام‌به‌گام برایِ هر کار'),
-      (Icons.notes_rounded, 'درجِ توضیح برایِ کار'),
-      (Icons.attach_file_rounded, 'پیوست‌کردن و ارسالِ فایل برایِ هر کار'),
-      (Icons.folder_copy_outlined, 'گروه‌بندیِ کارها برایِ دسته‌بندیِ بهتر'),
-      (Icons.filter_list_rounded, 'فیلترِ پیشرفته بر اساسِ وضعیت و اولویت'),
-      (Icons.history_rounded, 'نمایشِ جزئیات و تاریخچه‌یِ کاملِ کارها'),
-      (Icons.search_rounded, 'جستجویِ سریع در میانِ همه‌یِ کارها'),
-      (
-        Icons.calendar_view_week_rounded,
-        'نمایِ برنامه‌یِ روزانه، هفتگی، ماهانه',
-      ),
-      (Icons.wifi_rounded, 'همگام‌سازیِ آنیِ اطلاعات به‌صورتِ آنلاین'),
-      (Icons.person_add_alt_1_outlined, 'ایجادِ کار برایِ همکاران'),
-      (
-        Icons.notifications_active_outlined,
-        'اعلان‌هایِ لحظه‌ای برایِ کارها و رویدادها',
-      ),
-      (Icons.dashboard_customize_outlined, 'داشبوردِ مدیریتی'),
-      (Icons.visibility_outlined, 'نظارت بر کارهایِ واحدها'),
-      (Icons.insights_rounded, 'تحلیلِ گلوگاه‌ها'),
-      (Icons.analytics_outlined, 'مانیتورینگِ روتین‌ها'),
-      (Icons.people_alt_outlined, 'نمایشِ کاربران و کارهایِ دارایِ تأخیر'),
-      (
-        Icons.account_tree_outlined,
-        'تعریفِ کارِ روتینِ چندمرحله‌ای (آبشاری، موازی)',
-      ),
-      (Icons.send_rounded, 'ارجاعِ بی‌نهایتِ کار به فرد یا واحد'),
-      (Icons.schema_outlined, 'تعریفِ واحدهایِ درون‌سازمانی'),
-      (Icons.forum_outlined, 'پیام‌رسانِ درون‌سازمانی'),
-      (Icons.description_outlined, 'لاگِ کاملِ مستندات'),
-      (Icons.devices_outlined, 'دسترسی به پنلِ وب'),
-    ];
-    // 🔧 طبق عکسِ ارسالی، با همون جمله‌بندیِ اصلاح‌شده‌ای که برایِ موارد
-    // مشترک با پلنِ طلایی قبلاً اعمال شد
-    final silverFeatures = const [
-      (Icons.add_task_rounded, 'ایجادِ کار (مقطعی، دوره‌ای)'),
-      (Icons.task_alt_rounded, 'مشاهده و مدیریتِ کارها'),
-      (Icons.flag_outlined, 'تعیینِ اولویت برایِ کارها'),
-      (Icons.play_circle_outline_rounded, 'شروع و تکمیلِ کار'),
-      (Icons.checklist_rounded, 'افزودنِ چک‌لیستِ گام‌به‌گام برایِ هر کار'),
-      (Icons.notes_rounded, 'درجِ توضیح برایِ کار'),
-      (Icons.attach_file_rounded, 'پیوست‌کردن و ارسالِ فایل برایِ هر کار'),
-      (Icons.folder_copy_outlined, 'گروه‌بندیِ کارها برایِ دسته‌بندیِ بهتر'),
-      (Icons.filter_list_rounded, 'فیلترِ پیشرفته بر اساسِ وضعیت و اولویت'),
-      (Icons.history_rounded, 'نمایشِ جزئیات و تاریخچه‌یِ کاملِ کارها'),
-      (Icons.search_rounded, 'جستجویِ سریع در میانِ همه‌یِ کارها'),
-      (
-        Icons.calendar_view_week_rounded,
-        'نمایِ برنامه‌یِ روزانه، هفتگی، ماهانه',
-      ),
-      (Icons.wifi_rounded, 'همگام‌سازیِ آنیِ اطلاعات به‌صورتِ آنلاین'),
-      (Icons.person_add_alt_1_outlined, 'ایجادِ کار برایِ همکاران'),
-    ];
-    final features = _isGold ? goldFeatures : silverFeatures;
+    final features = _isGold ? goldPlanFeatures : silverPlanFeatures;
     return Column(
       children: features
           .map(

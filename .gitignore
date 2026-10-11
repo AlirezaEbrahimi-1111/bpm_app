@@ -33,6 +33,11 @@ migrate_working_dir/
 /build/
 /coverage/
 
+# 🔧 موقت: jarهایِ محلیِ جمع‌شده برایِ دورزدنِ مشکلِ شبکه — هرگز commit نشود
+/android/local-libs/
+/android/local-maven-repo/
+/_incoming/
+
 # Symbolication related
 app.*.symbols
 

@@ -4,25 +4,12 @@ import 'package:get/get.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/app_snack.dart';
 import '../shell/widgets/app_bottom_nav.dart';
+import 'plan_feature_list.dart';
 
 /// صفحه‌ی «پلن رایگان» — بدون انتخابِ مدت/تعدادِ کاربر و بدون نوارِ قیمت،
 /// چون فقط نمایشِ امکاناتِ این پلن و گزینه‌ی ارتقا لازم است.
 class FreePlanDetailPage extends StatelessWidget {
   const FreePlanDetailPage({super.key});
-
-  static const _features = [
-    (Icons.add_task_rounded, 'ایجادِ کار (مقطعی، دوره‌ای)'),
-    (Icons.task_alt_rounded, 'مشاهده و مدیریتِ کارها'),
-    (Icons.flag_outlined, 'تعیینِ اولویت برایِ کارها'),
-    (Icons.play_circle_outline_rounded, 'شروع و تکمیلِ کار'),
-    (Icons.checklist_rounded, 'افزودنِ چک‌لیستِ گام‌به‌گام برایِ هر کار'),
-    (Icons.notes_rounded, 'درجِ توضیح برایِ کار'),
-    (Icons.attach_file_rounded, 'پیوست‌کردن و ارسالِ فایل برایِ هر کار'),
-    (Icons.folder_copy_outlined, 'گروه‌بندیِ کارها برایِ دسته‌بندیِ بهتر'),
-    (Icons.filter_list_rounded, 'فیلترِ پیشرفته بر اساسِ وضعیت و اولویت'),
-    (Icons.history_rounded, 'نمایشِ جزئیات و تاریخچه‌یِ کاملِ کارها'),
-    (Icons.search_rounded, 'جستجویِ سریع در میانِ همه‌یِ کارها'),
-  ];
 
   @override
   Widget build(BuildContext context) {
@@ -249,7 +236,7 @@ class FreePlanDetailPage extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 10),
-          for (final f in _features)
+          for (final f in freePlanFeatures)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 6),
               child: Row(

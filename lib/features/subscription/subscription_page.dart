@@ -80,7 +80,13 @@ class SubscriptionPage extends StatelessWidget {
       filled: false,
       accent: c.textMuted,
       trailingCheck: freeIsCurrent,
-      onTap: () => Get.to(() => const FreePlanDetailPage()),
+      // 🔧 طبق درخواست: وقتی پلنِ رایگان، پلنِ فعلیِ کاربر است، جزئیاتش هم
+      // (عینِ طلایی/نقره‌ایِ فعال) در همان شیتِ «جزئیاتِ پلن» دیده شود؛
+      // برایِ کسی که رایگان نیست و فقط می‌خواهد پلنِ رایگان را از نزدیک
+      // ببیند، همچنان صفحه‌یِ کاملِ معرفی باز می‌شود
+      onTap: freeIsCurrent
+          ? showPlanDetailsSheet
+          : () => Get.to(() => const FreePlanDetailPage()),
     );
 
     return AppShellOverlays(

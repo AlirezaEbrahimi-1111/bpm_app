@@ -13,6 +13,7 @@ import 'core/theme/theme_controller.dart';
 import 'core/theme/notification_bar_preference.dart';
 import 'core/theme/font_size_preference.dart';
 import 'core/theme/starred_tasks_preference.dart';
+import 'core/theme/dashboard_filter_pin_preference.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -29,6 +30,7 @@ void main() async {
   NotificationBarPreference.init();
   FontSizePreference.init();
   StarredTasksPreference.init();
+  DashboardFilterPinPreference.init();
 }
 
 // ════════════════════════════════════════════════════════

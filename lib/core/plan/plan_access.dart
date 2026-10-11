@@ -188,4 +188,17 @@ class PlanAccess {
 
   static bool allows(PlanFeature feature) =>
       !_locked[_level]!.contains(feature);
+
+  /// پایین‌ترینِ پلنی که این امکان را باز می‌کند (برایِ پیامِ ارتقا) —
+  /// اگر پلنِ نقره‌ای هم آن را باز می‌کند، نتیجه نقره‌ای است، وگرنه طلایی
+  static PlanLevel minPlanFor(PlanFeature feature) =>
+      _locked[PlanLevel.silver]!.contains(feature)
+      ? PlanLevel.gold
+      : PlanLevel.silver;
+
+  /// 🔧 طبق درخواست: پیامِ ارتقا باید دقیقاً پلنِ لازم را بگوید، نه همیشه
+  /// «نقره‌ای یا طلایی» — مثلاً «مدیریت واحدهای فعالیت» فقط با طلایی باز
+  /// می‌شود، نه با نقره‌ای
+  static String requiredPlanLabel(PlanFeature feature) =>
+      minPlanFor(feature) == PlanLevel.silver ? 'نقره‌ای یا طلایی' : 'طلایی';
 }

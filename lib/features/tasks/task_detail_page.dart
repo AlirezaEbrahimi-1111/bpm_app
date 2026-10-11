@@ -21,6 +21,7 @@ import '../../core/theme/app_radius.dart';
 import '../shell/widgets/app_bottom_nav.dart';
 import 'widgets/persian_date_picker_sheet.dart';
 import 'widgets/task_group_management_sheet.dart';
+import 'widgets/attachment_picker.dart';
 import 'create_task_page.dart';
 
 class TaskDetailPage extends StatefulWidget {
@@ -53,6 +54,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
   int _checklistTotal = 0;
   int _checklistPercent = 0;
   List<dynamic> _groups = [];
+  List<dynamic> _sections = [];
   bool _canEdit = false;
   bool _hasChanges = false;
   bool _isDeleted = false;
@@ -107,6 +109,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         _loadChecklist();
         _loadGroups();
         _loadUsers();
+        _loadSections();
         _loadAttachments();
         if (_canEdit) _loadViewers();
         _loadDeadlineRequests();
@@ -296,30 +299,66 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     } catch (_) {}
   }
 
-  Future<void> _pickAndUploadFile() async {
-    try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: [
-          'jpg',
-          'jpeg',
-          'png',
-          'pdf',
-          'doc',
-          'docx',
-          'xls',
-          'xlsx',
-        ],
-        withData: true, // مهم برای وب
-      );
-      if (result == null || result.files.isEmpty) return;
+  // 🔧 طبقِ بک‌اند (api/tasks/upload-attachment.php): عکس/سند، صوتی
+  // (mp3/m4a/ogg) و حالا ویدیو (mp4/mov) هم پشتیبانی می‌شود
+  static const _allowedAttachmentExtensions = [
+    'jpg',
+    'jpeg',
+    'png',
+    'pdf',
+    'doc',
+    'docx',
+    'xls',
+    'xlsx',
+    'mp3',
+    'm4a',
+    'ogg',
+    'mp4',
+    'mov',
+  ];
 
-      final file = result.files.first;
+  // 🔧 طبق درخواست: علاوه‌بر انتخاب از فایل‌ها، گرفتنِ عکسِ مستقیم با
+  // دوربین و ضبطِ صدای مستقیم هم به‌عنوانِ پیوست امکان‌پذیر شد — هر سه
+  // مسیر به همین یک تابعِ آپلود می‌رسند
+  Future<void> _openAttachmentSheet() async {
+    try {
+      final file = await showAttachmentSourceSheet(
+        context,
+        allowedExtensions: _allowedAttachmentExtensions,
+      );
+      if (file != null) await _uploadPlatformFile(file);
+    } catch (_) {
+      AppSnack.error('خطا', 'خطا در انتخاب فایل');
+    }
+  }
+
+  // 🔧 طبق درخواست: دکمه‌ی پیوستِ داخلِ دیالوگِ یادداشت هم مستقیماً
+  // همین شیتِ سه‌راهی را باز می‌کند
+  Future<void> _pickAndUploadFile() => _openAttachmentSheet();
+
+  Future<void> _uploadPlatformFile(
+    PlatformFile file, {
+    int? checklistItemId,
+  }) async {
+    final ext = (file.extension ?? file.name.split('.').last).toLowerCase();
+    // 🔧 رفعِ باگ: برخی پیکرهای فایل (مخصوصاً وقتی کاربر از «Browse»ی
+    // سیستمی به‌جای فیلترِ اپ استفاده می‌کند) فیلترِ allowedExtensions
+    // را رعایت نمی‌کنند — پس خودمان هم باید اینجا چک کنیم، نه فقط
+    // منتظرِ ردِ سرور بمانیم
+    if (!_allowedAttachmentExtensions.contains(ext)) {
+      AppSnack.error(
+        'فرمتِ فایل پشتیبانی نمی‌شود',
+        'فقط عکس، PDF، Word، Excel، فایلِ صوتیِ mp3/m4a/ogg و ویدیوی mp4/mov مجاز است.',
+      );
+      return;
+    }
+
+    try {
       setState(() => _isUploading = true);
 
-      // ساخت FormData
       final formData = dio.FormData.fromMap({
         'task_id': widget.taskId,
+        if (checklistItemId != null) 'checklist_item_id': checklistItemId,
         'file': dio.MultipartFile.fromBytes(file.bytes!, filename: file.name),
       });
 
@@ -338,7 +377,23 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
       }
     } catch (e) {
       setState(() => _isUploading = false);
-      AppSnack.error('خطا', 'خطا در آپلود فایل');
+      AppSnack.error('خطا', ApiClient.errorMessage(e, 'خطا در آپلود فایل'));
+    }
+  }
+
+  // 🔧 طبق درخواست: پیوستِ فایل/عکس/صدا برایِ یک آیتمِ خاصِ چک‌لیست —
+  // همان شیتِ سه‌راهیِ مشترک، فقط با ارسالِ checklist_item_id
+  Future<void> _uploadChecklistItemAttachment(int itemId) async {
+    try {
+      final file = await showAttachmentSourceSheet(
+        context,
+        allowedExtensions: _allowedAttachmentExtensions,
+      );
+      if (file != null) {
+        await _uploadPlatformFile(file, checklistItemId: itemId);
+      }
+    } catch (_) {
+      AppSnack.error('خطا', 'خطا در انتخاب فایل');
     }
   }
 
@@ -919,6 +974,17 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     } catch (_) {}
   }
 
+  Future<void> _loadSections() async {
+    try {
+      final res = await ApiClient.dio.get(
+        '/api/organization/activity-sections.php',
+      );
+      if (res.data['success'] == true) {
+        setState(() => _sections = res.data['sections'] ?? []);
+      }
+    } catch (_) {}
+  }
+
   Future<void> _loadGroups() async {
     try {
       // 🔧 رفعِ باگ: list-all.php مخصوصِ صفحه‌ی مدیریتِ گروه‌هاست و نیازِ
@@ -1030,11 +1096,27 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     }
   }
 
-  Future<void> _editChecklistItem(int itemId, String title) async {
+  Future<void> _editChecklistItem(
+    int itemId,
+    String title, {
+    String? description,
+    String? assigneeType,
+    dynamic assigneeValue,
+  }) async {
     try {
       final res = await ApiClient.dio.post(
         '/api/checklist/update-item.php',
-        data: {'item_id': itemId, 'title': title},
+        data: {
+          'item_id': itemId,
+          'title': title,
+          'description': description ?? '',
+          // 🔧 طبق درخواست: ارجاعِ آیتمِ چک‌لیست به یک کاربر/بخشِ دیگر —
+          // عیناً طبقِ نسخه‌ی وب، فقط وقتی کلید ارسال می‌شود که کاربر
+          // واقعاً روی گزینه‌ای در انتخاب‌گر زده باشد (طبق منطقِ
+          // has_assignee سمتِ بک‌اند؛ نبودِ کلید یعنی «ارجاع را تغییر نده»)
+          if (assigneeType != null) 'assignee_type': assigneeType,
+          if (assigneeType != null) 'assignee_value': assigneeValue,
+        },
       );
       if (res.data['success'] == true) {
         _hasChanges = true;
@@ -1109,40 +1191,165 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     final controller = TextEditingController(
       text: item['title']?.toString() ?? '',
     );
+    // 🔧 طبق درخواست: امکانِ افزودن/ویرایشِ توضیحِ آیتم هم اضافه شد
+    final descController = TextEditingController(
+      text: item['description']?.toString() ?? '',
+    );
     final c = AppColors.of(context);
+
+    // 🔧 طبق درخواست: امکانِ ارجاعِ آیتمِ چک‌لیست به یک نفر/یک بخشِ دیگر
+    // — عیناً طبقِ نسخه‌ی وب. این دیالوگ فقط برای آیتم‌هایِ هنوز
+    // ارجاع‌نشده صدا زده می‌شود (گیت `!isAssigned` در `_checklistItem`)
+    // چون بک‌اند ویرایشِ آیتمِ ارجاع‌شده را با ۴۰۹ رد می‌کند — پس همیشه
+    // از حالتِ «بدون انتخاب» شروع می‌شود
+    String? assigneeType;
+    dynamic assigneeValue;
+    String? assigneeLabel;
+
     Get.dialog(
-      AlertDialog(
-        backgroundColor: c.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text(
-          'ویرایش آیتم چک‌لیست',
-          style: TextStyle(fontSize: 16, color: c.textStrong),
-        ),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          textAlign: TextAlign.right,
-          style: TextStyle(color: c.textStrong),
-          decoration: InputDecoration(
-            hintText: 'عنوان آیتم را وارد کنید',
-            hintStyle: TextStyle(color: c.textMuted),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Get.back(),
-            child: Text('انصراف', style: TextStyle(color: c.textMuted)),
-          ),
-          TextButton(
-            onPressed: () {
-              final title = controller.text.trim();
-              if (title.isEmpty) return;
-              Get.back();
-              _editChecklistItem(item['id'], title);
-            },
-            child: Text('ذخیره', style: TextStyle(color: c.primary)),
-          ),
-        ],
+      StatefulBuilder(
+        builder: (dialogCtx, setDialogState) {
+          return AlertDialog(
+            backgroundColor: c.surface,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            title: Text(
+              'ویرایش آیتم چک‌لیست',
+              style: TextStyle(fontSize: 16, color: c.textStrong),
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: controller,
+                    autofocus: true,
+                    textAlign: TextAlign.right,
+                    style: TextStyle(color: c.textStrong),
+                    decoration: InputDecoration(
+                      hintText: 'عنوان آیتم را وارد کنید',
+                      hintStyle: TextStyle(color: c.textMuted),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: descController,
+                    maxLines: 3,
+                    textAlign: TextAlign.right,
+                    style: TextStyle(color: c.textStrong, fontSize: 13),
+                    decoration: InputDecoration(
+                      hintText: 'توضیحات (اختیاری)...',
+                      hintStyle: TextStyle(color: c.textMuted, fontSize: 13),
+                      filled: true,
+                      fillColor: c.surfaceContainerLow,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  GestureDetector(
+                    onTap: () =>
+                        _showChecklistAssigneeSheet(c, (type, value, label) {
+                          setDialogState(() {
+                            assigneeType = type;
+                            assigneeValue = value;
+                            assigneeLabel = label;
+                          });
+                        }),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 12,
+                      ),
+                      decoration: BoxDecoration(
+                        color: c.surfaceContainerLow,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            assigneeType == 'section'
+                                ? Icons.groups_outlined
+                                : Icons.person_outline_rounded,
+                            size: 18,
+                            color: assigneeLabel != null
+                                ? c.primary
+                                : c.textMuted,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              assigneeLabel ?? 'ارجاع به (اختیاری)',
+                              textAlign: TextAlign.right,
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: assigneeLabel != null
+                                    ? c.primary
+                                    : c.textMuted,
+                              ),
+                            ),
+                          ),
+                          Icon(
+                            Icons.expand_more_rounded,
+                            size: 16,
+                            color: c.textMuted,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Get.back(),
+                child: Text('انصراف', style: TextStyle(color: c.textMuted)),
+              ),
+              TextButton(
+                onPressed: () {
+                  final title = controller.text.trim();
+                  if (title.isEmpty) return;
+                  Get.back();
+                  _editChecklistItem(
+                    item['id'],
+                    title,
+                    description: descController.text.trim(),
+                    assigneeType: assigneeType,
+                    assigneeValue: assigneeValue,
+                  );
+                },
+                child: Text('ذخیره', style: TextStyle(color: c.primary)),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  // 🔧 انتخاب‌گرِ ارجاعِ آیتمِ چک‌لیست — عیناً طبقِ نسخه‌ی وب، فقط
+  // «کاربر» و «بخش» (بدون گزینه‌هایِ «خودم»/«همه کاربران»/«همه بخش‌ها»
+  // که مخصوصِ ارجاعِ کل کار است، نه یک آیتمِ تکی)
+  void _showChecklistAssigneeSheet(
+    AppColors c,
+    void Function(String type, dynamic value, String label) onSelected,
+  ) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: c.surfaceContainerLow,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => _ChecklistAssigneeSheet(
+        users: _users,
+        sections: _sections,
+        onSelected: onSelected,
       ),
     );
   }
@@ -1284,12 +1491,17 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                   children: [
                     if (_isOfflineData) const OfflineBanner(),
                     Expanded(child: _buildContent()),
+                    // 🔧 رفعِ باگ: نوارِ عملیات قبلاً داخلِ bottomNavigationBar
+                    // بالایِ AppBottomNav چیده می‌شد — چون محاسبه‌یِ موقعیتِ
+                    // دکمه‌ی شناور (LoweredDockedFabLocation) نسبت به کلِ
+                    // bottomNavigationBar است، اضافه‌شدنِ این نوار باعث
+                    // می‌شد دکمه بالاتر از جایِ درستش بیفتد. حالا این نوار
+                    // داخلِ body (درست بالایِ نوارِ ناوبری) است و
+                    // bottomNavigationBar فقط AppBottomNav را دارد
+                    if (actionBar != null) actionBar,
                   ],
                 ),
-          bottomNavigationBar: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [if (actionBar != null) actionBar, const AppBottomNav()],
-          ),
+          bottomNavigationBar: const AppBottomNav(),
           floatingActionButton: const AppCreateTaskFab(),
           floatingActionButtonLocation: const LoweredDockedFabLocation(),
         ),
@@ -2030,6 +2242,40 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                     ),
                   ),
                 ],
+                // 🔧 رفعِ باگ: یادداشتِ «تأیید و ارجاع» قبلاً فقط به سرور
+                // فرستاده می‌شد ولی هیچ‌جا به فردِ ارجاع‌شونده نشان داده
+                // نمی‌شد (نه در وب، نه در این اپ) — حالا همین‌جا، کنارِ
+                // توضیحاتِ اصلیِ کار، نمایش داده می‌شود
+                if ((t['delegation_notes'] ?? '').toString().isNotEmpty) ...[
+                  Divider(height: 28, color: c.borderSoft),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.subdirectory_arrow_left_rounded,
+                        size: 15,
+                        color: c.textMuted,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'یادداشت ارجاع',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: c.textMuted,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    t['delegation_notes'],
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: c.textStrong,
+                      height: 1.6,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -2372,7 +2618,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
             trailing: _addPillButton(
               c,
               label: 'افزودن',
-              onTap: _isUploading ? null : _pickAndUploadFile,
+              onTap: _isUploading ? null : _openAttachmentSheet,
               loading: _isUploading,
             ),
           ),
@@ -2502,6 +2748,14 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     }
 
     final c = AppColors.of(context);
+
+    // 🔧 طبق درخواست: عیناً طبقِ نسخه‌ی وب — اگر این کار تا الان هیچ
+    // موعدی نداشته، چون دارد به کسِ دیگری ارجاع می‌شود، تعیینِ موعد
+    // الزامی می‌شود
+    final t = _task ?? {};
+    final hasDueDate = t['due_date'] != null || t['deadline'] != null;
+    final needsDueDate = t['task_type'] == 'periodic' && !hasDueDate;
+    DateTime? delegateDueDate;
 
     Get.bottomSheet(
       StatefulBuilder(
@@ -2687,6 +2941,66 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                     ),
                   ),
 
+                  // 🔧 طبق درخواست: عیناً طبقِ نسخه‌ی وب — اگر کار هنوز
+                  // موعدی نداشته، چون دارد به کسِ دیگری ارجاع می‌شود،
+                  // تعیینِ موعد الزامی می‌شود
+                  if (needsDueDate)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: () async {
+                          final picked = await showCustomPersianDatePicker(
+                            ctx,
+                            initialDate: delegateDueDate,
+                          );
+                          if (picked != null) {
+                            setSheetState(() => delegateDueDate = picked);
+                          }
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 12,
+                          ),
+                          decoration: BoxDecoration(
+                            color: c.surface,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: delegateDueDate == null
+                                  ? c.danger.withValues(alpha: 0.6)
+                                  : c.borderSoft,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.calendar_today_outlined,
+                                size: 18,
+                                color: delegateDueDate == null
+                                    ? c.danger
+                                    : c.textMuted,
+                              ),
+                              const SizedBox(width: 10),
+                              Text(
+                                delegateDueDate != null
+                                    ? _toShamsi(
+                                        delegateDueDate!.toIso8601String(),
+                                      )
+                                    : 'موعد انجام (الزامی)',
+                                style: TextStyle(
+                                  fontSize: 13.5,
+                                  color: delegateDueDate == null
+                                      ? c.danger
+                                      : c.textStrong,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+
                   // دکمه ارجاع — طبق درخواست، دیگر پشتِ دکمه‌های
                   // ناوبریِ گوشی نمی‌رود
                   Padding(
@@ -2700,13 +3014,16 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                       width: double.infinity,
                       height: 50,
                       child: ElevatedButton(
-                        onPressed: selectedUserId == null
+                        onPressed:
+                            (selectedUserId == null ||
+                                (needsDueDate && delegateDueDate == null))
                             ? null
                             : () {
                                 Get.back();
                                 _delegateTask(
                                   selectedUserId!,
                                   notes: notesController.text.trim(),
+                                  dueDate: delegateDueDate,
                                 );
                               },
                         style: ElevatedButton.styleFrom(
@@ -3937,7 +4254,11 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     );
   }
 
-  Future<void> _delegateTask(int toUserId, {String? notes}) async {
+  Future<void> _delegateTask(
+    int toUserId, {
+    String? notes,
+    DateTime? dueDate,
+  }) async {
     setState(() => _isUpdating = true);
     try {
       final res = await ApiClient.dio.post(
@@ -3946,6 +4267,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
           'task_id': widget.taskId,
           'to_user_id': toUserId,
           if (notes != null && notes.isNotEmpty) 'notes': notes,
+          if (dueDate != null) 'due_date': _isoDate(dueDate),
         },
       );
       final data = ApiClient.parseResponse(res.data);
@@ -4878,12 +5200,24 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     // خطای بی‌مورد مواجه نشه
     final isAssigned = assigneeName.toString().isNotEmpty;
     final canManage = _canEdit && !isDone;
+    // 🔧 طبق درخواست: عیناً طبقِ نسخه‌ی وب — هایلایتِ آیتم‌هایی که
+    // دقیقاً به خودِ کاربرِ جاری ارجاع شده‌اند
+    final isAssignedToMe =
+        item['assignee_type'] == 'user' &&
+        _currentUserId != null &&
+        item['assignee_value']?.toString() == _currentUserId.toString();
     final c = AppColors.of(context);
 
     return InkWell(
       onTap: (isDone || !canToggle) ? null : () => _toggleItem(item),
       borderRadius: BorderRadius.circular(10),
-      child: Padding(
+      child: Container(
+        decoration: isAssignedToMe
+            ? BoxDecoration(
+                color: c.primary.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(10),
+              )
+            : null,
         padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
         child: Row(
           children: [
@@ -4924,9 +5258,32 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                       'مسئول: $assigneeName',
                       style: TextStyle(fontSize: 11, color: c.textMuted),
                     ),
+                  if ((item['description'] ?? '').toString().isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        item['description'].toString(),
+                        style: TextStyle(fontSize: 11.5, color: c.textMuted),
+                      ),
+                    ),
                 ],
               ),
             ),
+            // 🔧 طبق درخواست: پیوستِ فایل/عکس/صدا برایِ همین آیتمِ مشخص —
+            // فقط برایِ کسی که مجاز به عمل‌کردن روی همین آیتم است (دقیقاً
+            // همان قانونِ toggle.php که بک‌اند هم برایِ این پیوست چک می‌کند)
+            if (canToggle)
+              GestureDetector(
+                onTap: () => _uploadChecklistItemAttachment(item['id']),
+                child: Padding(
+                  padding: const EdgeInsets.all(4),
+                  child: Icon(
+                    Icons.attach_file_rounded,
+                    size: 16,
+                    color: c.textMuted,
+                  ),
+                ),
+              ),
             // 🔧 ویرایش/حذف — فقط برای تعریف‌کننده و آیتم‌های تیک‌نخورده؛
             // ویرایش علاوه‌بر این فقط برای آیتم‌های ارجاع‌نشده (سرور
             // ویرایشِ آیتمِ ارجاع‌شده را رد می‌کند)
@@ -5274,4 +5631,220 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
       style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w600),
     ),
   );
+}
+
+// 🔧 طبق درخواست: ارجاعِ یک آیتمِ چک‌لیست به یک نفر یا یک بخشِ خاص —
+// عیناً طبقِ نسخه‌ی وب (AssigneePicker با showSections:true، بدونِ
+// گزینه‌هایِ «خودم»/«همه کاربران»/«همه بخش‌ها» که مخصوصِ ارجاعِ کلِ
+// کار هستند، نه یک آیتمِ تکی)
+class _ChecklistAssigneeSheet extends StatefulWidget {
+  final List<dynamic> users;
+  final List<dynamic> sections;
+  final void Function(String type, dynamic value, String label) onSelected;
+
+  const _ChecklistAssigneeSheet({
+    required this.users,
+    required this.sections,
+    required this.onSelected,
+  });
+
+  @override
+  State<_ChecklistAssigneeSheet> createState() =>
+      _ChecklistAssigneeSheetState();
+}
+
+class _ChecklistAssigneeSheetState extends State<_ChecklistAssigneeSheet> {
+  final _searchController = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  String _userLabel(dynamic u) {
+    final name = '${u['first_name'] ?? ''} ${u['last_name'] ?? ''}'.trim();
+    return name.isEmpty ? (u['phone']?.toString() ?? 'بدون نام') : name;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppColors.of(context);
+    final q = _query.trim().toLowerCase();
+
+    final filteredSections = q.isEmpty
+        ? widget.sections
+        : widget.sections.where((s) {
+            final label = (s['section_label'] ?? s['section_key'] ?? '')
+                .toString()
+                .toLowerCase();
+            return label.contains(q);
+          }).toList();
+
+    final filteredUsers = q.isEmpty
+        ? widget.users
+        : widget.users.where((u) {
+            final label = _userLabel(u).toLowerCase();
+            final phone = (u['phone'] ?? '').toString().toLowerCase();
+            return label.contains(q) || phone.contains(q);
+          }).toList();
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.75,
+      minChildSize: 0.4,
+      maxChildSize: 0.9,
+      expand: false,
+      builder: (ctx, scrollController) => Column(
+        children: [
+          const SizedBox(height: 12),
+          Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: c.borderSoft,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'ارجاع آیتم چک‌لیست',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+              color: c.textStrong,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: TextField(
+              controller: _searchController,
+              onChanged: (v) => setState(() => _query = v),
+              style: TextStyle(color: c.textStrong, fontSize: 13),
+              decoration: InputDecoration(
+                hintText: 'جستجوی نام یا واحد...',
+                hintStyle: TextStyle(color: c.textMuted, fontSize: 13),
+                prefixIcon: Icon(
+                  Icons.search_rounded,
+                  color: c.textMuted,
+                  size: 20,
+                ),
+                suffixIcon: _query.isNotEmpty
+                    ? IconButton(
+                        icon: Icon(
+                          Icons.close_rounded,
+                          color: c.textMuted,
+                          size: 18,
+                        ),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() => _query = '');
+                        },
+                      )
+                    : null,
+                filled: true,
+                fillColor: c.surface,
+                contentPadding: const EdgeInsets.symmetric(vertical: 4),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: c.borderSoft),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Expanded(
+            child: (filteredSections.isEmpty && filteredUsers.isEmpty)
+                ? Center(
+                    child: Text(
+                      'نتیجه‌ای یافت نشد',
+                      style: TextStyle(color: c.textMuted, fontSize: 13),
+                    ),
+                  )
+                : ListView(
+                    controller: scrollController,
+                    children: [
+                      if (filteredSections.isNotEmpty) ...[
+                        _header(c, 'بخش‌ها'),
+                        ...filteredSections.map((s) {
+                          final key = s['section_key'];
+                          final label = s['section_label'] ?? key;
+                          return _tile(
+                            c,
+                            icon: Icons.groups_outlined,
+                            color: c.warning,
+                            label: label,
+                            onTap: () => _select('section', key, label),
+                          );
+                        }),
+                      ],
+                      if (filteredUsers.isNotEmpty) ...[
+                        _header(c, 'کاربران'),
+                        ...filteredUsers.map((u) {
+                          final display = _userLabel(u);
+                          return _tile(
+                            c,
+                            avatar: display.isNotEmpty ? display[0] : '?',
+                            label: display,
+                            onTap: () => _select('user', u['id'], display),
+                          );
+                        }),
+                      ],
+                      const SizedBox(height: 20),
+                    ],
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _select(String type, dynamic value, String label) {
+    widget.onSelected(type, value, label);
+    Navigator.of(context).pop();
+  }
+
+  Widget _header(AppColors c, String text) => Container(
+    width: double.infinity,
+    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+    color: c.surfaceContainerLow,
+    child: Text(
+      text,
+      style: TextStyle(
+        fontSize: 11,
+        fontWeight: FontWeight.bold,
+        color: c.textMuted,
+      ),
+      textAlign: TextAlign.right,
+    ),
+  );
+
+  Widget _tile(
+    AppColors c, {
+    IconData? icon,
+    Color? color,
+    String? avatar,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return ListTile(
+      onTap: onTap,
+      leading: CircleAvatar(
+        radius: 16,
+        backgroundColor: (color ?? c.primary).withValues(alpha: 0.12),
+        child: icon != null
+            ? Icon(icon, size: 16, color: color ?? c.primary)
+            : Text(
+                avatar ?? '?',
+                style: TextStyle(color: c.primary, fontSize: 13),
+              ),
+      ),
+      title: Text(
+        label,
+        style: TextStyle(fontSize: 14, color: c.textStrong),
+        textAlign: TextAlign.right,
+      ),
+    );
+  }
 }
