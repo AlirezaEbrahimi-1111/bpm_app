@@ -39,6 +39,24 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      # 🔧 بدونِ این مرحله، چون android/key.properties رویِ گیت‌هاب
+      # وجود ندارد (عمداً، چون حاویِ رمزِ کلیدِ امضا است)، بیلدِ release
+      # به‌طورِ خودکار به کلیدِ debug برمی‌گشت — که همان دلیلِ اصلیِ
+      # هشدارِ «Google Play Protect» هنگامِ نصب بود. این مرحله کلیدِ
+      # واقعی را از Secretsِ همین ریپو می‌سازد، فقط در حافظه‌ی رانرِ
+      # موقتِ گیت‌هاب، هرگز در کد کامیت نمی‌شود.
+      - name: Set up release signing
+        if: inputs.build_mode == 'release'
+        run: |
+          mkdir -p android/keystore-backup
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/keystore-backup/malekbpm-release.jks
+          cat > android/key.properties << EOF
+          storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
+          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
+          storeFile=../keystore-backup/malekbpm-release.jks
+          EOF
+
       - name: Build APK
         run: flutter build apk --${{ inputs.build_mode }}
 
