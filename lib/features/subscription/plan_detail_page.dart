@@ -1,18 +1,20 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import '../../core/network/api_client.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/persian_number.dart';
 import '../../core/widgets/app_snack.dart';
 import '../shell/widgets/app_bottom_nav.dart';
 import 'plan_feature_list.dart';
+import 'payment_webview_page.dart';
 
 enum SubscriptionPlanType { gold, silver }
 
-/// قیمت‌هایِ واقعیِ پلن‌ها — طبقِ لیستِ ارسالی. چون هیچ API واقعی‌ای برایِ
-/// پلن/پرداخت در بک‌اند وجود ندارد (چک‌شده در صفحه‌ی لیستِ پلن‌ها)، فعلاً
-/// این‌جا هاردکد است؛ وقتی API آماده شد، همین Mapها به پاسخِ سرور وصل
-/// می‌شوند.
+/// قیمت‌هایِ واقعیِ پلن‌ها — طبقِ لیستِ ارسالی. این‌جا فقط برایِ *نمایش*
+/// هاردکد است؛ سرور (`includes/plan-pricing.php` در بک‌اند) هم دقیقاً
+/// همین جدول را مستقل دارد و قیمتِ واقعی را خودش حساب می‌کند — هیچ‌وقت
+/// عددی که از کلاینت می‌آید پذیرفته نمی‌شود.
 class PlanPricing {
   PlanPricing._();
 
@@ -41,6 +43,7 @@ class PlanDetailPage extends StatefulWidget {
 class _PlanDetailPageState extends State<PlanDetailPage> {
   int _users = 10;
   int _months = 12;
+  bool _isPaying = false;
 
   bool get _isGold => widget.plan == SubscriptionPlanType.gold;
 
@@ -510,6 +513,76 @@ class _PlanDetailPageState extends State<PlanDetailPage> {
     );
   }
 
+  // ── شروعِ پرداخت — زرین‌پال داخلِ WebView ──
+  Future<void> _startPayment() async {
+    if (_isPaying) return;
+    setState(() => _isPaying = true);
+    try {
+      final res = await ApiClient.dio.post(
+        '/api/payment/org-pay.php',
+        data: {
+          'plan': _isGold ? 'gold' : 'silver',
+          'months': _months,
+          if (_isGold) 'plan_users': _users,
+        },
+      );
+      final data = ApiClient.parseResponse(res.data);
+      if (data['success'] != true) {
+        if (mounted) {
+          AppSnack.error('خطا', data['message'] ?? 'خطا در اتصال به درگاه');
+        }
+        return;
+      }
+
+      final paymentUrl = data['payment_url']?.toString();
+      if (paymentUrl == null || paymentUrl.isEmpty) {
+        if (mounted) AppSnack.error('خطا', 'آدرسِ درگاه دریافت نشد');
+        return;
+      }
+
+      final result = await Get.to<PaymentResult>(
+        () => PaymentWebviewPage(paymentUrl: paymentUrl),
+      );
+      if (!mounted) return;
+
+      switch (result) {
+        case PaymentResult.success:
+        case PaymentResult.already:
+          await _refreshPlanAfterPayment();
+          AppSnack.success('✅ پرداخت موفق', 'پلنِ سازمانِ شما به‌روزرسانی شد');
+          Get.back();
+          break;
+        case PaymentResult.cancel:
+          AppSnack.info('لغو شد', 'پرداخت لغو شد');
+          break;
+        case PaymentResult.failed:
+        case PaymentResult.error:
+        case PaymentResult.notfound:
+          AppSnack.error('خطا', 'پرداخت ناموفق بود؛ مبلغی کسر نشده است');
+          break;
+        case null:
+          break;
+      }
+    } catch (e) {
+      if (mounted) AppSnack.error('خطا', 'خطا در اتصال به سرور');
+    } finally {
+      if (mounted) setState(() => _isPaying = false);
+    }
+  }
+
+  // 🔧 بعدِ پرداختِ موفق، پلنِ کاربر را دوباره از سرور می‌خوانیم تا
+  // PlanAccess (و بقیه‌ی اپ) بلافاصله پلنِ جدید را ببیند، بدونِ نیاز به
+  // خروج/ورودِ مجدد
+  Future<void> _refreshPlanAfterPayment() async {
+    try {
+      final res = await ApiClient.dio.get('/api/auth/profile.php');
+      final data = ApiClient.parseResponse(res.data);
+      if (data['success'] == true && data['user'] is Map) {
+        await ApiClient.saveCachedUser(Map<String, dynamic>.from(data['user']));
+      }
+    } catch (_) {}
+  }
+
   // ── نوارِ پایین ──
   Widget _bottomBar(
     AppColors c,
@@ -579,44 +652,51 @@ class _PlanDetailPageState extends State<PlanDetailPage> {
                 child: SizedBox(
                   height: 48,
                   child: ElevatedButton(
-                    onPressed: () => AppSnack.info(
-                      'به‌زودی',
-                      'درگاهِ پرداخت هنوز متصل نشده است',
-                    ),
+                    onPressed: _isPaying ? null : _startPayment,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: c.primary,
+                      disabledBackgroundColor: c.primary.withValues(alpha: 0.6),
                       elevation: 0,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(14),
                       ),
                     ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        // 🔧 رفعِ باگِ «bottom overflowed»: چون عرضِ دکمه
-                        // به ۶۰٪ محدود شد، این متنِ نسبتاً بلند دیگر جا
-                        // نمی‌شد و به خطِ دوم می‌رفت — داخلِ ارتفاعِ ثابتِ
-                        // ۴۸، همین یک‌خط‌شدنِ ناخواسته سرریز ایجاد می‌کرد
-                        Flexible(
-                          child: Text(
-                            'تأیید و رفتن به درگاهِ پرداخت',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 11.5,
+                    child: _isPaying
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
                               color: Colors.white,
+                              strokeWidth: 2,
                             ),
+                          )
+                        : Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              // 🔧 رفعِ باگِ «bottom overflowed»: چون عرضِ دکمه
+                              // به ۶۰٪ محدود شد، این متنِ نسبتاً بلند دیگر جا
+                              // نمی‌شد و به خطِ دوم می‌رفت — داخلِ ارتفاعِ ثابتِ
+                              // ۴۸، همین یک‌خط‌شدنِ ناخواسته سرریز ایجاد می‌کرد
+                              Flexible(
+                                child: Text(
+                                  'تأیید و رفتن به درگاهِ پرداخت',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 11.5,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              const Icon(
+                                Icons.chevron_right_rounded,
+                                size: 18,
+                                color: Colors.white,
+                              ),
+                            ],
                           ),
-                        ),
-                        const SizedBox(width: 4),
-                        const Icon(
-                          Icons.chevron_right_rounded,
-                          size: 18,
-                          color: Colors.white,
-                        ),
-                      ],
-                    ),
                   ),
                 ),
               ),
