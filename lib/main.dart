@@ -14,11 +14,9 @@ import 'core/theme/notification_bar_preference.dart';
 import 'core/theme/font_size_preference.dart';
 import 'core/theme/starred_tasks_preference.dart';
 import 'core/theme/dashboard_filter_pin_preference.dart';
-import 'core/notifications/pushfa_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  PushfaService.init();
   await ApiClient.init();
   ApiClient.onSessionExpired = _handleSessionExpired;
   ConnectivityService.instance.start();

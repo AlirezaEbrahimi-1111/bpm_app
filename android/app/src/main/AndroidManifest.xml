@@ -7,8 +7,19 @@
     <uses-feature android:name="android.hardware.microphone" android:required="false"/>
     <application
         android:label="MalekBPM"
-        android:name=".PushfaApplication"
+        android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+        <!-- 🔧 Push (متریکس) — SDK با همین دو مقدار خودکار راه‌اندازی می‌شود.
+             این کلیدِ «کلاینت» است؛ کلیدِ «سرور» فقط رویِ سرور نگه داشته می‌شود -->
+        <meta-data android:name="ir.metrix.APPLICATION_ID" android:value="atfknztrfacbprw" />
+        <meta-data android:name="ir.metrix.API_KEY" android:value="afa9202b-e385-4350-8c1c-7ea71c94da3a" />
+        <service
+            android:name="ir.metrix.notification.receivers.MetrixFirebaseMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
         <activity
             android:name=".MainActivity"
             android:exported="true"

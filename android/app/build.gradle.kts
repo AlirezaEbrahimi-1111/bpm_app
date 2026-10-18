@@ -9,6 +9,7 @@ plugins {
     id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+    id("com.google.gms.google-services")
 }
 
 // 🔧 موقت: به‌خاطرِ قطعیِ ناپایدارِ شبکه در رسیدن به repo های گوگل/میون،
@@ -88,11 +89,4 @@ kotlin {
 
 flutter {
     source = "../.."
-}
-
-// 🔧 فازِ ۰ (Push): SDKِ نیتیوِ اندرویدِ پوشفا — این سرویس SDK فلاترِ
-// رسمی ندارد، پس با یک پلِ MethodChannel (در MainActivity.kt) به دارت
-// وصل می‌شود
-dependencies {
-    implementation("com.pushfa:pushfa-android-sdk:2.0.4")
 }

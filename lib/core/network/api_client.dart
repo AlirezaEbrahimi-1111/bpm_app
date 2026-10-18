@@ -1,7 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'dart:convert';
-import '../notifications/pushfa_service.dart';
+import '../notifications/metrix_service.dart';
 import '../plan/plan_access.dart';
 
 class ApiClient {
@@ -163,10 +163,10 @@ class ApiClient {
     PlanAccess.setFromUser(user);
     currentUser = user;
     await _storage.write(key: 'cached_user', value: jsonEncode(user));
-    // 🔧 طبق درخواست: شناساییِ کاربرِ جاری برایِ پوشفا — تا بک‌اند
+    // 🔧 طبق درخواست: شناساییِ کاربرِ جاری برایِ متریکس — تا بک‌اند
     // بتواند با همین ID، دقیقاً به همین کاربر Push بفرستد
     final id = user['id'];
-    if (id != null) PushfaService.identify(id);
+    if (id != null) MetrixService.identify(id);
   }
 
   /// اگر «مرا به خاطر بسپار» فعال بوده، هنوز یک ماه از آن نگذشته باشد و
@@ -202,10 +202,10 @@ class ApiClient {
             : int.tryParse(userMap['id']?.toString() ?? '');
         currentUser = userMap;
         PlanAccess.setFromUser(userMap);
-        // 🔧 ورودِ خودکار هم باید همان شناساییِ پوشفا را انجام دهد —
+        // 🔧 ورودِ خودکار هم باید همان شناساییِ متریکس را انجام دهد —
         // چون این مسیر از saveCachedUser رد نمی‌شود
         final id = userMap['id'];
-        if (id != null) PushfaService.identify(id);
+        if (id != null) MetrixService.identify(id);
         return userMap;
       }
       return null;
@@ -258,9 +258,9 @@ class ApiClient {
     currentUserId = null; // شناسه کاربر هم پاک شود
     currentUser = null;
     PlanAccess.reset();
-    // 🔧 با خروج، شناساییِ پوشفا هم باید پاک شود تا کاربرِ بعدی که با
+    // 🔧 با خروج، شناساییِ متریکس هم باید پاک شود تا کاربرِ بعدی که با
     // همین گوشی لاگین می‌کند، اشتباهاً پیامِ کاربرِ قبلی را نگیرد
-    PushfaService.clearIdentity();
+    MetrixService.clearIdentity();
     await _storage.delete(key: 'access_token');
     await _storage.delete(key: 'remember_me');
     await _storage.delete(key: 'remember_me_expiry');

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "331149599208",
+    "project_id": "com-malek-bpm",
+    "storage_bucket": "com-malek-bpm.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:331149599208:android:059efb324bfdb37ed8845d",
+        "android_client_info": {
+          "package_name": "com.malek.bpm"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCPoEPxX2zNN5PKra3FQwmJePmHU1n_Q60"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
