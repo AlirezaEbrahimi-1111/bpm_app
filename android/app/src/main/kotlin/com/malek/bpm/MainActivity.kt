@@ -47,32 +47,28 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    // 🔧 رفعِ باگ: بدونِ ثبتِ موفق، SDK فقط یک «پروفایل» می‌سازد ولی هرگز
+    // به «مشترکِ Push» واقعی تبدیل نمی‌شود (توکنِ FCM ثبت نمی‌شود) —
+    // یعنی addAlias روی کاربری اجرا می‌شود که اصلاً عضوِ هیچ کانالِ
+    // Push ای نیست، و سرور با CUSTOM_ALIAS_NOT_FOUND رد می‌کند.
+    private var pushRegistered = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         handleIntent(intent)
-        // 🔧 رفعِ باگ: بدونِ این، SDK فقط یک «پروفایل» می‌سازد ولی هرگز
-        // به «مشترکِ Push» واقعی تبدیل نمی‌شود (توکنِ FCM ثبت نمی‌شود)
-        // — یعنی addAlias روی کاربری اجرا می‌شود که اصلاً عضوِ هیچ
-        // کانالِ Push ای نیست، و سرور با CUSTOM_ALIAS_NOT_FOUND رد
-        // می‌کند. اگر مجوز از قبل داده شده (مثلاً اندرویدِ زیرِ ۱۳، یا
-        // قبلاً تایید کرده)، callback هیچ‌وقت صدا زده نمی‌شود — پس اول
-        // خودمان چک می‌کنیم
-        if (Pushfa.areNotificationsEnabled(this)) {
-            Pushfa.registerForPush { }
-        } else {
+        if (!Pushfa.areNotificationsEnabled(this)) {
             Pushfa.requestNotificationPermission(this)
         }
     }
 
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == Pushfa.DEFAULT_PERMISSION_REQUEST_CODE &&
-            Pushfa.areNotificationsEnabled(this)
-        ) {
+    // 🔧 به‌جایِ تکیه‌کردن رویِ callbackِ دقیقِ نتیجه‌یِ مجوز (که ممکن
+    // است SDK از APIِ جدیدترِ اندروید استفاده کند و این Activity هرگز
+    // callback را نگیرد)، هر بار اپ به‌جلو می‌آید چک می‌کنیم — این
+    // دقیقاً بعدِ بستنِ دیالوگِ مجوز هم (چه Allow چه Deny) اجرا می‌شود
+    override fun onResume() {
+        super.onResume()
+        if (!pushRegistered && Pushfa.areNotificationsEnabled(this)) {
+            pushRegistered = true
             Pushfa.registerForPush { }
         }
     }
