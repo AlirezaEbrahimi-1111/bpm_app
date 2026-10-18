@@ -15,7 +15,6 @@ import '../../core/widgets/app_switch.dart';
 import 'widgets/persian_date_picker_sheet.dart';
 import 'widgets/task_group_management_sheet.dart';
 import 'widgets/attachment_picker.dart';
-import '../shell/widgets/app_bottom_nav.dart';
 
 /// صفحه‌ی «تعریف کار جدید» — طبق طرح ارسالی (روشن + تاریک).
 /// 🔧 طبق درخواستِ صریح، ترتیبِ بخش‌ها با خودِ عکس یک تفاوت دارد: چک‌لیست
@@ -423,237 +422,258 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
   @override
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
-    return AppShellOverlays(
-      // 🔧 بدونِ دکمه‌ی «+»: چون خودِ همین صفحه فرمِ افزودنِ کار است
-      child: Scaffold(
+    // 🔧 طبق درخواست: دکمه‌ی جست‌وجویِ سراسری (AppShellOverlays) در این صفحه نیست
+    return Scaffold(
+      backgroundColor: c.bgPage,
+      appBar: AppBar(
         backgroundColor: c.bgPage,
-        appBar: AppBar(
-          backgroundColor: c.bgPage,
-          elevation: 0,
-          centerTitle: true,
-          iconTheme: IconThemeData(color: c.textStrong),
-          title: Text(
-            widget.redefineFrom != null ? 'بازتعریف کار' : 'تعریف کار جدید',
-            style: TextStyle(
-              color: c.textStrong,
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
-            ),
-          ),
-          leading: IconButton(
-            icon: Transform.rotate(
-              angle: math.pi, // 🔧 طبق درخواست: ۱۸۰ درجه چرخید
-              child: const Icon(Icons.arrow_forward_ios_rounded, size: 20),
-            ),
-            onPressed: () => Get.back(),
+        elevation: 0,
+        centerTitle: true,
+        iconTheme: IconThemeData(color: c.textStrong),
+        title: Text(
+          widget.redefineFrom != null ? 'بازتعریف کار' : 'تعریف کار جدید',
+          style: TextStyle(
+            color: c.textStrong,
+            fontWeight: FontWeight.bold,
+            fontSize: 16,
           ),
         ),
-        body: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // ── این یک کار روتین است؟ — فعلاً غیرفعال (به‌زودی) ──
-              // 🔧 طبق درخواست: بدونِ آیکن و بدونِ کادر/بکگراند — فقط
-              // سوییچ و برچسب، و طبقِ درخواستِ بعدی: سوییچ بلافاصله پشتِ
-              // متن (نه با فاصله‌ی زیاد تا لبه‌ی مقابل) — هر دو با هم
-              // سمتِ راست بچسبند
-              PlanGate(
-                feature: PlanFeature.routineTask,
-                label: 'کار روتین',
-                child: Opacity(
-                  opacity: 0.5,
-                  child: IgnorePointer(
-                    child: Row(
-                      children: [
-                        AppSwitch(
-                          value: false,
-                          onChanged: (_) {},
-                          activeColor: c.primary,
+        leading: IconButton(
+          icon: Transform.rotate(
+            angle: math.pi, // 🔧 طبق درخواست: ۱۸۰ درجه چرخید
+            child: const Icon(Icons.arrow_forward_ios_rounded, size: 20),
+          ),
+          onPressed: () => Get.back(),
+        ),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // ── این یک کار روتین است؟ — فعلاً غیرفعال (به‌زودی) ──
+            // 🔧 طبق درخواست: بدونِ آیکن و بدونِ کادر/بکگراند — فقط
+            // سوییچ و برچسب، و طبقِ درخواستِ بعدی: سوییچ بلافاصله پشتِ
+            // متن (نه با فاصله‌ی زیاد تا لبه‌ی مقابل) — هر دو با هم
+            // سمتِ راست بچسبند
+            PlanGate(
+              feature: PlanFeature.routineTask,
+              label: 'کار روتین',
+              child: Opacity(
+                opacity: 0.5,
+                child: IgnorePointer(
+                  child: Row(
+                    children: [
+                      AppSwitch(
+                        value: false,
+                        onChanged: (_) {},
+                        activeColor: c.primary,
+                      ),
+                      const SizedBox(width: 10),
+                      // Expanded (نه Flexible+Spacer که عرض را نصف می‌کرد و متن
+                      // را دو خطی می‌کرد) — متن یک‌خطی و چسبیده به سوییچ
+                      Expanded(
+                        child: Text(
+                          'این یک کار روتین است (به‌زودی)',
+                          textAlign: TextAlign.right,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: 13, color: c.textStrong),
                         ),
-                        const SizedBox(width: 10),
-                        // Expanded (نه Flexible+Spacer که عرض را نصف می‌کرد و متن
-                        // را دو خطی می‌کرد) — متن یک‌خطی و چسبیده به سوییچ
-                        Expanded(
-                          child: Text(
-                            'این یک کار روتین است (به‌زودی)',
-                            textAlign: TextAlign.right,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(fontSize: 13, color: c.textStrong),
-                          ),
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
               ),
+            ),
+            const SizedBox(height: 10),
+
+            // 🔧 طبق درخواست: عنوان/برچسبِ هر بخش با فیلد/کنترلِ خودش در
+            // یک خط (به‌جای عنوانِ جدا بالای هر فیلد)
+            _labeledRow(
+              c,
+              icon: Icons.edit_outlined,
+              label: 'عنوان کار',
+              field: _bareTextField(
+                c,
+                controller: _titleController,
+                hint: 'عنوان کار را وارد کنید',
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // 🔧 طبق درخواست: چک‌لیست بلافاصله بعد از عنوان
+            _labeledRow(
+              c,
+              icon: Icons.checklist_rounded,
+              label: 'چک‌لیست',
+              trailing: _checklistItems.isEmpty
+                  ? null
+                  : toPersianDigits('${_checklistItems.length} مورد'),
+              field: _checklistAddField(c),
+            ),
+            if (_checklistItems.isNotEmpty) ...[
               const SizedBox(height: 10),
-
-              // 🔧 طبق درخواست: عنوان/برچسبِ هر بخش با فیلد/کنترلِ خودش در
-              // یک خط (به‌جای عنوانِ جدا بالای هر فیلد)
-              _labeledRow(
-                c,
-                icon: Icons.edit_outlined,
-                label: 'عنوان کار',
-                field: _bareTextField(
-                  c,
-                  controller: _titleController,
-                  hint: 'عنوان کار را وارد کنید',
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // 🔧 طبق درخواست: چک‌لیست بلافاصله بعد از عنوان
-              _labeledRow(
-                c,
-                icon: Icons.checklist_rounded,
-                label: 'چک‌لیست',
-                trailing: _checklistItems.isEmpty
-                    ? null
-                    : toPersianDigits('${_checklistItems.length} مورد'),
-                field: _checklistAddField(c),
-              ),
-              if (_checklistItems.isNotEmpty) ...[
-                const SizedBox(height: 10),
-                _checklistItemsList(c),
-              ],
-              const SizedBox(height: 16),
-
-              _groupPicker(c),
-              const SizedBox(height: 16),
-
-              _labeledRow(
-                c,
-                icon: Icons.priority_high_rounded,
-                label: 'اولویت',
-                labelFontSize: 11.5,
-                field: _prioritySelector(c),
-              ),
-              const SizedBox(height: 16),
-
-              _labeledRow(
-                c,
-                icon: Icons.grid_view_rounded,
-                label: 'نوع کار',
-                labelFontSize: 11.5,
-                field: _typeSelector(c),
-              ),
-              const SizedBox(height: 16),
-
-              // 🔧 طبق درخواست: عنوان/برچسبِ «توضیحات» داخلِ خودِ کادر آمد
-              // (نه بالای آن، جدا)
-              _descriptionField(c),
-              const SizedBox(height: 16),
-
-              PlanGate(
-                feature: PlanFeature.assignToOthers,
-                label: 'واگذاری کار به دیگران',
-                child: _assigneePicker(c),
-              ),
-              const SizedBox(height: 16),
-
-              if (_taskType == 'periodic') ...[
-                _dateTile(
-                  c,
-                  icon: Icons.calendar_today_outlined,
-                  label: _isSelfTask ? 'موعد انجام (اختیاری)' : 'موعد انجام',
-                  value: _dueDate != null ? _toShamsi(_dueDate!) : null,
-                  hint: _isSelfTask ? 'بدون موعد' : 'انتخاب تاریخ',
-                  onTap: () async {
-                    final d = await _pickDate();
-                    if (d != null) setState(() => _dueDate = d);
-                  },
-                ),
-              ] else ...[
-                _dateTile(
-                  c,
-                  icon: Icons.play_circle_outline_rounded,
-                  label: 'تاریخ شروع',
-                  value: _startDate != null ? _toShamsi(_startDate!) : null,
-                  hint: 'انتخاب تاریخ',
-                  onTap: () async {
-                    final d = await _pickDate();
-                    if (d != null) setState(() => _startDate = d);
-                  },
-                ),
-                const SizedBox(height: 10),
-                _dateTile(
-                  c,
-                  icon: Icons.event_busy_rounded,
-                  label: 'تاریخ پایان (اختیاری)',
-                  value: _endDate != null ? _toShamsi(_endDate!) : null,
-                  hint: 'نامحدود',
-                  onTap: () async {
-                    final d = await _pickDate();
-                    if (d != null) setState(() => _endDate = d);
-                  },
-                ),
-                const SizedBox(height: 10),
-                _labeledRow(
-                  c,
-                  icon: Icons.repeat_rounded,
-                  label: 'دوره تکرار',
-                  field: _periodSelector(c),
-                ),
-              ],
-              const SizedBox(height: 16),
-
-              // 🔧 طبق درخواست: آیکنِ چشم حذف شد
-              PlanGate(
-                feature: PlanFeature.historyForDelegates,
-                label: 'نمایش تاریخچه برای ارجاع‌شونده',
-                child: _toggleRow(
-                  c,
-                  label: 'نمایش تاریخچه کار برای کاربران ارجاع‌شونده',
-                  value: _shareHistory,
-                  onChanged: (v) => setState(() => _shareHistory = v),
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              _labeledRow(
-                c,
-                icon: Icons.attach_file_rounded,
-                label: 'فایل‌های پیوست',
-                trailing: _pickedFiles.isEmpty
-                    ? null
-                    : toPersianDigits('${_pickedFiles.length} فایل'),
-                field: _attachmentsAddField(c),
-              ),
-              if (_pickedFiles.isNotEmpty) ...[
-                const SizedBox(height: 10),
-                _attachmentsList(c),
-              ],
+              _checklistItemsList(c),
             ],
-          ),
+            const SizedBox(height: 16),
+
+            _groupPicker(c),
+            const SizedBox(height: 16),
+
+            _labeledRow(
+              c,
+              icon: Icons.priority_high_rounded,
+              label: 'اولویت',
+              labelFontSize: 11.5,
+              field: _prioritySelector(c),
+            ),
+            const SizedBox(height: 16),
+
+            _labeledRow(
+              c,
+              icon: Icons.grid_view_rounded,
+              label: 'نوع کار',
+              labelFontSize: 11.5,
+              field: _typeSelector(c),
+            ),
+            const SizedBox(height: 16),
+
+            // 🔧 طبق درخواست: عنوان/برچسبِ «توضیحات» داخلِ خودِ کادر آمد
+            // (نه بالای آن، جدا)
+            _descriptionField(c),
+            const SizedBox(height: 16),
+
+            PlanGate(
+              feature: PlanFeature.assignToOthers,
+              label: 'واگذاری کار به دیگران',
+              child: _assigneePicker(c),
+            ),
+            const SizedBox(height: 16),
+
+            if (_taskType == 'periodic') ...[
+              _dateTile(
+                c,
+                icon: Icons.calendar_today_outlined,
+                label: _isSelfTask ? 'موعد انجام (اختیاری)' : 'موعد انجام',
+                value: _dueDate != null ? _toShamsi(_dueDate!) : null,
+                hint: _isSelfTask ? 'بدون موعد' : 'انتخاب تاریخ',
+                onTap: () async {
+                  final d = await _pickDate();
+                  if (d != null) setState(() => _dueDate = d);
+                },
+              ),
+            ] else ...[
+              _dateTile(
+                c,
+                icon: Icons.play_circle_outline_rounded,
+                label: 'تاریخ شروع',
+                value: _startDate != null ? _toShamsi(_startDate!) : null,
+                hint: 'انتخاب تاریخ',
+                onTap: () async {
+                  final d = await _pickDate();
+                  if (d != null) setState(() => _startDate = d);
+                },
+              ),
+              const SizedBox(height: 10),
+              _dateTile(
+                c,
+                icon: Icons.event_busy_rounded,
+                label: 'تاریخ پایان (اختیاری)',
+                value: _endDate != null ? _toShamsi(_endDate!) : null,
+                hint: 'نامحدود',
+                onTap: () async {
+                  final d = await _pickDate();
+                  if (d != null) setState(() => _endDate = d);
+                },
+              ),
+              const SizedBox(height: 10),
+              _labeledRow(
+                c,
+                icon: Icons.repeat_rounded,
+                label: 'دوره تکرار',
+                field: _periodSelector(c),
+              ),
+            ],
+            const SizedBox(height: 16),
+
+            // 🔧 طبق درخواست: آیکنِ چشم حذف شد
+            PlanGate(
+              feature: PlanFeature.historyForDelegates,
+              label: 'نمایش تاریخچه برای ارجاع‌شونده',
+              child: _toggleRow(
+                c,
+                label: 'نمایش تاریخچه کار برای کاربران ارجاع‌شونده',
+                value: _shareHistory,
+                onChanged: (v) => setState(() => _shareHistory = v),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            _labeledRow(
+              c,
+              icon: Icons.attach_file_rounded,
+              label: 'فایل‌های پیوست',
+              trailing: _pickedFiles.isEmpty
+                  ? null
+                  : toPersianDigits('${_pickedFiles.length} فایل'),
+              field: _attachmentsAddField(c),
+            ),
+            if (_pickedFiles.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              _attachmentsList(c),
+            ],
+          ],
         ),
-        // 🔧 طبق درخواست: دکمه‌ی ذخیره مثلِ دکمه‌ی تنظیماتِ سیستم — اکشن‌باتنِ
-        // گردِ کوچکِ شناور، سمتِ چپ (نه نوارِ تمام‌عرضِ قبلی)
-        floatingActionButton: _saveActionButton(c),
-        // 🔧 رفعِ باگ: چون اپ RTL است، startFloat یعنی سمتِ راست؛ برایِ
-        // سمتِ چپِ واقعی باید endFloat باشد
-        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       ),
+      // 🔧 طبق درخواست: دکمه‌ی ذخیره ثابت در پایینِ صفحه (تمام‌عرض)،
+      // به‌جایِ دکمه‌ی گردِ شناور
+      bottomNavigationBar: _saveBar(c),
     );
   }
 
-  Widget _saveActionButton(AppColors c) {
-    return GestureDetector(
-      onTap: _isLoading ? null : _submit,
-      child: Container(
-        width: 62,
-        height: 62,
-        decoration: BoxDecoration(color: c.primary, shape: BoxShape.circle),
-        child: _isLoading
-            ? const Padding(
-                padding: EdgeInsets.all(18),
-                child: CircularProgressIndicator(
-                  color: Colors.white,
-                  strokeWidth: 2.4,
+  Widget _saveBar(AppColors c) {
+    return Container(
+      decoration: BoxDecoration(
+        color: c.bgPage,
+        border: Border(top: BorderSide(color: c.borderSoft)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+          child: SizedBox(
+            height: 50,
+            child: ElevatedButton(
+              onPressed: _isLoading ? null : _submit,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: c.primary,
+                foregroundColor: Colors.white,
+                disabledBackgroundColor: c.primary.withValues(alpha: 0.6),
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
                 ),
-              )
-            : const Icon(Icons.check_rounded, color: Colors.white, size: 30),
+              ),
+              child: _isLoading
+                  ? const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2.4,
+                      ),
+                    )
+                  : const Text(
+                      'ذخیره',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+            ),
+          ),
+        ),
       ),
     );
   }

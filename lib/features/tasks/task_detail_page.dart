@@ -19,7 +19,6 @@ import '../../core/widgets/scrollable_chip_row.dart';
 import '../../core/theme/theme_controller.dart';
 import '../../core/theme/starred_tasks_preference.dart';
 import '../../core/theme/app_radius.dart';
-import '../shell/widgets/app_bottom_nav.dart';
 import 'widgets/persian_date_picker_sheet.dart';
 import 'widgets/task_group_management_sheet.dart';
 import 'widgets/attachment_picker.dart';
@@ -1465,53 +1464,51 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     final actionBar = (_isLoading || _error != null || _task == null)
         ? null
         : _buildActionBar();
-    return AppShellOverlays(
-      child: PopScope(
-        canPop: false,
-        onPopInvokedWithResult: (didPop, result) {
-          if (!didPop) Get.back(result: _hasChanges);
-        },
-        child: Scaffold(
+    // 🔧 طبق درخواست: دکمه‌ی جست‌وجویِ سراسری (AppShellOverlays) در این صفحه نیست
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) Get.back(result: _hasChanges);
+      },
+      child: Scaffold(
+        backgroundColor: c.bgPage,
+        appBar: AppBar(
           backgroundColor: c.bgPage,
-          appBar: AppBar(
-            backgroundColor: c.bgPage,
-            elevation: 0,
-            centerTitle: true,
-            title: Text(
-              'جزئیات کار',
-              style: TextStyle(
-                color: c.textStrong,
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-              ),
-            ),
-            leading: IconButton(
-              icon: Transform.rotate(
-                angle: math.pi,
-                child: Icon(
-                  Icons.arrow_forward_ios_rounded,
-                  color: c.textStrong,
-                  size: 20,
-                ),
-              ),
-              onPressed: () => Get.back(result: _hasChanges),
+          elevation: 0,
+          centerTitle: true,
+          title: Text(
+            'جزئیات کار',
+            style: TextStyle(
+              color: c.textStrong,
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
             ),
           ),
-          body: _isLoading
-              ? Center(child: CircularProgressIndicator(color: c.primary))
-              : _error != null
-              ? _buildError(c)
-              : Column(
-                  children: [
-                    if (_isOfflineData) const OfflineBanner(),
-                    Expanded(child: _buildContent()),
-                    // طبق درخواست این صفحه نوارِ ناوبریِ پایین ندارد، پس
-                    // فاصله‌ی امن (نوارِ دکمه‌هایِ گوشی) را خودِ این نوار می‌گیرد
-                    if (actionBar != null)
-                      SafeArea(top: false, child: actionBar),
-                  ],
-                ),
+          leading: IconButton(
+            icon: Transform.rotate(
+              angle: math.pi,
+              child: Icon(
+                Icons.arrow_forward_ios_rounded,
+                color: c.textStrong,
+                size: 20,
+              ),
+            ),
+            onPressed: () => Get.back(result: _hasChanges),
+          ),
         ),
+        body: _isLoading
+            ? Center(child: CircularProgressIndicator(color: c.primary))
+            : _error != null
+            ? _buildError(c)
+            : Column(
+                children: [
+                  if (_isOfflineData) const OfflineBanner(),
+                  Expanded(child: _buildContent()),
+                  // طبق درخواست این صفحه نوارِ ناوبریِ پایین ندارد، پس
+                  // فاصله‌ی امن (نوارِ دکمه‌هایِ گوشی) را خودِ این نوار می‌گیرد
+                  if (actionBar != null) SafeArea(top: false, child: actionBar),
+                ],
+              ),
       ),
     );
   }
