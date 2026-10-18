@@ -14,9 +14,12 @@ import 'core/theme/notification_bar_preference.dart';
 import 'core/theme/font_size_preference.dart';
 import 'core/theme/starred_tasks_preference.dart';
 import 'core/theme/dashboard_filter_pin_preference.dart';
+import 'core/notifications/onesignal_service.dart';
+import 'package:onesignal_flutter/onesignal_flutter.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await OneSignalService.init();
   await ApiClient.init();
   ApiClient.onSessionExpired = _handleSessionExpired;
   ConnectivityService.instance.start();
@@ -31,6 +34,9 @@ void main() async {
   FontSizePreference.init();
   StarredTasksPreference.init();
   DashboardFilterPinPreference.init();
+  // 🔧 درخواستِ مجوزِ نوتیفیکیشن — یک‌بار در شروعِ اپ؛ اگر کاربر قبلاً
+  // رد کرده باشد، سیستم‌عامل خودش دوباره این دیالوگ را نشان نمی‌دهد
+  OneSignal.Notifications.requestPermission(true);
 }
 
 // ════════════════════════════════════════════════════════

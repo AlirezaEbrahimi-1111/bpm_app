@@ -50,12 +50,11 @@ dependencies:
   path_provider: ^2.1.5
   # 🔧 برایِ بازکردنِ صفحه‌ی پرداختِ زرین‌پال داخلِ خودِ اپ
   webview_flutter: ^4.13.0
-  # 🔧 فاز ۰ (نوتیفیکیشن Push): تصمیم بین نجوا/پوشه/فایربیس هنوز قطعی
-  # نشده؛ در هر صورت نصب از pub.dev فعلاً با خطای "authorization
-  # failed" مسدود است (پراکسیِ محیطِ sandbox، نه اعتبارنامه). گزینه‌های
-  # کاندید:
-  # firebase_core: ^4.14.0 / firebase_messaging: ^16.6.0 / flutter_local_notifications: ^22.3.0
-  # pushe_flutter: ^2.6.1   (تست شد — همین مسدودی را هم می‌گیرد)
+  # 🔧 فاز ۰ (نوتیفیکیشن Push): بعدِ بررسیِ متریکس/پوشفا/نجوا (همه یا FCM
+  # لازم دارند بدونِ SDK فلاتر، یا SDK فلاترشان منسوخ است)، OneSignal
+  # انتخاب شد — SDK رسمیِ فلاتر + APIِ تراکنشیِ واقعی برایِ هدف‌گیریِ
+  # تک‌کاربر از بک‌اند
+  onesignal_flutter: ^5.7.1
 
 dev_dependencies:
   flutter_test:

@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'dart:convert';
+import 'package:onesignal_flutter/onesignal_flutter.dart';
 import '../plan/plan_access.dart';
 
 class ApiClient {
@@ -162,6 +163,10 @@ class ApiClient {
     PlanAccess.setFromUser(user);
     currentUser = user;
     await _storage.write(key: 'cached_user', value: jsonEncode(user));
+    // 🔧 طبق درخواست: شناساییِ کاربرِ جاری برایِ OneSignal — تا بک‌اند
+    // بتواند با همین ID، دقیقاً به همین کاربر Push بفرستد
+    final id = user['id'];
+    if (id != null) OneSignal.login(id.toString());
   }
 
   /// اگر «مرا به خاطر بسپار» فعال بوده، هنوز یک ماه از آن نگذشته باشد و
@@ -197,6 +202,10 @@ class ApiClient {
             : int.tryParse(userMap['id']?.toString() ?? '');
         currentUser = userMap;
         PlanAccess.setFromUser(userMap);
+        // 🔧 ورودِ خودکار هم باید همان شناساییِ OneSignal را انجام دهد —
+        // چون این مسیر از saveCachedUser رد نمی‌شود
+        final id = userMap['id'];
+        if (id != null) OneSignal.login(id.toString());
         return userMap;
       }
       return null;
@@ -249,6 +258,9 @@ class ApiClient {
     currentUserId = null; // شناسه کاربر هم پاک شود
     currentUser = null;
     PlanAccess.reset();
+    // 🔧 با خروج، شناساییِ OneSignal هم باید پاک شود تا کاربرِ بعدی که
+    // با همین گوشی لاگین می‌کند، اشتباهاً پیامِ کاربرِ قبلی را نگیرد
+    OneSignal.logout();
     await _storage.delete(key: 'access_token');
     await _storage.delete(key: 'remember_me');
     await _storage.delete(key: 'remember_me_expiry');
