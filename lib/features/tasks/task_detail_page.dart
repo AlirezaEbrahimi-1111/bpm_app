@@ -1505,19 +1505,12 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                   children: [
                     if (_isOfflineData) const OfflineBanner(),
                     Expanded(child: _buildContent()),
-                    // 🔧 رفعِ باگ: نوارِ عملیات قبلاً داخلِ bottomNavigationBar
-                    // بالایِ AppBottomNav چیده می‌شد — چون محاسبه‌یِ موقعیتِ
-                    // دکمه‌ی شناور (LoweredDockedFabLocation) نسبت به کلِ
-                    // bottomNavigationBar است، اضافه‌شدنِ این نوار باعث
-                    // می‌شد دکمه بالاتر از جایِ درستش بیفتد. حالا این نوار
-                    // داخلِ body (درست بالایِ نوارِ ناوبری) است و
-                    // bottomNavigationBar فقط AppBottomNav را دارد
-                    if (actionBar != null) actionBar,
+                    // طبق درخواست این صفحه نوارِ ناوبریِ پایین ندارد، پس
+                    // فاصله‌ی امن (نوارِ دکمه‌هایِ گوشی) را خودِ این نوار می‌گیرد
+                    if (actionBar != null)
+                      SafeArea(top: false, child: actionBar),
                   ],
                 ),
-          bottomNavigationBar: const AppBottomNav(),
-          floatingActionButton: const AppCreateTaskFab(),
-          floatingActionButtonLocation: const LoweredDockedFabLocation(),
         ),
       ),
     );

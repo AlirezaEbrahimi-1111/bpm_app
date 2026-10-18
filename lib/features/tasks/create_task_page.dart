@@ -634,7 +634,6 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
         // 🔧 رفعِ باگ: چون اپ RTL است، startFloat یعنی سمتِ راست؛ برایِ
         // سمتِ چپِ واقعی باید endFloat باشد
         floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-        bottomNavigationBar: const AppBottomNav(),
       ),
     );
   }
