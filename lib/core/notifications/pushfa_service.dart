@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import '../../features/tasks/task_detail_page.dart';
@@ -17,9 +18,28 @@ class PushfaService {
     _channel.setMethodCallHandler((call) async {
       if (call.method == 'onDeepLink') {
         _handleDeepLink(call.arguments?.toString());
+      } else if (call.method == 'onPushRegisterResult') {
+        // 🔧 موقت/عیب‌یابی: نتیجه‌ی واقعیِ ثبتِ Push را نشان می‌دهد چون
+        // به logcat دسترسی نداریم — بعدِ حلِ مشکل حذف می‌شود
+        _showDebug('نتیجه‌ی ثبتِ Push', call.arguments?.toString() ?? 'null');
       }
       return null;
     });
+  }
+
+  static void _showDebug(String title, String message) {
+    try {
+      Get.dialog(
+        AlertDialog(
+          title: Text(title),
+          content: SelectableText(message),
+          actions: [
+            TextButton(onPressed: () => Get.back(), child: const Text('باشه')),
+          ],
+        ),
+        barrierDismissible: true,
+      );
+    } catch (_) {}
   }
 
   /// بعدِ لاگین/ورودِ خودکار — کاربر را با همان user.id به‌عنوانِ

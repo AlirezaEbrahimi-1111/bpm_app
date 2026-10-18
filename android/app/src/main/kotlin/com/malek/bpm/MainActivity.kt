@@ -35,6 +35,16 @@ class MainActivity : FlutterActivity() {
                     Pushfa.removeAlias(label) { }
                     result.success(null)
                 }
+                // 🔧 موقت/عیب‌یابی: وضعیتِ فعلیِ SDK را برمی‌گرداند تا
+                // بفهمیم چرا ثبتِ Push موفق نمی‌شود
+                "debugStatus" -> {
+                    result.success(
+                        mapOf(
+                            "notificationsEnabled" to Pushfa.areNotificationsEnabled(this),
+                            "subscriberId" to Pushfa.getSubscriberId(),
+                        )
+                    )
+                }
                 else -> result.notImplemented()
             }
         }
@@ -69,7 +79,11 @@ class MainActivity : FlutterActivity() {
         super.onResume()
         if (!pushRegistered && Pushfa.areNotificationsEnabled(this)) {
             pushRegistered = true
-            Pushfa.registerForPush { }
+            // 🔧 موقت/عیب‌یابی: نتیجه‌ی واقعیِ ثبت را به دارت می‌فرستیم
+            // تا در خودِ اپ (بدونِ نیاز به logcat) ببینیمش
+            Pushfa.registerForPush { registerResult ->
+                channel?.invokeMethod("onPushRegisterResult", registerResult.toString())
+            }
         }
     }
 
