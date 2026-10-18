@@ -50,6 +50,31 @@ class MainActivity : FlutterActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         handleIntent(intent)
+        // 🔧 رفعِ باگ: بدونِ این، SDK فقط یک «پروفایل» می‌سازد ولی هرگز
+        // به «مشترکِ Push» واقعی تبدیل نمی‌شود (توکنِ FCM ثبت نمی‌شود)
+        // — یعنی addAlias روی کاربری اجرا می‌شود که اصلاً عضوِ هیچ
+        // کانالِ Push ای نیست، و سرور با CUSTOM_ALIAS_NOT_FOUND رد
+        // می‌کند. اگر مجوز از قبل داده شده (مثلاً اندرویدِ زیرِ ۱۳، یا
+        // قبلاً تایید کرده)، callback هیچ‌وقت صدا زده نمی‌شود — پس اول
+        // خودمان چک می‌کنیم
+        if (Pushfa.areNotificationsEnabled(this)) {
+            Pushfa.registerForPush { }
+        } else {
+            Pushfa.requestNotificationPermission(this)
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == Pushfa.DEFAULT_PERMISSION_REQUEST_CODE &&
+            Pushfa.areNotificationsEnabled(this)
+        ) {
+            Pushfa.registerForPush { }
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
