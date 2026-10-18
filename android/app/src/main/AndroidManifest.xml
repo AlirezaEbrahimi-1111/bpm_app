@@ -7,7 +7,7 @@
     <uses-feature android:name="android.hardware.microphone" android:required="false"/>
     <application
         android:label="MalekBPM"
-        android:name="${applicationName}"
+        android:name=".PushfaApplication"
         android:icon="@mipmap/ic_launcher">
         <activity
             android:name=".MainActivity"

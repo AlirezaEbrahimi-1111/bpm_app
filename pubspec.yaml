@@ -50,11 +50,12 @@ dependencies:
   path_provider: ^2.1.5
   # 🔧 برایِ بازکردنِ صفحه‌ی پرداختِ زرین‌پال داخلِ خودِ اپ
   webview_flutter: ^4.13.0
-  # 🔧 فاز ۰ (نوتیفیکیشن Push): بعدِ بررسیِ متریکس/پوشفا/نجوا (همه یا FCM
-  # لازم دارند بدونِ SDK فلاتر، یا SDK فلاترشان منسوخ است)، OneSignal
-  # انتخاب شد — SDK رسمیِ فلاتر + APIِ تراکنشیِ واقعی برایِ هدف‌گیریِ
-  # تک‌کاربر از بک‌اند
-  onesignal_flutter: ^5.7.1
+  # 🔧 فاز ۰ (نوتیفیکیشن Push): بعدِ ردِ متریکس (پشتیبانی نداشت) و
+  # OneSignal (سرورِ ما اصلاً به api.onesignal.com دسترسی ندارد — مسدودِ
+  # شبکه‌ای، نه مشکلِ FCM)، پوشفا انتخاب شد. SDK فلاترِ رسمی ندارد — از
+  # یک MethodChanneIِ نیتیو (android/.../MainActivity.kt +
+  # PushfaApplication.kt) استفاده می‌شود، پس این‌جا هیچ پکیجِ pub.dev ی
+  # اضافه نشد
 
 dev_dependencies:
   flutter_test:

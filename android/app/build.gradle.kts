@@ -89,3 +89,10 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+// 🔧 فازِ ۰ (Push): SDKِ نیتیوِ اندرویدِ پوشفا — این سرویس SDK فلاترِ
+// رسمی ندارد، پس با یک پلِ MethodChannel (در MainActivity.kt) به دارت
+// وصل می‌شود
+dependencies {
+    implementation("com.pushfa:pushfa-android-sdk:2.0.4")
+}
