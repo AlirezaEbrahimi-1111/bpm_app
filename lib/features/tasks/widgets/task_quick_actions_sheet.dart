@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../../core/widgets/app_snack.dart';
@@ -8,6 +9,7 @@ import '../../../core/utils/persian_number.dart';
 import '../../../core/plan/plan_access.dart';
 import '../../subscription/plan_gate.dart';
 import 'persian_date_picker_sheet.dart';
+import '../../../core/navigation/app_nav.dart';
 
 /// منوی «عملیات» روی سه‌نقطه‌ی هر ردیفِ کار در لیست‌ها (داشبورد،
 /// کارها، واگذارشده) — به‌جای رفتنِ مستقیم به جزئیاتِ کار.
@@ -28,23 +30,57 @@ bool _isTerminal(dynamic t) {
 /// مرتب‌سازی (کارهایِ منتظرِ اقدام بالاتر) لازم است
 List<String> quickActionsFor(dynamic task, int currentUserId) {
   if (_isTerminal(task)) return [];
+  // 🔧 طبق درخواست: اگر درخواستِ تمدیدِ موعدی منتظرِ تأییدِ همین کاربر است
+  // (همان شرطِ بجِ «درخواست تمدید موعد»)، بررسیِ آن از همین منو ممکن است
+  final reviewDeadline =
+      (task['has_pending_deadline_request'] == 1 ||
+          task['has_pending_deadline_request'] == true ||
+          task['has_pending_deadline_request'] == '1') &&
+      task['current_approver_id']?.toString() == currentUserId.toString();
   final assigneeId = int.tryParse(task['assignee_id']?.toString() ?? '');
   if (task['status'] == 'pending_approval' && assigneeId == currentUserId) {
-    return ['approve', 'reject'];
+    return ['approve', 'reject', if (reviewDeadline) 'review_deadline'];
   }
   if (assigneeId != null && assigneeId == currentUserId) {
-    return ['delegate', 'extend'];
+    // 🔧 مثلِ وب (pmActions): کارِ دوره‌ای «تمدید موعد» ندارد
+    return [
+      if (reviewDeadline) 'review_deadline',
+      'delegate',
+      if (task['task_type'] != 'continuous') 'extend',
+    ];
   }
-  return [];
+  return [if (reviewDeadline) 'review_deadline'];
+}
+
+/// 🔧 طبق درخواست: اکشن‌هایِ صفحه‌ی «نظارت بر کارها» — عیناً
+/// buildActionButtons در pages/tasks-overview.php:
+/// - یادآوری: فقط اگر مسئول دارد و تکمیل/تأیید نشده
+/// - حذف: فقط کارِ غیرروتین و تکمیل/تأییدنشده
+/// (مجوزِ نهایی را سرور چک می‌کند: یادآوری فقط تعریف‌کننده، حذف تعریف‌کننده
+/// یا نقشِ management/supervisor همان سازمان — پیامِ سرور نشان داده می‌شود)
+List<String> overviewActionsFor(dynamic task) {
+  final status = task['status'];
+  final finished = status == 'completed' || status == 'approved';
+  final hasAssignee =
+      task['assignee_id'] != null && task['assignee_id'].toString().isNotEmpty;
+  final isWorkflow =
+      task['is_workflow_task'] == 1 || task['is_workflow_task'] == true;
+  return [
+    if (hasAssignee && !finished) 'remind',
+    if (!isWorkflow && !finished) 'delete',
+  ];
 }
 
 void showTaskQuickActionsSheet(
   BuildContext context, {
   required dynamic task,
   required VoidCallback onChanged,
+  bool overview = false,
 }) {
   final currentUserId = ApiClient.currentUserId ?? -1;
-  final actions = quickActionsFor(task, currentUserId);
+  final actions = overview
+      ? overviewActionsFor(task)
+      : quickActionsFor(task, currentUserId);
   final c = AppColors.of(context);
   showModalBottomSheet(
     context: context,
@@ -120,6 +156,14 @@ class _QuickActionsSheet extends StatelessWidget {
                 ),
               )
             else ...[
+              if (actions.contains('review_deadline'))
+                _tile(
+                  context,
+                  icon: Icons.hourglass_bottom_rounded,
+                  label: 'بررسی تمدید موعد',
+                  color: const Color(0xFF1B7B39),
+                  onTap: () => _reviewDeadline(context),
+                ),
               if (actions.contains('approve'))
                 _tile(
                   context,
@@ -155,6 +199,22 @@ class _QuickActionsSheet extends StatelessWidget {
                   label: 'تمدید موعد',
                   color: c.primary,
                   onTap: () => _showExtend(context),
+                ),
+              if (actions.contains('remind'))
+                _tile(
+                  context,
+                  icon: Icons.notifications_none_rounded,
+                  label: 'یادآوری',
+                  color: const Color(0xFFF59E0B),
+                  onTap: () => _showRemind(context),
+                ),
+              if (actions.contains('delete'))
+                _tile(
+                  context,
+                  icon: Icons.delete_outline_rounded,
+                  label: 'حذف',
+                  color: c.danger,
+                  onTap: () => _confirmDelete(context),
                 ),
             ],
             const SizedBox(height: 8),
@@ -223,15 +283,18 @@ class _QuickActionsSheet extends StatelessWidget {
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('انصراف')),
+          TextButton(
+            onPressed: () => AppNav.back(),
+            child: const Text('انصراف'),
+          ),
           TextButton(
             onPressed: () async {
               final reason = controller.text.trim();
               if (reason.isEmpty) {
-                AppSnack.error('خطا', 'لطفاً دلیل رد را بنویسید');
+                AppSnack.error('خطا', 'لطفا دلیل رد را بنویسید');
                 return;
               }
-              Get.back();
+              AppNav.back();
               try {
                 final res = await ApiClient.dio.post(
                   '/api/tasks/approve.php',
@@ -273,18 +336,413 @@ class _QuickActionsSheet extends StatelessWidget {
     );
   }
 
-  void _showExtend(BuildContext context) {
+  /// بررسیِ درخواستِ تمدیدِ موعد — همان اطلاعات و API‌هایِ دیالوگِ جزئیاتِ
+  /// کار (get-deadline-requests / approve-deadline / reject-deadline)
+  Future<void> _reviewDeadline(BuildContext context) async {
     Navigator.of(context).pop();
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: c.surfaceContainerLow,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    Map<String, dynamic>? req;
+    try {
+      final res = await ApiClient.dio.get(
+        '/api/tasks/get-deadline-requests.php',
+        queryParameters: {'task_id': _taskId},
+      );
+      final data = ApiClient.parseResponse(res.data);
+      final list = data['requests'] as List? ?? [];
+      final mine = list.where((r) => r['is_approver'] == true).toList();
+      if (mine.isNotEmpty) req = Map<String, dynamic>.from(mine.first);
+    } catch (e) {
+      AppSnack.error('خطا', ApiClient.errorMessage(e, 'خطا در اتصال به سرور'));
+      return;
+    }
+    if (req == null) {
+      AppSnack.warning('توجه', 'درخواست منتظر بررسی شما پیدا نشد');
+      onChanged();
+      return;
+    }
+    final request = req;
+    final reasonController = TextEditingController();
+    var busy = false;
+
+    Widget row(String label, String value) => Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 90,
+            child: Text(
+              label,
+              style: TextStyle(fontSize: 12.5, color: c.textMuted),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value.isEmpty ? '—' : value,
+              style: TextStyle(fontSize: 13, color: c.textStrong),
+            ),
+          ),
+        ],
       ),
-      builder: (_) => _ExtendSheet(taskId: _taskId, c: c, onChanged: onChanged),
+    );
+
+    Future<void> send(bool approve) async {
+      if (!approve && reasonController.text.trim().isEmpty) {
+        AppSnack.error('خطا', 'دلیل رد را بنویسید');
+        return;
+      }
+      try {
+        final res = await ApiClient.dio.post(
+          approve
+              ? '/api/tasks/approve-deadline.php'
+              : '/api/tasks/reject-deadline.php',
+          data: {
+            'request_id': request['id'],
+            if (!approve) 'rejection_reason': reasonController.text.trim(),
+          },
+        );
+        final data = ApiClient.parseResponse(res.data);
+        AppNav.back();
+        if (data['success'] == true) {
+          onChanged();
+          AppSnack.success(
+            approve ? '✅ تأیید شد' : 'رد شد',
+            data['message'] ??
+                (approve ? 'تمدید موعد تأیید شد' : 'درخواست رد شد'),
+          );
+        } else {
+          AppSnack.error('خطا', data['message'] ?? 'خطا در عملیات');
+        }
+      } catch (e) {
+        AppNav.back();
+        AppSnack.error('خطا', ApiClient.errorMessage(e, 'خطا در عملیات'));
+      }
+    }
+
+    Get.dialog(
+      StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          backgroundColor: c.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Text(
+            'بررسی درخواست تمدید موعد',
+            style: TextStyle(fontSize: 16, color: c.textStrong),
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                row(
+                  'درخواست‌دهنده',
+                  request['requester_name']?.toString() ?? '',
+                ),
+                row(
+                  'موعد فعلی',
+                  request['current_deadline_jalali']?.toString() ?? '',
+                ),
+                row(
+                  'موعد درخواستی',
+                  request['requested_new_deadline_jalali']?.toString() ?? '',
+                ),
+                row('دلیل', request['reason']?.toString() ?? ''),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: reasonController,
+                  minLines: 1,
+                  maxLines: 3,
+                  keyboardType: TextInputType.multiline,
+                  style: TextStyle(color: c.textStrong),
+                  decoration: InputDecoration(
+                    hintText: 'دلیل رد (فقط برای رد الزامی است)...',
+                    hintStyle: TextStyle(color: c.textMuted, fontSize: 12.5),
+                    filled: true,
+                    fillColor: c.surfaceContainerLow,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: busy ? null : () => AppNav.back(),
+              child: Text('انصراف', style: TextStyle(color: c.textMuted)),
+            ),
+            TextButton(
+              onPressed: busy
+                  ? null
+                  : () async {
+                      setDialogState(() => busy = true);
+                      await send(false);
+                      if (ctx.mounted) setDialogState(() => busy = false);
+                    },
+              child: Text('رد', style: TextStyle(color: c.danger)),
+            ),
+            TextButton(
+              onPressed: busy
+                  ? null
+                  : () async {
+                      setDialogState(() => busy = true);
+                      await send(true);
+                      if (ctx.mounted) setDialogState(() => busy = false);
+                    },
+              child: busy
+                  ? SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: c.success,
+                      ),
+                    )
+                  : Text('تأیید', style: TextStyle(color: c.success)),
+            ),
+          ],
+        ),
+      ),
     );
   }
+
+  /// یادآوری — مثلِ sendReminder وب (send-reminder.php، پیام الزامی)
+  void _showRemind(BuildContext context) {
+    Navigator.of(context).pop();
+    final controller = TextEditingController();
+    final assignee = (task['assignee_name'] ?? 'نامشخص').toString();
+    var sending = false;
+    Get.dialog(
+      StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          backgroundColor: c.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Text(
+            'یادآوری به $assignee',
+            style: TextStyle(fontSize: 16, color: c.textStrong),
+          ),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            minLines: 2,
+            maxLines: 4,
+            keyboardType: TextInputType.multiline,
+            style: TextStyle(color: c.textStrong),
+            decoration: InputDecoration(
+              hintText: 'پیام یادآوری...',
+              hintStyle: TextStyle(color: c.textMuted, fontSize: 13),
+              filled: true,
+              fillColor: c.surfaceContainerLow,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => AppNav.back(),
+              child: Text('انصراف', style: TextStyle(color: c.textMuted)),
+            ),
+            TextButton(
+              onPressed: sending
+                  ? null
+                  : () async {
+                      final msg = controller.text.trim();
+                      if (msg.isEmpty) {
+                        AppSnack.error('خطا', 'متن یادآوری را بنویسید');
+                        return;
+                      }
+                      setDialogState(() => sending = true);
+                      try {
+                        final res = await ApiClient.dio.post(
+                          '/api/tasks/send-reminder.php',
+                          data: {'task_id': _taskId, 'message': msg},
+                        );
+                        final data = ApiClient.parseResponse(res.data);
+                        AppNav.back();
+                        if (data['success'] == true) {
+                          AppSnack.success(
+                            '✅ ارسال شد',
+                            'یادآوری با موفقیت ارسال شد',
+                          );
+                        } else {
+                          AppSnack.error(
+                            'خطا',
+                            data['message'] ?? 'خطا در ارسال یادآوری',
+                          );
+                        }
+                      } catch (e) {
+                        AppNav.back();
+                        AppSnack.error(
+                          'خطا',
+                          ApiClient.errorMessage(e, 'خطا در ارسال یادآوری'),
+                        );
+                      }
+                    },
+              child: sending
+                  ? SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: c.primary,
+                      ),
+                    )
+                  : Text('ارسال', style: TextStyle(color: c.primary)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// حذف — مثلِ deleteTask وب (delete.php، با تأیید)
+  void _confirmDelete(BuildContext context) {
+    Navigator.of(context).pop();
+    var deleting = false;
+    Get.dialog(
+      StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          backgroundColor: c.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Text(
+            'حذف کار',
+            style: TextStyle(fontSize: 16, color: c.textStrong),
+          ),
+          content: Text(
+            'آیا از حذف این کار اطمینان دارید؟',
+            style: TextStyle(color: c.textMuted),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => AppNav.back(),
+              child: Text('انصراف', style: TextStyle(color: c.textMuted)),
+            ),
+            TextButton(
+              onPressed: deleting
+                  ? null
+                  : () async {
+                      setDialogState(() => deleting = true);
+                      try {
+                        final res = await ApiClient.dio.post(
+                          '/api/tasks/delete.php',
+                          data: {'task_id': _taskId},
+                        );
+                        final data = ApiClient.parseResponse(res.data);
+                        AppNav.back();
+                        if (data['success'] == true) {
+                          onChanged();
+                          AppSnack.success(
+                            '✅ حذف شد',
+                            data['message'] ?? 'کار حذف شد',
+                          );
+                        } else {
+                          AppSnack.error(
+                            'خطا',
+                            data['message'] ?? 'عملیات ناموفق بود',
+                          );
+                        }
+                      } catch (e) {
+                        AppNav.back();
+                        AppSnack.error(
+                          'خطا',
+                          ApiClient.errorMessage(e, 'خطا در حذف کار'),
+                        );
+                      }
+                    },
+              child: deleting
+                  ? SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: c.danger,
+                      ),
+                    )
+                  : Text('بله، حذف', style: TextStyle(color: c.danger)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showExtend(BuildContext context) {
+    Navigator.of(context).pop();
+    _openExtendSheet(context, taskId: _taskId, c: c, onChanged: onChanged);
+  }
+}
+
+/// 🔧 طبق درخواست: اول بلافاصله تقویم (یک لمس = انتخاب)، بعد شیتِ تمدید با
+/// همان تاریخ + دلیل + «تأیید». انصراف از تقویم = هیچ اتفاقی نمی‌افتد
+Future<void> _openExtendSheet(
+  BuildContext context, {
+  required int taskId,
+  required AppColors c,
+  required VoidCallback onChanged,
+}) async {
+  final picked = await showCustomPersianDatePicker(
+    context,
+    firstDate: Jalali.now(),
+    pickOnTap: true,
+  );
+  if (picked == null || !context.mounted) return;
+  showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: c.surfaceContainerLow,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    builder: (_) => _ExtendSheet(
+      taskId: taskId,
+      c: c,
+      onChanged: onChanged,
+      initialDate: picked,
+    ),
+  );
+}
+
+/// 🔧 طبق درخواست (مثلِ نسخه‌ی وب — dashboard-user.php): وقتی موعدِ کار
+/// گذشته و سرور ارجاع را با کدِ `overdue_periodic` رد می‌کند (HTTP 400)،
+/// کنارِ پیامِ هشدار دکمه‌ی «تمدید موعد» هم می‌آید. اگر این حالت نبود false
+bool _handleOverdueDelegateBlock(
+  Object? dataOrError, {
+  required int taskId,
+  required AppColors c,
+  required VoidCallback onChanged,
+}) {
+  Object? body = dataOrError;
+  if (dataOrError is DioException) body = dataOrError.response?.data;
+  if (body is String) body = ApiClient.parseResponse(body);
+  if (body is! Map || body['code'] != 'overdue_periodic') return false;
+  AppSnack.warning(
+    'موعد کار گذشته',
+    (body['message'] ??
+            'موعد این کار گذشته است — امکان ارجاع نیست. ابتدا موعد کار را تمدید کنید')
+        .toString(),
+    duration: const Duration(seconds: 8),
+    mainButton: TextButton(
+      onPressed: () {
+        if (Get.isSnackbarOpen) Get.closeCurrentSnackbar();
+        final ctx = Get.context;
+        if (ctx == null) return;
+        _openExtendSheet(ctx, taskId: taskId, c: c, onChanged: onChanged);
+      },
+      child: const Text(
+        'تمدید موعد',
+        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+      ),
+    ),
+  );
+  return true;
 }
 
 class _DelegateSheet extends StatefulWidget {
@@ -338,6 +796,7 @@ class _DelegateSheetState extends State<_DelegateSheet> {
   }
 
   Future<void> _delegate(dynamic user) async {
+    if (_isSubmitting) return;
     setState(() => _isSubmitting = true);
     final notes = _notesController.text.trim();
     try {
@@ -355,13 +814,28 @@ class _DelegateSheetState extends State<_DelegateSheet> {
       if (data['success'] == true) {
         widget.onChanged();
         AppSnack.success('✅ موفق', data['message'] ?? 'کار ارجاع شد');
-      } else {
+      } else if (!_handleOverdueDelegateBlock(
+        data,
+        taskId: widget.taskId,
+        c: widget.c,
+        onChanged: widget.onChanged,
+      )) {
         AppSnack.error('خطا', data['message'] ?? 'خطا در ارجاع کار');
       }
     } catch (e) {
       if (!mounted) return;
       Navigator.of(context).pop();
-      AppSnack.error('خطا', ApiClient.errorMessage(e, 'خطا در اتصال به سرور'));
+      if (!_handleOverdueDelegateBlock(
+        e,
+        taskId: widget.taskId,
+        c: widget.c,
+        onChanged: widget.onChanged,
+      )) {
+        AppSnack.error(
+          'خطا',
+          ApiClient.errorMessage(e, 'خطا در اتصال به سرور'),
+        );
+      }
     }
   }
 
@@ -482,6 +956,11 @@ class _DelegateSheetState extends State<_DelegateSheet> {
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
               child: TextField(
                 controller: _notesController,
+                // 🔧 رفعِ باگ: توضیحِ ارجاع چندخطی — قبلاً تک‌خطی بود و Enter خطِ جدید نمی‌ساخت
+                minLines: 1,
+                maxLines: 4,
+                keyboardType: TextInputType.multiline,
+                textInputAction: TextInputAction.newline,
                 textAlign: TextAlign.right,
                 style: TextStyle(color: c.textStrong, fontSize: 13),
                 decoration: InputDecoration(
@@ -550,10 +1029,12 @@ class _ExtendSheet extends StatefulWidget {
   final int taskId;
   final AppColors c;
   final VoidCallback onChanged;
+  final DateTime? initialDate;
   const _ExtendSheet({
     required this.taskId,
     required this.c,
     required this.onChanged,
+    this.initialDate,
   });
 
   @override
@@ -561,7 +1042,7 @@ class _ExtendSheet extends StatefulWidget {
 }
 
 class _ExtendSheetState extends State<_ExtendSheet> {
-  DateTime? _newDate;
+  late DateTime? _newDate = widget.initialDate;
   final _reasonController = TextEditingController();
   bool _isSubmitting = false;
 
@@ -579,19 +1060,22 @@ class _ExtendSheetState extends State<_ExtendSheet> {
     // غیرقابل‌انتخاب می‌شوند (هم‌سو با تمدیدِ موعد از جزئیاتِ کار)
     final d = await showCustomPersianDatePicker(
       context,
+      initialDate: _newDate,
       firstDate: Jalali.now(),
+      pickOnTap: true,
     );
     if (d != null) setState(() => _newDate = d);
   }
 
   Future<void> _submit() async {
+    if (_isSubmitting) return;
     if (_newDate == null) {
-      AppSnack.error('خطا', 'لطفاً موعد جدید را انتخاب کنید');
+      AppSnack.error('خطا', 'لطفا موعد جدید را انتخاب کنید');
       return;
     }
     final reason = _reasonController.text.trim();
     if (reason.isEmpty) {
-      AppSnack.error('خطا', 'لطفاً دلیل تمدید را بنویسید');
+      AppSnack.error('خطا', 'لطفا دلیل تمدید را بنویسید');
       return;
     }
     setState(() => _isSubmitting = true);
@@ -747,7 +1231,7 @@ class _ExtendSheetState extends State<_ExtendSheet> {
                         ),
                       )
                     : const Text(
-                        'ثبت درخواست',
+                        'تأیید',
                         style: TextStyle(fontWeight: FontWeight.bold),
                       ),
               ),

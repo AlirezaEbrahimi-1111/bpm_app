@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import '../../core/plan/plan_access.dart';
 import '../../core/theme/app_colors.dart';
 import 'subscription_page.dart';
+import '../../core/navigation/app_nav.dart';
 
 /// اگر امکانی در پلنِ فعلی قفل باشد، ویجت کم‌رنگ و غیرفعال می‌شود و با
 /// ضربه، شیتِ تبلیغاتیِ خرید اشتراک باز می‌شود. اگر قفل نبود، خودِ child
@@ -155,7 +156,7 @@ class _PlanUpgradeSheet extends StatelessWidget {
               height: 50,
               child: ElevatedButton.icon(
                 onPressed: () {
-                  Get.back();
+                  AppNav.back();
                   Get.to(() => const SubscriptionPage());
                 },
                 icon: const Icon(Icons.chevron_right_rounded, size: 20),
@@ -175,9 +176,9 @@ class _PlanUpgradeSheet extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             TextButton(
-              onPressed: () => Get.back(),
+              onPressed: () => AppNav.back(),
               child: Text(
-                'فعلاً نه',
+                'فعلا نه',
                 style: TextStyle(color: c.textMuted, fontSize: 13),
               ),
             ),

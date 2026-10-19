@@ -8,6 +8,7 @@ import '../../core/utils/task_search.dart';
 import '../tasks/task_detail_page.dart';
 import '../tasks/widgets/task_list_card.dart';
 import '../shell/widgets/app_bottom_nav.dart';
+import '../../core/navigation/app_nav.dart';
 
 /// «نظارت بر کارها» — پورتِ pages/tasks-overview.php برایِ موبایل.
 /// همان API وب: GET /api/tasks/overview.php?include_my_tasks=0|1
@@ -69,7 +70,7 @@ class _TasksOverviewPageState extends State<TasksOverviewPage> {
         });
       } else {
         setState(() {
-          _error = data['message']?.toString() ?? 'خطا در دریافتِ کارها';
+          _error = data['message']?.toString() ?? 'خطا در دریافت کارها';
           _isLoading = false;
         });
       }
@@ -77,9 +78,9 @@ class _TasksOverviewPageState extends State<TasksOverviewPage> {
       if (usersData['success'] == true) {
         _users = usersData['users'] as List? ?? [];
       }
-    } catch (_) {
+    } catch (e) {
       setState(() {
-        _error = 'خطا در اتصال به سرور — احتمالاً دسترسیِ لازم را ندارید';
+        _error = ApiClient.errorMessage(e, 'خطا در اتصال به سرور');
         _isLoading = false;
       });
     }
@@ -155,7 +156,7 @@ class _TasksOverviewPageState extends State<TasksOverviewPage> {
               angle: math.pi,
               child: const Icon(Icons.arrow_forward_ios_rounded, size: 20),
             ),
-            onPressed: () => Get.back(),
+            onPressed: () => AppNav.back(),
           ),
         ),
         body: _isLoading
@@ -312,6 +313,7 @@ class _TasksOverviewPageState extends State<TasksOverviewPage> {
                         (t) => TaskListCard(
                           task: t,
                           showPeople: true,
+                          overview: true,
                           onTap: () => _openDetail(t),
                           onChanged: _load,
                         ),

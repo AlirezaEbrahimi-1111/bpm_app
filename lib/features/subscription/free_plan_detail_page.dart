@@ -1,10 +1,10 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/app_snack.dart';
 import '../shell/widgets/app_bottom_nav.dart';
 import 'plan_feature_list.dart';
+import '../../core/navigation/app_nav.dart';
 
 /// صفحه‌ی «پلن رایگان» — بدون انتخابِ مدت/تعدادِ کاربر و بدون نوارِ قیمت،
 /// چون فقط نمایشِ امکاناتِ این پلن و گزینه‌ی ارتقا لازم است.
@@ -36,14 +36,14 @@ class FreePlanDetailPage extends StatelessWidget {
               angle: math.pi,
               child: const Icon(Icons.arrow_forward_ios_rounded, size: 20),
             ),
-            onPressed: () => Get.back(),
+            onPressed: () => AppNav.back(),
           ),
           actions: [
             IconButton(
               icon: Icon(Icons.share_rounded, color: c.textStrong, size: 20),
               onPressed: () => AppSnack.info(
                 'به‌زودی',
-                'اشتراک‌گذاریِ پلن هنوز فعال نشده است',
+                'اشتراک‌گذاری پلن هنوز فعال نشده است',
               ),
             ),
           ],
@@ -78,7 +78,7 @@ class FreePlanDetailPage extends StatelessWidget {
                     width: double.infinity,
                     height: 48,
                     child: ElevatedButton.icon(
-                      onPressed: () => Get.back(),
+                      onPressed: () => AppNav.back(),
                       icon: const Icon(Icons.trending_up_rounded, size: 18),
                       label: const Text(
                         'ارتقا به پلن‌های پیشرفته',

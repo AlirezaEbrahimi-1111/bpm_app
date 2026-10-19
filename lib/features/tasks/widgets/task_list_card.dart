@@ -16,12 +16,17 @@ class TaskListCard extends StatelessWidget {
   /// صفحه‌های شخصی (کارها/واگذارشده) لازم نیست، چون معلوم است خودِ کاربر است
   final bool showPeople;
 
+  /// «نظارت بر کارها»: منویِ سه‌نقطه به‌جایِ اکشن‌هایِ مسئول، اکشن‌هایِ
+  /// صفحه‌ی نظارتِ وب (یادآوری/حذف) را نشان می‌دهد
+  final bool overview;
+
   const TaskListCard({
     super.key,
     required this.task,
     required this.onTap,
     required this.onChanged,
     this.showPeople = false,
+    this.overview = false,
   });
 
   bool get _isDone =>
@@ -78,6 +83,7 @@ class TaskListCard extends StatelessWidget {
                     context,
                     task: task,
                     onChanged: onChanged,
+                    overview: overview,
                   ),
                   child: Icon(
                     Icons.more_vert_rounded,

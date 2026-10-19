@@ -1,10 +1,10 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 import '../../core/widgets/app_snack.dart';
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_colors.dart';
 import '../shell/widgets/app_bottom_nav.dart';
+import '../../core/navigation/app_nav.dart';
 
 /// صفحه‌ی «تغییر رمز عبور» — طبق طرح ارسالی (روشن + تاریک)
 ///
@@ -51,19 +51,20 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
   // 🔧 طبق درخواست: دکمه دیگر غیرفعال نیست — اگر اطلاعات ناقص باشد،
   // به‌جای بی‌اثر بودن، پیام مشخص می‌کند چه چیزی کم است
   String? get _validationMessage {
-    if (_currentController.text.isEmpty) return 'لطفاً رمز فعلی را وارد کنید';
-    if (_newController.text.isEmpty) return 'لطفاً رمز جدید را وارد کنید';
+    if (_currentController.text.isEmpty) return 'لطفا رمز فعلی را وارد کنید';
+    if (_newController.text.isEmpty) return 'لطفا رمز جدید را وارد کنید';
     if (!_hasMinLength || !_hasLetter || !_hasDigit) {
       return 'رمز جدید باید حداقل ۸ کاراکتر و شامل حرف و عدد باشد';
     }
     if (_confirmController.text.isEmpty)
-      return 'لطفاً تکرار رمز جدید را وارد کنید';
+      return 'لطفا تکرار رمز جدید را وارد کنید';
     if (_newController.text != _confirmController.text)
       return 'تکرار رمز جدید مطابقت ندارد';
     return null;
   }
 
   Future<void> _save() async {
+    if (_isSaving) return;
     final validation = _validationMessage;
     if (validation != null) {
       AppSnack.error('خطا', validation);
@@ -82,7 +83,7 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
       if (!mounted) return;
       setState(() => _isSaving = false);
       if (data['success'] == true) {
-        Get.back();
+        AppNav.back();
         AppSnack.success(
           '✅ موفق',
           (data['message'] ?? 'رمز عبور با موفقیت تغییر کرد').toString(),
@@ -124,7 +125,7 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
               angle: math.pi, // 🔧 طبق درخواست: ۱۸۰ درجه چرخید
               child: const Icon(Icons.arrow_forward_ios_rounded, size: 20),
             ),
-            onPressed: () => Get.back(),
+            onPressed: () => AppNav.back(),
           ),
         ),
         body: SingleChildScrollView(
@@ -269,7 +270,7 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
               SizedBox(
                 height: 48,
                 child: OutlinedButton(
-                  onPressed: () => Get.back(),
+                  onPressed: () => AppNav.back(),
                   style: OutlinedButton.styleFrom(
                     side: BorderSide(color: c.primary.withValues(alpha: 0.5)),
                     shape: RoundedRectangleBorder(

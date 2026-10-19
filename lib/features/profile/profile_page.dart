@@ -10,6 +10,7 @@ import '../../main.dart';
 import 'change_password_page.dart';
 import 'personal_info_page.dart';
 import '../shell/widgets/app_bottom_nav.dart';
+import '../../core/navigation/app_nav.dart';
 
 /// صفحه‌ی پروفایل — طبق طرح ارسالی (روشن + تاریک)
 /// نکته: بخش «اشتراک و پرداخت» چون بک‌اندِ اشتراک/پرداختی برای این اپِ
@@ -58,7 +59,7 @@ class ProfilePage extends StatelessWidget {
               angle: math.pi, // 🔧 طبق درخواست: ۱۸۰ درجه چرخید
               child: const Icon(Icons.arrow_forward_ios_rounded, size: 20),
             ),
-            onPressed: () => Get.back(),
+            onPressed: () => AppNav.back(),
           ),
         ),
         body: SingleChildScrollView(
@@ -471,7 +472,7 @@ class ProfilePage extends StatelessWidget {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: () => Get.back(),
+                  onPressed: () => AppNav.back(),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: c.primary,
                     foregroundColor: Colors.white,
@@ -503,7 +504,7 @@ class ProfilePage extends StatelessWidget {
         content: const Text('آیا می‌خواهید از حساب خود خارج شوید؟'),
         actions: [
           TextButton(
-            onPressed: () => Get.back(),
+            onPressed: () => AppNav.back(),
             child: Text(
               'انصراف',
               style: TextStyle(
@@ -515,7 +516,7 @@ class ProfilePage extends StatelessWidget {
           ),
           TextButton(
             onPressed: () async {
-              Get.back();
+              AppNav.back();
               await _logout();
             },
             child: const Text(

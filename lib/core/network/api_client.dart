@@ -109,7 +109,14 @@ class ApiClient {
           final data = error.response?.data;
           final isPlanRestricted =
               data is Map && data['code'] == 'PLAN_RESTRICTED';
-          if (status == 401 || (status == 403 && !isPlanRestricted)) {
+          // 🔧 رفعِ باگ: قبلاً هر ۴۰۳ای (مثلاً «دسترسی غیرمجاز» در گزارشِ حقوق)
+          // کاربر را با پیامِ «نشست منقضی شد» بیرون می‌انداخت. طبقِ سرور، فقط
+          // ۴۰۱ یعنی توکنِ نامعتبر؛ ۴۰۳ یعنی «مجاز نیستی» و صفحه خودش پیامِ
+          // سرور را نشان می‌دهد — جز حالتِ «کاربر پیدا نشد» (حذف‌شده) در
+          // middleware.php که واقعاً نشست را بی‌اعتبار می‌کند
+          final msg = data is Map ? data['message']?.toString() ?? '' : '';
+          final userGone = status == 403 && msg.contains('User not found');
+          if (status == 401 || userGone) {
             onSessionExpired?.call();
           }
           // 🔧 خطای پلن: کاربر خارج نمی‌شود؛ فقط پیامِ سرور نشان داده می‌شود
@@ -157,6 +164,25 @@ class ApiClient {
     } else {
       await _storage.delete(key: 'remember_me_expiry');
     }
+  }
+
+  /// 🔧 رفعِ باگِ دسترسی: نقش/پلن تا الان فقط موقعِ ورود ذخیره می‌شد و
+  /// اگر بعداً سمتِ سرور عوض می‌شد (مثلاً سرپرست → کارمند)، اپ با همان
+  /// نقشِ قدیمی منوها را باز نگه می‌داشت؛ وب هر بار از دیتابیس می‌خواند.
+  /// این تابع پروفایلِ فعلی را از سرور می‌گیرد و رویِ نسخه‌ی ذخیره‌شده
+  /// ادغام می‌کند. اگر کاربر غیرفعال شده باشد، سرور ۴۰۱ می‌دهد و همان
+  /// مسیرِ «نشست منقضی شد» اجرا می‌شود.
+  static Future<bool> refreshCurrentUser() async {
+    try {
+      final res = await dio.get('/api/auth/profile.php');
+      final data = parseResponse(res.data);
+      if (data['success'] == true && data['user'] is Map) {
+        final fresh = Map<String, dynamic>.from(data['user']);
+        await saveCachedUser({...?currentUser, ...fresh});
+        return true;
+      }
+    } catch (_) {}
+    return false;
   }
 
   static Future<void> saveCachedUser(Map<String, dynamic> user) async {

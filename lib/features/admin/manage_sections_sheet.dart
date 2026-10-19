@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/app_snack.dart';
+import '../../core/navigation/app_nav.dart';
 
 /// شیتِ «مدیریتِ واحدهایِ فعالیت» — پورتِ pages/activity_section_managment.php
 /// برایِ موبایل. همان API نسخه‌ی وب:
@@ -65,19 +66,20 @@ class _ManageSectionsSheetState extends State<_ManageSectionsSheet> {
         });
       } else {
         setState(() {
-          _error = data['message']?.toString() ?? 'خطا در دریافتِ واحدها';
+          _error = data['message']?.toString() ?? 'خطا در دریافت واحدها';
           _isLoading = false;
         });
       }
-    } catch (_) {
+    } catch (e) {
       setState(() {
-        _error = 'خطا در اتصال به سرور — احتمالاً دسترسیِ لازم را ندارید';
+        _error = ApiClient.errorMessage(e, 'خطا در اتصال به سرور');
         _isLoading = false;
       });
     }
   }
 
   Future<void> _add() async {
+    if (_isAdding) return;
     final key = _keyController.text.trim().toLowerCase();
     final label = _labelController.text.trim();
     setState(() => _addError = null);
@@ -95,7 +97,7 @@ class _ManageSectionsSheetState extends State<_ManageSectionsSheet> {
       return;
     }
     if (_sections.any((s) => s['section_key'] == key)) {
-      setState(() => _addError = 'این کلید قبلاً وجود دارد');
+      setState(() => _addError = 'این کلید قبلا وجود دارد');
       return;
     }
 
@@ -153,9 +155,12 @@ class _ManageSectionsSheetState extends State<_ManageSectionsSheet> {
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('انصراف')),
           TextButton(
-            onPressed: () => Get.back(result: controller.text.trim()),
+            onPressed: () => AppNav.back(),
+            child: const Text('انصراف'),
+          ),
+          TextButton(
+            onPressed: () => AppNav.back(result: controller.text.trim()),
             child: Text('ذخیره', style: TextStyle(color: c.primary)),
           ),
         ],
@@ -217,7 +222,11 @@ class _ManageSectionsSheetState extends State<_ManageSectionsSheet> {
                 initialValue: transferTo,
                 isExpanded: true,
                 dropdownColor: c.surface,
-                style: TextStyle(color: c.textStrong, fontSize: 13),
+                style: TextStyle(
+                  fontFamily: 'Vazir',
+                  color: c.textStrong,
+                  fontSize: 13,
+                ),
                 decoration: InputDecoration(
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: 10,
@@ -249,11 +258,11 @@ class _ManageSectionsSheetState extends State<_ManageSectionsSheet> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Get.back(result: false),
+              onPressed: () => AppNav.back(result: false),
               child: const Text('انصراف'),
             ),
             TextButton(
-              onPressed: () => Get.back(result: true),
+              onPressed: () => AppNav.back(result: true),
               child: Text('حذف', style: TextStyle(color: c.danger)),
             ),
           ],
@@ -444,7 +453,14 @@ class _ManageSectionsSheetState extends State<_ManageSectionsSheet> {
                       )
                     : ListView.builder(
                         controller: scrollController,
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        // 🔧 رفعِ باگ: آخرین واحد زیرِ دکمه‌هایِ گوشی می‌رفت —
+                        // فاصله‌ی پایین = ارتفاعِ نوارِ دکمه‌هایِ گوشی + ۱۶
+                        padding: EdgeInsets.fromLTRB(
+                          12,
+                          0,
+                          12,
+                          MediaQuery.of(context).viewPadding.bottom + 16,
+                        ),
                         itemCount: _sections.length,
                         itemBuilder: (ctx, i) {
                           final s = _sections[i];

@@ -7,6 +7,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/utils/persian_number.dart';
 import '../../core/widgets/app_snack.dart';
 import '../shell/widgets/app_bottom_nav.dart';
+import '../../core/navigation/app_nav.dart';
 
 /// «دستگاه‌های حضور و غیاب» — پورتِ pages/attendance-devices.php برایِ
 /// موبایل. آدرسِ داده دقیقاً همان API نسخه‌ی وب است (سه‌تب):
@@ -68,7 +69,7 @@ class _AttendanceDevicesPageState extends State<AttendanceDevicesPage>
               angle: math.pi,
               child: const Icon(Icons.arrow_forward_ios_rounded, size: 20),
             ),
-            onPressed: () => Get.back(),
+            onPressed: () => AppNav.back(),
           ),
           bottom: TabBar(
             controller: _tab,
@@ -198,9 +199,9 @@ class _DevicesTabState extends State<_DevicesTab> {
           _isLoading = false;
         });
       }
-    } catch (_) {
+    } catch (e) {
       setState(() {
-        _error = 'خطا در اتصال به سرور — احتمالاً دسترسیِ لازم را ندارید';
+        _error = ApiClient.errorMessage(e, 'خطا در اتصال به سرور');
         _isLoading = false;
       });
     }
@@ -219,7 +220,7 @@ class _DevicesTabState extends State<_DevicesTab> {
       } else {
         AppSnack.error(
           'خطا',
-          data['message']?.toString() ?? 'خطا در انجامِ عملیات',
+          data['message']?.toString() ?? 'خطا در انجام عملیات',
         );
       }
     } catch (_) {
@@ -239,11 +240,11 @@ class _DevicesTabState extends State<_DevicesTab> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Get.back(result: false),
+            onPressed: () => AppNav.back(result: false),
             child: const Text('انصراف'),
           ),
           TextButton(
-            onPressed: () => Get.back(result: true),
+            onPressed: () => AppNav.back(result: true),
             child: Text('حذف', style: TextStyle(color: c.danger)),
           ),
         ],
@@ -262,7 +263,7 @@ class _DevicesTabState extends State<_DevicesTab> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         backgroundColor: c.surface,
         title: Text(
-          'برچسبِ دستگاه',
+          'برچسب دستگاه',
           style: TextStyle(color: c.textStrong, fontSize: 15),
         ),
         content: TextField(
@@ -271,14 +272,17 @@ class _DevicesTabState extends State<_DevicesTab> {
           textAlign: TextAlign.right,
           style: TextStyle(color: c.textStrong),
           decoration: InputDecoration(
-            hintText: 'مثلاً: صندوق ۱ - فروشگاه مرکزی',
+            hintText: 'مثلا: صندوق ۱ - فروشگاه مرکزی',
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('انصراف')),
           TextButton(
-            onPressed: () => Get.back(result: controller.text.trim()),
+            onPressed: () => AppNav.back(),
+            child: const Text('انصراف'),
+          ),
+          TextButton(
+            onPressed: () => AppNav.back(result: controller.text.trim()),
             child: Text('ذخیره', style: TextStyle(color: c.primary)),
           ),
         ],
@@ -534,15 +538,16 @@ class _AllowedIpsTabState extends State<_AllowedIpsTab> {
           _isLoading = false;
         });
       }
-    } catch (_) {
+    } catch (e) {
       setState(() {
-        _error = 'خطا در اتصال به سرور — احتمالاً دسترسیِ لازم را ندارید';
+        _error = ApiClient.errorMessage(e, 'خطا در اتصال به سرور');
         _isLoading = false;
       });
     }
   }
 
   Future<void> _add() async {
+    if (_isAdding) return;
     final ip = _ipController.text.trim();
     if (ip.isEmpty) {
       AppSnack.error('خطا', 'آدرس IP را وارد کنید');
@@ -606,11 +611,11 @@ class _AllowedIpsTabState extends State<_AllowedIpsTab> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Get.back(result: false),
+            onPressed: () => AppNav.back(result: false),
             child: const Text('انصراف'),
           ),
           TextButton(
-            onPressed: () => Get.back(result: true),
+            onPressed: () => AppNav.back(result: true),
             child: Text('حذف', style: TextStyle(color: c.danger)),
           ),
         ],
@@ -880,9 +885,9 @@ class _DeniedLogTabState extends State<_DeniedLogTab> {
           _isLoading = false;
         });
       }
-    } catch (_) {
+    } catch (e) {
       setState(() {
-        _error = 'خطا در اتصال به سرور — احتمالاً دسترسیِ لازم را ندارید';
+        _error = ApiClient.errorMessage(e, 'خطا در اتصال به سرور');
         _isLoading = false;
       });
     }
@@ -919,11 +924,11 @@ class _DeniedLogTabState extends State<_DeniedLogTab> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Get.back(result: false),
+            onPressed: () => AppNav.back(result: false),
             child: const Text('انصراف'),
           ),
           TextButton(
-            onPressed: () => Get.back(result: true),
+            onPressed: () => AppNav.back(result: true),
             child: Text('بله، پاک کن', style: TextStyle(color: c.danger)),
           ),
         ],
@@ -961,7 +966,11 @@ class _DeniedLogTabState extends State<_DeniedLogTab> {
                   initialValue: _range,
                   isExpanded: true,
                   dropdownColor: c.surface,
-                  style: TextStyle(color: c.textStrong, fontSize: 13),
+                  style: TextStyle(
+                    fontFamily: 'Vazir',
+                    color: c.textStrong,
+                    fontSize: 13,
+                  ),
                   decoration: InputDecoration(
                     isDense: true,
                     contentPadding: const EdgeInsets.symmetric(

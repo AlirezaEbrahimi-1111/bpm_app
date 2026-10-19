@@ -86,6 +86,10 @@ class _MainShellState extends State<MainShell>
     PlanAccess.setFromUser(widget.user);
     ApiClient.onPlanRestricted = (message) =>
         showPlanUpgradeSheet(message: message);
+    // 🔧 نقش/پلنِ فعلی از سرور (مثلِ وب) — منوها و میانبرها با نقشِ تازه
+    ApiClient.refreshCurrentUser().then((ok) {
+      if (ok && mounted) setState(() {});
+    });
     _pages = [
       DashboardPage(
         key: _dashboardKey,

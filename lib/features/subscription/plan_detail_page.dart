@@ -8,6 +8,7 @@ import '../../core/widgets/app_snack.dart';
 import '../shell/widgets/app_bottom_nav.dart';
 import 'plan_feature_list.dart';
 import 'payment_webview_page.dart';
+import '../../core/navigation/app_nav.dart';
 
 enum SubscriptionPlanType { gold, silver }
 
@@ -95,14 +96,14 @@ class _PlanDetailPageState extends State<PlanDetailPage> {
               angle: math.pi,
               child: const Icon(Icons.arrow_forward_ios_rounded, size: 20),
             ),
-            onPressed: () => Get.back(),
+            onPressed: () => AppNav.back(),
           ),
           actions: [
             IconButton(
               icon: Icon(Icons.share_rounded, color: c.textStrong, size: 20),
               onPressed: () => AppSnack.info(
                 'به‌زودی',
-                'اشتراک‌گذاریِ پلن هنوز فعال نشده است',
+                'اشتراک‌گذاری پلن هنوز فعال نشده است',
               ),
             ),
           ],
@@ -198,8 +199,8 @@ class _PlanDetailPageState extends State<PlanDetailPage> {
                 const SizedBox(height: 4),
                 Text(
                   _isGold
-                      ? 'مدیریتِ فرآیندهایِ کسب‌وکار'
-                      : 'همکاری و هماهنگیِ تیمی',
+                      ? 'مدیریت فرآیندهای کسب‌وکار'
+                      : 'همکاری و هماهنگی تیمی',
                   style: TextStyle(
                     color: c.textStrong,
                     fontSize: 13,
@@ -209,8 +210,8 @@ class _PlanDetailPageState extends State<PlanDetailPage> {
                 const SizedBox(height: 4),
                 Text(
                   _isGold
-                      ? 'کامل‌ترین سطح دسترسیِ مدیریتی، نظارتی و سازمانی'
-                      : 'دسترسیِ مشترکِ تیم به برنامه و کارها',
+                      ? 'کامل‌ترین سطح دسترسی مدیریتی، نظارتی و سازمانی'
+                      : 'دسترسی مشترک تیم به برنامه و کارها',
                   style: TextStyle(color: accent, fontSize: 11.5),
                 ),
               ],
@@ -536,7 +537,7 @@ class _PlanDetailPageState extends State<PlanDetailPage> {
 
       final paymentUrl = data['payment_url']?.toString();
       if (paymentUrl == null || paymentUrl.isEmpty) {
-        if (mounted) AppSnack.error('خطا', 'آدرسِ درگاه دریافت نشد');
+        if (mounted) AppSnack.error('خطا', 'آدرس درگاه دریافت نشد');
         return;
       }
 
@@ -549,8 +550,8 @@ class _PlanDetailPageState extends State<PlanDetailPage> {
         case PaymentResult.success:
         case PaymentResult.already:
           await _refreshPlanAfterPayment();
-          AppSnack.success('✅ پرداخت موفق', 'پلنِ سازمانِ شما به‌روزرسانی شد');
-          Get.back();
+          AppSnack.success('✅ پرداخت موفق', 'پلن سازمان شما به‌روزرسانی شد');
+          AppNav.back();
           break;
         case PaymentResult.cancel:
           AppSnack.info('لغو شد', 'پرداخت لغو شد');
@@ -679,7 +680,7 @@ class _PlanDetailPageState extends State<PlanDetailPage> {
                               // ۴۸، همین یک‌خط‌شدنِ ناخواسته سرریز ایجاد می‌کرد
                               Flexible(
                                 child: Text(
-                                  'تأیید و رفتن به درگاهِ پرداخت',
+                                  'تأیید و رفتن به درگاه پرداخت',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(

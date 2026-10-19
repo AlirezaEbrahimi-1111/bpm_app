@@ -12,10 +12,10 @@ import 'dart:convert';
 import '../../core/utils/task_labels.dart';
 import '../shell/widgets/offline_banner.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/widgets/app_switch.dart';
 import '../../core/plan/plan_access.dart';
 import '../../core/plan/org_permissions.dart';
 import '../subscription/plan_gate.dart';
-import '../../core/widgets/scrollable_chip_row.dart';
 import '../../core/theme/theme_controller.dart';
 import '../../core/theme/starred_tasks_preference.dart';
 import '../../core/theme/app_radius.dart';
@@ -23,6 +23,8 @@ import 'widgets/persian_date_picker_sheet.dart';
 import 'widgets/task_group_management_sheet.dart';
 import 'widgets/attachment_picker.dart';
 import 'create_task_page.dart';
+import '../../core/navigation/app_nav.dart';
+import '../shell/main_shell.dart';
 
 class TaskDetailPage extends StatefulWidget {
   final int taskId;
@@ -40,6 +42,14 @@ typedef _MoreAction = ({
   String label,
   Color color,
   VoidCallback onTap,
+});
+
+/// دکمه‌ی نوارِ اصلی — همان داده‌ی [_MoreAction] به‌علاوه‌ی قفلِ پلنِ اختیاری،
+/// تا اگر جا نشد بتواند به منویِ «بیشتر» منتقل شود
+typedef _PrimaryAction = ({
+  _MoreAction a,
+  PlanFeature? gate,
+  String? gateLabel,
 });
 
 class _TaskDetailPageState extends State<TaskDetailPage> {
@@ -62,6 +72,12 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
   List<dynamic> _attachments = [];
   bool _isUploading = false;
   List<dynamic> _viewers = [];
+  // مثلِ وب: سرور (list-viewers.php → can_manage) تعیین می‌کند چه کسی ردیفِ
+  // «دسترسی به» را ببیند — سازنده، مدیرِ سازنده، یا ناظرِ کلِ سازمان
+  bool _canManageViewers = false;
+  // ردیف‌هایِ بازِ بینندگان (جزئیاتِ دسترسی) + مقادیرِ ویرایش‌نشده‌ی سوییچ‌ها
+  final Set<String> _openViewerRows = {};
+  final Map<String, Map<String, bool>> _viewerDrafts = {};
   List<dynamic> _deadlineRequests = [];
   List<dynamic> _overdueClearRequests = [];
   Map<String, dynamic>? _renewalRequest;
@@ -111,7 +127,9 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         _loadUsers();
         _loadSections();
         _loadAttachments();
-        if (_canEdit) _loadViewers();
+        // اگر پلن «دسترسی به» را ندارد، سرور با PLAN_RESTRICTED رد می‌کند و
+        // پیامِ ارتقایِ پلن بی‌جا روی هر بار بازکردنِ کار می‌پرید — پس صدا نزن
+        if (PlanAccess.allows(PlanFeature.taskViewers)) _loadViewers();
         _loadDeadlineRequests();
         _loadOverdueClearRequests();
         _loadRenewalRequest();
@@ -233,7 +251,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                     style: TextStyle(color: c.textStrong),
                   ),
                   onTap: () {
-                    Get.back();
+                    AppNav.back();
                     _changeGroup(null);
                   },
                 ),
@@ -253,7 +271,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                       style: TextStyle(color: c.textStrong),
                     ),
                     onTap: () {
-                      Get.back();
+                      AppNav.back();
                       _changeGroup(g['id']);
                     },
                   );
@@ -281,7 +299,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                         style: TextStyle(color: c.primary),
                       ),
                       onTap: () {
-                        Get.back();
+                        AppNav.back();
                         showTaskGroupManagementSheet(
                           context,
                           onChanged: _loadGroups,
@@ -307,7 +325,15 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
       );
       final data = ApiClient.parseResponse(res.data);
       if (data['success'] == true) {
-        setState(() => _attachments = data['attachments'] ?? []);
+        setState(() {
+          _attachments = data['attachments'] ?? [];
+          // 🔧 طبق درخواست: اگر پیوستی هست، بخش پیش‌فرض باز است (فقط
+          // بارِ اول — بستنِ دستیِ کاربر با بارگذاریِ بعدی دوباره باز نمی‌شود)
+          if (!_attachmentsAutoOpened && _attachments.isNotEmpty) {
+            _attachmentsOpen = true;
+            _attachmentsAutoOpened = true;
+          }
+        });
       }
     } catch (_) {}
   }
@@ -353,6 +379,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     PlatformFile file, {
     int? checklistItemId,
   }) async {
+    if (_isUploading) return;
     final ext = (file.extension ?? file.name.split('.').last).toLowerCase();
     // 🔧 رفعِ باگ: برخی پیکرهای فایل (مخصوصاً وقتی کاربر از «Browse»ی
     // سیستمی به‌جای فیلترِ اپ استفاده می‌کند) فیلترِ allowedExtensions
@@ -360,8 +387,8 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     // منتظرِ ردِ سرور بمانیم
     if (!_allowedAttachmentExtensions.contains(ext)) {
       AppSnack.error(
-        'فرمتِ فایل پشتیبانی نمی‌شود',
-        'فقط عکس، PDF، Word، Excel، فایلِ صوتیِ mp3/m4a/ogg و ویدیوی mp4/mov مجاز است.',
+        'فرمت فایل پشتیبانی نمی‌شود',
+        'فقط عکس، PDF، Word، Excel، فایل صوتی mp3/m4a/ogg و ویدیوی mp4/mov مجاز است.',
       );
       return;
     }
@@ -394,22 +421,6 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     }
   }
 
-  // 🔧 طبق درخواست: پیوستِ فایل/عکس/صدا برایِ یک آیتمِ خاصِ چک‌لیست —
-  // همان شیتِ سه‌راهیِ مشترک، فقط با ارسالِ checklist_item_id
-  Future<void> _uploadChecklistItemAttachment(int itemId) async {
-    try {
-      final file = await showAttachmentSourceSheet(
-        context,
-        allowedExtensions: _allowedAttachmentExtensions,
-      );
-      if (file != null) {
-        await _uploadPlatformFile(file, checklistItemId: itemId);
-      }
-    } catch (_) {
-      AppSnack.error('خطا', 'خطا در انتخاب فایل');
-    }
-  }
-
   Future<void> _deleteAttachment(int attId) async {
     try {
       final res = await ApiClient.dio.post(
@@ -426,70 +437,6 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     } catch (e) {
       AppSnack.error('خطا', _dioErrorMessage(e, 'خطا در اتصال به سرور'));
     }
-  }
-
-  Future<void> _renameAttachment(int attId, String newName) async {
-    try {
-      final res = await ApiClient.dio.post(
-        '/api/tasks/rename-attachment.php',
-        data: {'attachment_id': attId, 'new_name': newName},
-      );
-      final data = ApiClient.parseResponse(res.data);
-      if (data['success'] == true) {
-        _loadAttachments();
-      } else {
-        AppSnack.error('خطا', data['message'] ?? 'خطا در تغییر نام');
-      }
-    } catch (e) {
-      AppSnack.error('خطا', _dioErrorMessage(e, 'خطا در اتصال به سرور'));
-    }
-  }
-
-  void _showRenameAttachmentDialog(Map<String, dynamic> att) {
-    // 🔧 اسم بدون پسوند نشون داده می‌شه چون سرور خودش پسوندِ قبلی رو
-    // به نامِ جدید اضافه می‌کنه (rename-attachment.php)
-    final currentName = (att['file_original_name'] ?? '').toString();
-    final dotIndex = currentName.lastIndexOf('.');
-    final nameWithoutExt = dotIndex > 0
-        ? currentName.substring(0, dotIndex)
-        : currentName;
-    final controller = TextEditingController(text: nameWithoutExt);
-    final c = AppColors.of(context);
-    Get.dialog(
-      AlertDialog(
-        backgroundColor: c.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text(
-          'تغییر نام فایل',
-          style: TextStyle(fontSize: 16, color: c.textStrong),
-        ),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          textAlign: TextAlign.right,
-          style: TextStyle(color: c.textStrong),
-          decoration: InputDecoration(
-            hintText: 'نام جدید را وارد کنید',
-            hintStyle: TextStyle(color: c.textMuted),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Get.back(),
-            child: Text('انصراف', style: TextStyle(color: c.textMuted)),
-          ),
-          TextButton(
-            onPressed: () {
-              final name = controller.text.trim();
-              if (name.isEmpty) return;
-              Get.back();
-              _renameAttachment(att['id'], name);
-            },
-            child: Text('ذخیره', style: TextStyle(color: c.primary)),
-          ),
-        ],
-      ),
-    );
   }
 
   Future<void> _openFile(String filePath) async {
@@ -509,12 +456,20 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
       );
       final data = ApiClient.parseResponse(res.data);
       if (data['success'] == true) {
-        setState(() => _viewers = data['viewers'] ?? []);
+        setState(() {
+          _viewers = data['viewers'] ?? [];
+          _canManageViewers =
+              data['can_manage'] == true || data['can_manage'] == 1;
+          _viewerDrafts.clear();
+        });
       }
     } catch (_) {}
   }
 
-  Future<void> _addViewer(int userId) async {
+  /// 🔧 رفعِ باگِ «درجا اضافه نمی‌شود»: قبلاً بارگذاریِ دوباره‌ی فهرست
+  /// منتظر نمی‌ماند و شیت پیش از پاسخِ سرور تازه می‌شد. حالا تا پایانِ
+  /// بارگذاری صبر می‌کند و نتیجه را برمی‌گرداند
+  Future<bool> _addViewer(int userId) async {
     try {
       final res = await ApiClient.dio.post(
         '/api/tasks/add-viewers.php',
@@ -525,9 +480,49 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
       );
       final data = ApiClient.parseResponse(res.data);
       if (data['success'] == true) {
+        await _loadViewers();
+        AppSnack.success('✅ انجام شد', 'دسترسی اضافه شد');
+        return true;
+      }
+      AppSnack.error('خطا', data['message'] ?? 'خطا در افزودن دسترسی');
+    } catch (e) {
+      AppSnack.error('خطا', _dioErrorMessage(e, 'خطا در اتصال به سرور'));
+    }
+    return false;
+  }
+
+  bool _flag(dynamic v) => v == true || v == 1 || v == '1';
+
+  Map<String, bool> _viewerDraft(dynamic v) => _viewerDrafts.putIfAbsent(
+    v['id'].toString(),
+    () => {
+      'att': _flag(v['can_view_attachments']),
+      'hist': _flag(v['can_view_history']),
+      'chk': _flag(v['can_view_checklist']),
+    },
+  );
+
+  // ویرایشِ دسترسیِ بیننده‌ی موجود — مثلِ وب همان add-viewers.php با یک نفر
+  // (سمتِ سرور ON DUPLICATE KEY UPDATE)
+  Future<void> _applyViewerPermission(dynamic v) async {
+    final d = _viewerDraft(v);
+    try {
+      final res = await ApiClient.dio.post(
+        '/api/tasks/add-viewers.php',
+        data: {
+          'task_id': widget.taskId,
+          'user_ids': [v['id']],
+          'can_view_attachments': d['att'],
+          'can_view_history': d['hist'],
+          'can_view_checklist': d['chk'],
+        },
+      );
+      final data = ApiClient.parseResponse(res.data);
+      if (data['success'] == true) {
+        AppSnack.success('✅ انجام شد', 'تغییرات اعمال شد');
         _loadViewers();
       } else {
-        AppSnack.error('خطا', data['message'] ?? 'خطا در افزودن بیننده');
+        AppSnack.error('خطا', data['message'] ?? 'خطا در اعمال تغییرات');
       }
     } catch (e) {
       AppSnack.error('خطا', _dioErrorMessage(e, 'خطا در اتصال به سرور'));
@@ -610,17 +605,17 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
           style: TextStyle(fontSize: 16, color: c.textStrong),
         ),
         content: Text(
-          'موعدِ این کار حذف شود؟ این کار دیگر موعدی نخواهد داشت.',
+          'موعد این کار حذف شود؟ این کار دیگر موعدی نخواهد داشت.',
           style: TextStyle(fontSize: 13, color: c.textMuted),
         ),
         actions: [
           TextButton(
-            onPressed: () => Get.back(),
+            onPressed: () => AppNav.back(),
             child: Text('انصراف', style: TextStyle(color: c.textMuted)),
           ),
           TextButton(
             onPressed: () {
-              Get.back();
+              AppNav.back();
               _clearDueDate();
             },
             child: Text('حذف موعد', style: TextStyle(color: c.danger)),
@@ -642,7 +637,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         _loadDetail();
         AppSnack.success('✅ انجام شد', data['message'] ?? 'موعد کار حذف شد');
       } else {
-        AppSnack.warning('توجه', data['message'] ?? 'خطا در حذفِ موعد');
+        AppSnack.warning('توجه', data['message'] ?? 'خطا در حذف موعد');
       }
     } catch (e) {
       AppSnack.error('خطا', _dioErrorMessage(e, 'خطا در اتصال به سرور'));
@@ -961,9 +956,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
       );
       final data = ApiClient.parseResponse(res.data);
       if (data['success'] == true) {
-        _hasChanges = true;
-        _loadDetail();
-        AppSnack.success('✅ اتمام یافت', data['message'] ?? 'کار اتمام یافت');
+        _leaveAfterAction('✅ اتمام یافت', data['message'] ?? 'کار اتمام یافت');
       } else {
         AppSnack.error('خطا', data['message'] ?? 'خطا در اتمام کار');
       }
@@ -1034,6 +1027,11 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
           _checklistDone = res.data['done'] ?? 0;
           _checklistTotal = res.data['total'] ?? 0;
           _checklistPercent = res.data['percent'] ?? 0;
+          // 🔧 طبق درخواست: اگر چک‌لیست آیتم دارد، پیش‌فرض باز (فقط بارِ اول)
+          if (!_checklistAutoOpened && _checklist.isNotEmpty) {
+            _checklistOpen = true;
+            _checklistAutoOpened = true;
+          }
         });
       }
     } catch (e) {
@@ -1183,17 +1181,72 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Get.back(),
+            onPressed: () => AppNav.back(),
             child: Text('انصراف', style: TextStyle(color: c.textMuted)),
           ),
           TextButton(
             onPressed: () {
               final title = controller.text.trim();
               if (title.isEmpty) return;
-              Get.back();
+              AppNav.back();
               _addChecklistItem(title);
             },
             child: Text('افزودن', style: TextStyle(color: c.primary)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// افزودن/ویرایشِ توضیحِ آیتمِ چک‌لیست — مثلِ startEditDesc وب؛ عنوان و
+  /// ارجاعِ فعلیِ آیتم دست نمی‌خورد (کلیدِ assignee ارسال نمی‌شود)
+  void _showChecklistDescDialog(Map<String, dynamic> item) {
+    final controller = TextEditingController(
+      text: item['description']?.toString() ?? '',
+    );
+    final c = AppColors.of(context);
+    Get.dialog(
+      AlertDialog(
+        backgroundColor: c.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.dialog),
+        ),
+        title: Text(
+          'توضیحات',
+          style: TextStyle(fontSize: 16, color: c.textStrong),
+        ),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          minLines: 2,
+          maxLines: 5,
+          style: TextStyle(color: c.textStrong),
+          decoration: InputDecoration(
+            hintText: 'توضیحات...',
+            hintStyle: TextStyle(color: c.textMuted, fontSize: 13),
+            filled: true,
+            fillColor: c.surfaceContainerLow,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide.none,
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => AppNav.back(),
+            child: Text('انصراف', style: TextStyle(color: c.textMuted)),
+          ),
+          TextButton(
+            onPressed: () {
+              AppNav.back();
+              _editChecklistItem(
+                item['id'],
+                (item['title'] ?? '').toString(),
+                description: controller.text.trim(),
+              );
+            },
+            child: Text('ثبت', style: TextStyle(color: c.primary)),
           ),
         ],
       ),
@@ -1320,14 +1373,14 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
             ),
             actions: [
               TextButton(
-                onPressed: () => Get.back(),
+                onPressed: () => AppNav.back(),
                 child: Text('انصراف', style: TextStyle(color: c.textMuted)),
               ),
               TextButton(
                 onPressed: () {
                   final title = controller.text.trim();
                   if (title.isEmpty) return;
-                  Get.back();
+                  AppNav.back();
                   _editChecklistItem(
                     item['id'],
                     title,
@@ -1383,12 +1436,12 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Get.back(),
+            onPressed: () => AppNav.back(),
             child: Text('انصراف', style: TextStyle(color: c.textMuted)),
           ),
           TextButton(
             onPressed: () {
-              Get.back();
+              AppNav.back();
               _deleteChecklistItem(item['id']);
             },
             child: Text('حذف', style: TextStyle(color: c.danger)),
@@ -1456,6 +1509,112 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     }
   }
 
+  /// تاریخ و ساعت — مثلِ formatDateTime نسخه‌ی وب: «۱۹ مهر ۱۴۰۵ - ۱۰:۲۳»
+  String _toShamsiDateTime(String? gregorian) {
+    final date = _toShamsi(gregorian);
+    if (gregorian == null || gregorian.length < 16) return date;
+    final d = DateTime.tryParse(gregorian.replaceFirst(' ', 'T'));
+    if (d == null) return date;
+    String p(int n) => n.toString().padLeft(2, '0');
+    return '$date - ${toPersianDigits('${p(d.hour)}:${p(d.minute)}')}';
+  }
+
+  /// ردیفِ «مهلت باقی‌مانده» / «تأخیر» — عیناً منطقِ buildPeriodicDelayBadge
+  /// وب: کارِ روتین/فرآیندی ساعتی (hours_delayed/hours_remaining)، بقیه روزِ
+  /// کاری (working_days_delayed/days_remaining) — همه از سرور (enrichTaskDates)
+  List<Widget> _remainingOrDelayRow(AppColors c, Map<String, dynamic> t) {
+    int? n(dynamic v) => v == null ? null : int.tryParse(v.toString());
+    final isWf = t['is_workflow_task'] == 1 || t['is_workflow_task'] == true;
+    String? label;
+    String? text;
+    var delayed = false;
+    if (isWf) {
+      final hd = n(t['hours_delayed']) ?? 0;
+      final hr = n(t['hours_remaining']);
+      if (hd > 0) {
+        delayed = true;
+        label = 'تأخیر';
+        text = _formatHourDelay(hd, 'تأخیر');
+      } else if (hr != null && hr > 0) {
+        label = 'مهلت باقی‌مانده';
+        text = '${toPersianDigits(hr.toString())} ساعت مانده';
+      }
+    } else {
+      final wd = n(t['working_days_delayed']) ?? 0;
+      final dr = n(t['days_remaining']);
+      if (wd > 0) {
+        delayed = true;
+        label = 'تأخیر';
+        text = '${toPersianDigits(wd.toString())} روز کاری تأخیر';
+      } else if (dr != null && dr > 0) {
+        label = 'مهلت باقی‌مانده';
+        text = '${toPersianDigits(dr.toString())} روز مانده';
+      }
+    }
+    if (label == null || text == null) return const [];
+    // رنگِ بج مثلِ وب: تأخیر قرمز (bg-danger)، مهلت فیروزه‌ای (bg-info)
+    final color = delayed ? c.danger : const Color(0xFF0DCAF0);
+    return [
+      const Divider(height: 26),
+      Row(
+        children: [
+          Container(
+            width: 26,
+            height: 26,
+            decoration: BoxDecoration(
+              color: c.primary.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              delayed ? Icons.history_rounded : Icons.schedule_rounded,
+              size: 14,
+              color: c.primary,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text(label, style: TextStyle(fontSize: 13, color: c.textMuted)),
+          const Spacer(),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(AppRadius.chip),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  delayed ? Icons.history_rounded : Icons.schedule_rounded,
+                  size: 13,
+                  color: Colors.white,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  text,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    ];
+  }
+
+  /// معادلِ formatHourDelay وب: «۵ ساعت» یا «۲ روز و ۳ ساعت»
+  String _formatHourDelay(int hours, String suffix) {
+    if (hours < 24) return toPersianDigits('$hours ساعت $suffix');
+    final days = hours ~/ 24;
+    final rem = hours % 24;
+    var text = '$days روز';
+    if (rem > 0) text += ' و $rem ساعت';
+    return toPersianDigits('$text $suffix');
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
@@ -1468,7 +1627,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
-        if (!didPop) Get.back(result: _hasChanges);
+        if (!didPop) AppNav.back(result: _hasChanges);
       },
       child: Scaffold(
         backgroundColor: c.bgPage,
@@ -1493,7 +1652,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                 size: 20,
               ),
             ),
-            onPressed: () => Get.back(result: _hasChanges),
+            onPressed: () => AppNav.back(result: _hasChanges),
           ),
         ),
         body: _isLoading
@@ -1578,22 +1737,22 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     // یادآوری، تمدید موعد، رفعِ تأخیر، تمدید/درخواستِ تمدیدِ دوره،
     // درخواستِ اتمام، اتمامِ دوره، بازتعریف) داخلِ لیستِ «بیشتر» می‌رود و
     // فقط با یک دکمه‌ی اضافه (که خودش جزوِ این ۴ تا نیست) قابلِ‌دسترسیه
-    final List<Widget> primary = [];
+    final List<_PrimaryAction> primary = [];
     final List<_MoreAction> more = [];
 
     // ── حالت منتظر تأیید: رد (بیشتر) / تأیید (اصلی) ──
     if (isPending && (isCreator || isAssignee)) {
       more.add((
-        icon: Icons.close_rounded,
+        icon: Icons.cancel_rounded,
         label: 'رد',
         color: const Color(0xFFEF4444),
         onTap: _showRejectDialog,
       ));
-      primary.add(
-        _circleAction(
-          icon: Icons.check_rounded,
+      primary.add((
+        a: (
+          icon: Icons.check_circle_rounded,
           label: 'تأیید',
-          color: const Color(0xFF22C55E),
+          color: const Color(0xFF1B7B39),
           // 🔧 بسط دیالوگِ تأییدِ ساده — اگر تعریف‌کننده یا مسئولِ فعلی
           // گزینه‌ی بیشتری داشته باشند، یک شیتِ کوچک انتخاب باز می‌شود؛
           // وگرنه مستقیم همان تأییدِ ساده‌ی قبلی انجام می‌شود
@@ -1602,39 +1761,47 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
             isAssignee: isAssignee,
           ),
         ),
-      );
+        gate: null,
+        gateLabel: null,
+      ));
     } else if (isAssignee) {
       // ── شروع / تکمیل (هر دو اصلی‌اند، فقط یکی هم‌زمان) ──
       if (status == 'not_started' ||
           status == 'delegated' ||
           status == 'rejected') {
-        primary.add(
-          _circleAction(
+        primary.add((
+          a: (
             icon: Icons.play_arrow_rounded,
             label: 'شروع',
-            color: const Color(0xFF3B82F6),
+            color: const Color(0xFF8E57FE),
             onTap: () => _updateStatus('in_progress'),
           ),
-        );
+          gate: null,
+          gateLabel: null,
+        ));
       } else if (status == 'in_progress') {
-        primary.add(
-          _circleAction(
-            icon: Icons.check_rounded,
+        primary.add((
+          a: (
+            icon: Icons.check_circle_outline_rounded,
             label: 'تکمیل',
-            color: const Color(0xFF22C55E),
+            color: const Color(0xFF1B7B39),
             onTap: _showCompleteDialog,
           ),
-        );
+          gate: null,
+          gateLabel: null,
+        ));
         // ── درجِ توضیح — دقیقاً همان شرطِ نمایشِ «تکمیل»، یعنی همیشه
         // کنارِ هم هستند (مثلِ وب: addDiscBtn همیشه با completeBtn) ──
-        primary.add(
-          _circleAction(
-            icon: Icons.chat_bubble_outline_rounded,
+        primary.add((
+          a: (
+            icon: Icons.chat_outlined,
             label: 'درج توضیح',
-            color: const Color(0xFF0E7490),
+            color: const Color(0xFF8E57FE),
             onTap: _showAddNoteDialog,
           ),
-        );
+          gate: null,
+          gateLabel: null,
+        ));
       }
 
       // ── ارجاع (اصلی) ──
@@ -1644,18 +1811,16 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
           status != 'rejected' &&
           !isPending;
       if (canDelegate) {
-        primary.add(
-          PlanGate(
-            feature: PlanFeature.delegate,
-            label: 'ارجاع کار',
-            child: _circleAction(
-              icon: Icons.send_rounded,
-              label: 'ارجاع',
-              color: const Color(0xFFF59E0B),
-              onTap: _showDelegateSheet,
-            ),
+        primary.add((
+          a: (
+            icon: Icons.arrow_circle_right_outlined,
+            label: 'ارجاع',
+            color: const Color(0xFFF59E0B),
+            onTap: _showDelegateSheet,
           ),
-        );
+          gate: PlanFeature.delegate,
+          gateLabel: 'ارجاع کار',
+        ));
       }
     }
 
@@ -1668,9 +1833,9 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         status != 'rejected';
     if (canRemind) {
       more.add((
-        icon: Icons.notifications_active_outlined,
+        icon: Icons.notifications_none_rounded,
         label: 'یادآوری',
-        color: const Color(0xFF8E57FE),
+        color: const Color(0xFFF59E0B),
         onTap: _showSendReminderDialog,
       ));
     }
@@ -1689,9 +1854,9 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         t['has_pending_deadline_request'] != true;
     if (canRequestDeadline) {
       more.add((
-        icon: Icons.event_repeat_rounded,
+        icon: Icons.hourglass_bottom_rounded,
         label: 'تمدید موعد',
-        color: const Color(0xFF3B82F6),
+        color: const Color(0xFF1B7B39),
         onTap: _showRequestDeadlineDialog,
       ));
     }
@@ -1707,9 +1872,9 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         t['has_pending_overdue_request'] != true;
     if (canRequestOverdueClear) {
       more.add((
-        icon: Icons.history_toggle_off_rounded,
+        icon: Icons.cleaning_services_outlined,
         label: 'رفع تأخیر',
-        color: const Color(0xFF3B82F6),
+        color: const Color(0xFF8E57FE),
         onTap: _showRequestOverdueClearDialog,
       ));
     }
@@ -1727,14 +1892,14 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
       more.add((
         icon: Icons.autorenew_rounded,
         label: 'تمدید دوره',
-        color: const Color(0xFF3B82F6),
+        color: const Color(0xFF06B6D4),
         onTap: () => _showRenewalDialog(directApply: true),
       ));
     } else if (isReadyForRenewal && isAssignee) {
       more.add((
         icon: Icons.autorenew_rounded,
         label: 'درخواست تمدید',
-        color: const Color(0xFF3B82F6),
+        color: const Color(0xFF06B6D4),
         onTap: () => _showRenewalDialog(directApply: false),
       ));
     }
@@ -1747,22 +1912,26 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         (status == 'not_started' || status == 'in_progress');
     if (canRequestTermination) {
       more.add((
-        icon: Icons.flag_outlined,
+        icon: Icons.flag_rounded,
         label: 'درخواست اتمام',
         color: const Color(0xFFF59E0B),
         onTap: _showRequestTerminationDialog,
       ));
     }
+    // 🔧 رفعِ باگ: «periodic» یعنی کارِ «مقطعی» (نه دوره‌ای) — قبلاً این
+    // گزینه برایِ کارهایِ مقطعی هم نشان داده می‌شد. مثلِ نسخه‌ی وب فقط
+    // کارهایِ دوره‌ای (continuous)، و نه برایِ کارِ ردشده
     final canTerminateNow =
         isCreator &&
-        (t['task_type'] == 'periodic' || t['task_type'] == 'continuous') &&
+        t['task_type'] == 'continuous' &&
         status != 'completed' &&
-        status != 'approved';
+        status != 'approved' &&
+        status != 'rejected';
     if (canTerminateNow) {
       more.add((
-        icon: Icons.flag_circle_outlined,
+        icon: Icons.stop_circle_outlined,
         label: 'اتمام دوره',
-        color: const Color(0xFFF59E0B),
+        color: const Color(0xFFEF4444),
         onTap: _confirmTerminatePeriodNow,
       ));
     }
@@ -1770,38 +1939,29 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     // ── بازتعریف کار (بیشتر) ──
     if (_canEdit || isAssignee) {
       more.add((
-        icon: Icons.copy_all_outlined,
+        icon: Icons.autorenew_rounded,
         label: 'بازتعریف',
-        color: const Color(0xFF8B5CF6),
+        color: const Color(0xFF8E57FE),
         onTap: _openRedefine,
       ));
     }
 
     // ── حذفِ کار (اصلی) ──
     if (_canEdit) {
-      primary.add(
-        _circleAction(
+      primary.add((
+        a: (
           icon: Icons.delete_outline_rounded,
-          label: 'حذف کار',
+          label: 'حذف',
           color: const Color(0xFFEF4444),
           onTap: _confirmDelete,
         ),
-      );
-    }
-
-    if (more.isNotEmpty) {
-      primary.add(
-        _circleAction(
-          icon: Icons.more_horiz_rounded,
-          label: 'بیشتر',
-          color: const Color(0xFF64748B),
-          onTap: () => _showMoreActionsSheet(more),
-        ),
-      );
+        gate: null,
+        gateLabel: null,
+      ));
     }
 
     // اگر هیچ دکمه‌ای نبود، نوار را نشان نده
-    if (primary.isEmpty) return null;
+    if (primary.isEmpty && more.isEmpty) return null;
 
     return SafeArea(
       top: false,
@@ -1811,77 +1971,132 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
       child: Padding(
         padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
         child: _floatingBar(
-          // 🔧 نوارِ اصلی حالا حداکثر ۵ تاست (۴ + دکمه‌ی بیشتر)، همیشه
-          // در یک ردیفِ وسط‌چین جا می‌شود؛ ScrollableChipRow فقط به‌عنوانِ
-          // محافظِ احتیاطی برایِ حالتِ غیرِمنتظره باقی می‌ماند
-          child: primary.length > 5
-              ? ScrollableChipRow(gap: 22, children: primary)
-              : Wrap(
-                  alignment: WrapAlignment.center,
-                  spacing: 22,
-                  runSpacing: 10,
-                  children: primary,
-                ),
+          // 🔧 طبق درخواست: نوار تحتِ هیچ شرایطی دوخطی نمی‌شود — هر چند
+          // دکمه که در یک ردیف جا شود نشان داده می‌شود؛ اگر جا نشد، دکمه‌هایِ
+          // آخر مخفی و به ابتدایِ منویِ «بیشتر» منتقل می‌شوند
+          child: LayoutBuilder(
+            builder: (context, box) {
+              const itemW = 44.0;
+              const gap = 18.0;
+              final fit = ((box.maxWidth + gap) / (itemW + gap)).floor().clamp(
+                1,
+                99,
+              );
+              var shown = List<_PrimaryAction>.of(primary);
+              var overflow = <_MoreAction>[];
+              final needMore = more.isNotEmpty;
+              if (shown.length + (needMore ? 1 : 0) > fit) {
+                final keep = (fit - 1).clamp(0, shown.length);
+                overflow = [
+                  for (final p in shown.sublist(keep)) _gatedAction(p),
+                ];
+                shown = shown.sublist(0, keep);
+              }
+              final menuItems = [...overflow, ...more];
+              final children = <Widget>[
+                for (final p in shown) _primaryButton(p),
+                if (menuItems.isNotEmpty) _moreButton(menuItems),
+              ];
+              return Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  for (var i = 0; i < children.length; i++) ...[
+                    if (i > 0) const SizedBox(width: gap),
+                    children[i],
+                  ],
+                ],
+              );
+            },
+          ),
         ),
       ),
     );
   }
 
-  /// شیتِ «سایر عملیات» — بقیه‌ی دکمه‌هایی که در نوارِ اصلی جا نشدند
-  /// شیتِ «سایر عملیات» — فعلاً به‌صورتِ **لیست** (موقتاً، طبقِ درخواست،
-  /// تا بین این حالت و حالتِ شبکه‌ایِ آیکن‌های دایره‌ای تصمیم گرفته شود)
-  void _showMoreActionsSheet(List<_MoreAction> actions) {
-    final c = AppColors.of(context);
-    Get.bottomSheet(
-      SafeArea(
-        top: false,
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
-          decoration: BoxDecoration(
-            color: c.surfaceContainerLow,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: c.borderSoft,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'سایر عملیات',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.bold,
-                  color: c.textStrong,
-                ),
-              ),
-              const SizedBox(height: 18),
-              Wrap(
-                alignment: WrapAlignment.center,
-                spacing: 24,
-                runSpacing: 18,
-                children: [
-                  for (final a in actions)
-                    _circleAction(
-                      icon: a.icon,
-                      label: a.label,
-                      color: a.color,
-                      onTap: a.onTap,
-                    ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-      backgroundColor: Colors.transparent,
+  /// دکمه‌ی گردِ نوارِ اصلی؛ اگر قفلِ پلن داشته باشد داخلِ PlanGate
+  Widget _primaryButton(_PrimaryAction p) {
+    final btn = _circleAction(
+      icon: p.a.icon,
+      label: p.a.label,
+      color: p.a.color,
+      onTap: p.a.onTap,
     );
+    if (p.gate == null) return btn;
+    return PlanGate(feature: p.gate!, label: p.gateLabel, child: btn);
+  }
+
+  /// همان عملیات برایِ منویِ «بیشتر» — قفلِ پلن موقعِ لمس بررسی می‌شود
+  _MoreAction _gatedAction(_PrimaryAction p) {
+    if (p.gate == null) return p.a;
+    return (
+      icon: p.a.icon,
+      label: p.a.label,
+      color: p.a.color,
+      onTap: () {
+        if (!checkPlanAccess(p.gate!, label: p.gateLabel)) return;
+        p.a.onTap();
+      },
+    );
+  }
+
+  Widget _moreButton(List<_MoreAction> items) {
+    return Builder(
+      builder: (btnCtx) => _circleAction(
+        icon: Icons.more_horiz_rounded,
+        label: 'بیشتر',
+        color: const Color(0xFF64748B),
+        onTap: () => _showMoreActionsMenu(btnCtx, items),
+      ),
+    );
+  }
+
+  /// 🔧 طبق درخواست: «بیشتر» به‌جایِ شیتِ پایین، یک منویِ لیستی درست
+  /// بالایِ خودِ دکمه باز می‌کند
+  Future<void> _showMoreActionsMenu(
+    BuildContext btnCtx,
+    List<_MoreAction> actions,
+  ) async {
+    final c = AppColors.of(context);
+    final btnBox = btnCtx.findRenderObject() as RenderBox?;
+    final overlay = Overlay.of(btnCtx).context.findRenderObject() as RenderBox?;
+    if (btnBox == null || overlay == null) return;
+    final topLeft = btnBox.localToGlobal(Offset.zero, ancestor: overlay);
+    final size = overlay.size;
+    const itemH = 46.0;
+    final menuH = actions.length * itemH + 16;
+    final top = (topLeft.dy - menuH - 8).clamp(8.0, size.height);
+    final selected = await showMenu<int>(
+      context: context,
+      color: c.surface,
+      elevation: 8,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.card),
+      ),
+      position: RelativeRect.fromLTRB(
+        topLeft.dx,
+        top,
+        size.width - topLeft.dx - btnBox.size.width,
+        size.height - top,
+      ),
+      items: [
+        for (var i = 0; i < actions.length; i++)
+          PopupMenuItem<int>(
+            value: i,
+            height: itemH,
+            child: Row(
+              children: [
+                Icon(actions[i].icon, size: 20, color: actions[i].color),
+                const SizedBox(width: 12),
+                Text(
+                  actions[i].label,
+                  style: TextStyle(fontSize: 13.5, color: c.textStrong),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+    if (selected != null && mounted) actions[selected].onTap();
   }
 
   /// «درج توضیح» — دقیقاً معادلِ addDiscBtn در وب: یادداشتِ تکمیلی روی
@@ -1972,7 +2187,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                     color: c.primary,
                   ),
                   label: Text(
-                    _isUploading ? 'در حالِ آپلود...' : 'پیوستِ فایل (اختیاری)',
+                    _isUploading ? 'در حال آپلود...' : 'پیوست فایل (اختیاری)',
                     style: TextStyle(color: c.primary, fontSize: 12.5),
                   ),
                 ),
@@ -1981,7 +2196,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                   children: [
                     Expanded(
                       child: TextButton(
-                        onPressed: () => Get.back(),
+                        onPressed: () => AppNav.back(),
                         child: Text(
                           'انصراف',
                           style: TextStyle(color: c.textMuted),
@@ -1994,10 +2209,10 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                         onPressed: () {
                           final notes = notesController.text.trim();
                           if (notes.isEmpty) {
-                            AppSnack.error('خطا', 'لطفاً توضیحات را وارد کنید');
+                            AppSnack.error('خطا', 'لطفا توضیحات را وارد کنید');
                             return;
                           }
-                          Get.back();
+                          AppNav.back();
                           _updateStatus(status, notes: notes);
                         },
                         style: ElevatedButton.styleFrom(
@@ -2165,196 +2380,8 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── کارت اصلی ──
-          _card(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // عنوان — طبق عکسِ ارسالی، عنوان تمام‌عرض و خودش یک ردیفِ
-                // جداست؛ نشان‌ها همه با هم در ردیفِ بعدی می‌آیند
-                // 🔧 ستاره‌ی «منتخب» قبل از عنوان (سمتِ راستِ عنوان، چون
-                // طبقِ درخواست باید قبل از آن بیاید)
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // 🔧 ذخیره‌یِ محلی و دائمیِ گوشی (نه تنظیمِ روزانه‌یِ
-                    // سرور) — با ValueListenableBuilder، تبِ «کارها»یِ
-                    // داشبورد هم بلافاصله همین تغییر را می‌بیند
-                    ValueListenableBuilder<Set<String>>(
-                      valueListenable: StarredTasksPreference.idsNotifier,
-                      builder: (context, starred, _) {
-                        final isStarred = starred.contains(
-                          widget.taskId.toString(),
-                        );
-                        return GestureDetector(
-                          onTap: () =>
-                              StarredTasksPreference.toggle(widget.taskId),
-                          child: Icon(
-                            isStarred
-                                ? Icons.star_rounded
-                                : Icons.star_outline_rounded,
-                            color: isStarred
-                                ? const Color(0xFFF5B94D)
-                                : c.textMuted,
-                            size: 24,
-                          ),
-                        );
-                      },
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        t['title'] ?? '',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: c.textStrong,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                // نشان‌ها — طبقِ عکس: اولویت+نوع (پرشده) سمتِ راست،
-                // وضعیت (فقط قاب/بدونِ پرشدگی) سمتِ چپ
-                Row(
-                  children: [
-                    _chip(priorityLbl, priorityClr),
-                    const SizedBox(width: 8),
-                    _chip(isContinuous ? 'دوره‌ای' : 'مقطعی', c.primary),
-                    const Spacer(),
-                    _outlineChip(statusLbl, statusClr),
-                  ],
-                ),
-                if ((t['description'] ?? '').toString().isNotEmpty) ...[
-                  Divider(height: 28, color: c.borderSoft),
-                  Text(
-                    'توضیحات',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: c.textMuted,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    t['description'],
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: c.textStrong,
-                      height: 1.6,
-                    ),
-                  ),
-                ],
-                // 🔧 رفعِ باگ: یادداشتِ «تأیید و ارجاع» قبلاً فقط به سرور
-                // فرستاده می‌شد ولی هیچ‌جا به فردِ ارجاع‌شونده نشان داده
-                // نمی‌شد (نه در وب، نه در این اپ) — حالا همین‌جا، کنارِ
-                // توضیحاتِ اصلیِ کار، نمایش داده می‌شود
-                if ((t['delegation_notes'] ?? '').toString().isNotEmpty) ...[
-                  Divider(height: 28, color: c.borderSoft),
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.subdirectory_arrow_left_rounded,
-                        size: 15,
-                        color: c.textMuted,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        'یادداشت ارجاع',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: c.textMuted,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    t['delegation_notes'],
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: c.textStrong,
-                      height: 1.6,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-
-          // ── کارت اطلاعات ──
-          // 🔧 طبق درخواست: شماره تسک، ایجادکننده، مسئول انجام، گروه،
-          // تاریخ ایجاد، موعد انجام (با آیکن‌های تمدید/حذف موعد جلویش)
-          _card(
-            child: Column(
-              children: [
-                _infoRow(
-                  Icons.tag_rounded,
-                  'شماره تسک',
-                  toPersianDigits(t['id']?.toString() ?? '—'),
-                ),
-                const Divider(height: 26),
-                PlanGate(
-                  feature: PlanFeature.taskCreatorInfo,
-                  label: 'نمایش سازنده کار',
-                  child: _infoRow(
-                    Icons.person_outline,
-                    'ایجاد کننده',
-                    t['creator_name'] ?? '—',
-                  ),
-                ),
-                const Divider(height: 26),
-                _infoRow(
-                  Icons.assignment_ind_outlined,
-                  'مسئول انجام',
-                  t['assignee_name'] ?? '—',
-                ),
-                const Divider(height: 26),
-                _buildGroupRow(t),
-                const Divider(height: 26),
-                _infoRow(
-                  Icons.event_note_outlined,
-                  'تاریخ ایجاد',
-                  _toShamsi(t['created_at']),
-                ),
-                if (isContinuous) ...[
-                  const Divider(height: 26),
-                  _infoRow(
-                    Icons.play_circle_outline,
-                    'تاریخ شروع',
-                    _toShamsi(t['start_date']),
-                  ),
-                  const Divider(height: 26),
-                  _infoRow(
-                    Icons.event_busy_outlined,
-                    'تاریخ پایان',
-                    _toShamsi(t['end_date']),
-                  ),
-                  const Divider(height: 26),
-                  _infoRow(
-                    Icons.repeat_rounded,
-                    'دوره تکرار',
-                    TaskLabels.periodLabel(t['period_type']),
-                  ),
-                ] else ...[
-                  const Divider(height: 26),
-                  _dueDateRow(
-                    c,
-                    t,
-                    status: status,
-                    isCreator: isCreator,
-                    isAssignee: isAssignee,
-                    isPending: isPending,
-                  ),
-                ],
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
           // ── درخواست‌های باز (تمدید موعد / رفع تأخیرِ دوره‌ای) ──
+          // 🔧 طبق درخواست: بالای صفحه (قبل از هدرِ بنفش)، تا بلافاصله دیده شوند
           ..._deadlineRequests.map(
             (r) => _requestBanner(
               icon: Icons.event_repeat_rounded,
@@ -2368,7 +2395,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
           ..._overdueClearRequests.map(
             (r) => _requestBanner(
               icon: Icons.history_toggle_off_rounded,
-              title: 'درخواست رفع تأخیرِ دوره‌ای',
+              title: 'درخواست رفع تأخیر دوره‌ای',
               subtitle:
                   '${r['requester_name'] ?? ''} — ${toPersianDigits(r['periods_count']?.toString() ?? '0')} دوره',
               isApprover: r['is_approver'] == true,
@@ -2400,6 +2427,200 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
               onReview: () =>
                   _showTerminationReviewDialog(_terminationRequest!),
             ),
+          // ── هدرِ بنفشِ کار ──
+          // 🔧 طبق درخواست (مثلِ نسخه‌ی وب — .taskDetail-header): نوارِ بنفشِ
+          // یکدست (#8e57fe) که عنوان، توضیحات و بج‌هایِ زیرش رویِ آن است
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+            decoration: BoxDecoration(
+              color: _headerPurple,
+              borderRadius: BorderRadius.circular(AppRadius.card),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ستاره‌ی «منتخب» قبل از عنوان (مثلِ وب: سفید، روشن = زرد)
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    ValueListenableBuilder<Set<String>>(
+                      valueListenable: StarredTasksPreference.idsNotifier,
+                      builder: (context, starred, _) {
+                        final isStarred = starred.contains(
+                          widget.taskId.toString(),
+                        );
+                        return GestureDetector(
+                          onTap: () =>
+                              StarredTasksPreference.toggle(widget.taskId),
+                          child: Icon(
+                            isStarred
+                                ? Icons.star_rounded
+                                : Icons.star_outline_rounded,
+                            color: isStarred
+                                ? const Color(0xFFF5B94D)
+                                : Colors.white,
+                            size: 24,
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        t['title'] ?? '',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                // 🔧 طبق درخواست: توضیحات زیرِ عنوان نمایش داده نمی‌شود
+                const SizedBox(height: 14),
+                // بج‌ها به ترتیبِ وب: نوع، اولویت، وضعیت
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _headerBadge(
+                      isContinuous ? 'دوره‌ای' : 'مقطعی',
+                      bg: Colors.white,
+                      fg: const Color(0xFF374151),
+                      border: const Color(0xFFD1D5DB),
+                    ),
+                    _headerBadge(
+                      priorityLbl,
+                      bg: Color.lerp(Colors.white, priorityClr, 0.14)!,
+                      fg: priorityClr,
+                    ),
+                    (status == 'completed' || status == 'approved')
+                        ? _headerBadge(
+                            statusLbl,
+                            bg: const Color(0xFF15803D),
+                            fg: Colors.white,
+                            border: const Color(0xFF166534),
+                          )
+                        : _headerBadge(
+                            statusLbl,
+                            bg: Color.lerp(Colors.white, statusClr, 0.14)!,
+                            fg: statusClr,
+                          ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          // 🔧 طبق درخواست: کارتِ «یادداشت ارجاع» زیرِ هدر حذف شد
+          const SizedBox(height: 12),
+
+          // ── کارت اطلاعات ──
+          // 🔧 طبق درخواست: شماره تسک، ایجادکننده، مسئول انجام، گروه،
+          // تاریخ ایجاد، موعد انجام (با آیکن‌های تمدید/حذف موعد جلویش)
+          _card(
+            child: Column(
+              children: [
+                // 🔧 طبق درخواست (مثلِ وب — .info-section h5): عنوانِ «اطلاعات
+                // کار» با آیکن، هر دو بنفشِ #8e57fe و پررنگ
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.info_outline_rounded,
+                      size: 18,
+                      color: _headerPurple,
+                    ),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'اطلاعات کار',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: _headerPurple,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                _infoRow(
+                  Icons.tag_rounded,
+                  'شماره',
+                  toPersianDigits(t['id']?.toString() ?? '—'),
+                ),
+                const Divider(height: 26),
+                PlanGate(
+                  feature: PlanFeature.taskCreatorInfo,
+                  label: 'نمایش سازنده کار',
+                  child: _infoRow(
+                    Icons.person_outline,
+                    'ایجاد کننده',
+                    t['creator_name'] ?? '—',
+                  ),
+                ),
+                const Divider(height: 26),
+                _infoRow(
+                  Icons.assignment_ind_outlined,
+                  'مسئول انجام',
+                  t['assignee_name'] ?? '—',
+                ),
+                const Divider(height: 26),
+                _buildGroupRow(t),
+                // 🔧 طبق درخواست (مثلِ وب): «دسترسی به» درست بعد از «گروه»
+                // سازنده‌ی کار همیشه ردیف را می‌بیند (اگر پلن نداشته باشد،
+                // PlanGate آن را قفل‌دار نشان می‌دهد)؛ بقیه طبقِ can_manage سرور
+                if (_canManageViewers || _canEdit) ...[
+                  const Divider(height: 26),
+                  PlanGate(
+                    feature: PlanFeature.taskViewers,
+                    label: 'دسترسی به',
+                    child: _viewersRow(c),
+                  ),
+                ],
+                const Divider(height: 26),
+                _infoRow(
+                  Icons.event_note_outlined,
+                  'تاریخ ایجاد',
+                  // 🔧 طبق درخواست (مثلِ وب — formatDateTime): تاریخ + ساعت
+                  _toShamsiDateTime(t['created_at']),
+                ),
+                if (isContinuous) ...[
+                  const Divider(height: 26),
+                  _infoRow(
+                    Icons.play_circle_outline,
+                    'تاریخ شروع',
+                    _toShamsi(t['start_date']),
+                  ),
+                  const Divider(height: 26),
+                  _infoRow(
+                    Icons.event_busy_outlined,
+                    'تاریخ پایان',
+                    _toShamsi(t['end_date']),
+                  ),
+                  const Divider(height: 26),
+                  _infoRow(
+                    Icons.repeat_rounded,
+                    'دوره تکرار',
+                    TaskLabels.periodLabel(t['period_type']),
+                  ),
+                ] else ...[
+                  const Divider(height: 26),
+                  _dueDateRow(
+                    c,
+                    t,
+                    status: status,
+                    isCreator: isCreator,
+                    isAssignee: isAssignee,
+                    isPending: isPending,
+                  ),
+                  // 🔧 طبق درخواست (مثلِ وب — buildPeriodicDelayBadge): بعد از
+                  // موعد، «مهلت باقی‌مانده» یا اگر گذشته «تأخیر»
+                  ..._remainingOrDelayRow(c, t),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
           // 🔧 طبق درخواست: چک‌لیست/بینندگان/پیوست‌ها دیگر کارت‌های جدا
           // ندارند — همه در یک کارتِ مشترک، با خطِ افقی بینِ بخش‌ها
           _checklistViewersAttachmentsCard(c),
@@ -2458,10 +2679,12 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
   int? _currentUserId;
   bool _isUpdating = false;
 
-  // 🔧 طبق درخواست: چک‌لیست/بینندگان/پیوست‌ها آکاردئونی و پیش‌فرض بسته
+  // 🔧 طبق درخواست: چک‌لیست/پیوست‌ها آکاردئونی؛ خالی = بسته، اگر محتوا
+  // داشته باشند پیش‌فرض باز (یک بار، بعد از اولین بارگذاری)
   bool _checklistOpen = false;
-  bool _viewersOpen = false;
   bool _attachmentsOpen = false;
+  bool _checklistAutoOpened = false;
+  bool _attachmentsAutoOpened = false;
 
   // 🔧 طبق درخواست: چک‌لیست/بینندگان/پیوست‌ها دیگر هرکدام کارتِ جدایِ
   // خودشان را ندارند — همه در یک کارتِ مشترک، با خطِ افقی (Divider)
@@ -2527,84 +2750,6 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
               ),
             ),
           ],
-        ),
-      );
-    }
-
-    // ── بینندگان (فقط تعریف‌کننده مدیریت می‌کند) ──
-    if (_canEdit) {
-      sections.add(
-        PlanGate(
-          feature: PlanFeature.taskViewers,
-          label: 'بینندگان کار',
-          child: Column(
-            children: [
-              _sectionHeader(
-                c,
-                title: 'دسترسی به',
-                open: _viewersOpen,
-                onToggle: () => setState(() => _viewersOpen = !_viewersOpen),
-                trailing: _addPillButton(
-                  c,
-                  label: 'افزودن',
-                  onTap: _showManageViewersSheet,
-                ),
-              ),
-              _accordionBody(
-                _viewersOpen && _viewers.isNotEmpty,
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(4, 0, 4, 12),
-                  child: Column(
-                    children: _viewers
-                        .map(
-                          (v) => Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 6),
-                            child: Row(
-                              children: [
-                                CircleAvatar(
-                                  radius: 15,
-                                  backgroundColor: c.primary.withValues(
-                                    alpha: 0.12,
-                                  ),
-                                  child: Icon(
-                                    Icons.visibility_outlined,
-                                    size: 15,
-                                    color: c.primary,
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Text(
-                                    (v['full_name'] ?? '')
-                                            .toString()
-                                            .trim()
-                                            .isEmpty
-                                        ? 'کاربر'
-                                        : v['full_name'].toString(),
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      color: c.textStrong,
-                                    ),
-                                  ),
-                                ),
-                                GestureDetector(
-                                  onTap: () => _removeViewer(v['id']),
-                                  child: Icon(
-                                    Icons.close_rounded,
-                                    size: 18,
-                                    color: c.textMuted,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        )
-                        .toList(),
-                  ),
-                ),
-              ),
-            ],
-          ),
         ),
       );
     }
@@ -2927,6 +3072,11 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                     padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                     child: TextField(
                       controller: notesController,
+                      // 🔧 رفعِ باگ: توضیحِ ارجاع چندخطی — قبلاً تک‌خطی بود و Enter خطِ جدید نمی‌ساخت
+                      minLines: 1,
+                      maxLines: 4,
+                      keyboardType: TextInputType.multiline,
+                      textInputAction: TextInputAction.newline,
                       style: TextStyle(color: c.textStrong, fontSize: 13.5),
                       decoration: InputDecoration(
                         hintText: 'توضیح (اختیاری)...',
@@ -3023,7 +3173,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                                 (needsDueDate && delegateDueDate == null))
                             ? null
                             : () {
-                                Get.back();
+                                AppNav.back();
                                 _delegateTask(
                                   selectedUserId!,
                                   notes: notesController.text.trim(),
@@ -3135,7 +3285,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                 maxLines: 3,
                 style: TextStyle(color: c.textStrong),
                 decoration: InputDecoration(
-                  hintText: 'مثلاً: لطفاً این کار را در اولویت قرار دهید...',
+                  hintText: 'مثلا: لطفا این کار را در اولویت قرار دهید...',
                   hintStyle: TextStyle(color: c.textMuted, fontSize: 13),
                   filled: true,
                   fillColor: c.surfaceContainerLow,
@@ -3154,7 +3304,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                 children: [
                   Expanded(
                     child: TextButton(
-                      onPressed: () => Get.back(),
+                      onPressed: () => AppNav.back(),
                       child: Text(
                         'انصراف',
                         style: TextStyle(color: c.textMuted),
@@ -3170,7 +3320,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                           AppSnack.error('خطا', 'متن یادآوری الزامی است');
                           return;
                         }
-                        Get.back();
+                        AppNav.back();
                         _sendReminder(msg);
                       },
                       style: ElevatedButton.styleFrom(
@@ -3193,8 +3343,22 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     );
   }
 
-  void _showRequestDeadlineDialog() {
-    DateTime? selectedDate;
+  /// [setNew]: کار موعد ندارد (مثلاً موعدش حذف شده) و این دیالوگ برایِ
+  /// «تعیینِ موعد» باز شده — همان API تمدید (مثلِ نسخه‌ی وب)؛ برایِ کارِ
+  /// خودی سرور خودکار تأیید می‌کند
+  ///
+  /// 🔧 طبق درخواست: اول بلافاصله تقویم باز می‌شود و با یک لمس روی روز،
+  /// همان تاریخ انتخاب می‌شود؛ بعد صفحه‌ی تمدید (تاریخِ انتخاب‌شده +
+  /// توضیح/دلیل + «تأیید») می‌آید. انصراف از تقویم = هیچ اتفاقی نمی‌افتد
+  Future<void> _showRequestDeadlineDialog({bool setNew = false}) async {
+    final first = await showCustomPersianDatePicker(
+      context,
+      initialDate: DateTime.now(),
+      firstDate: Jalali.now(),
+      pickOnTap: true,
+    );
+    if (first == null || !mounted) return;
+    DateTime? selectedDate = first;
     final reasonController = TextEditingController();
     final c = AppColors.of(context);
     Get.dialog(
@@ -3205,7 +3369,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
             borderRadius: BorderRadius.circular(16),
           ),
           title: Text(
-            'درخواست تمدید موعد',
+            setNew ? 'تعیین موعد' : 'درخواست تمدید موعد',
             style: TextStyle(fontSize: 16, color: c.textStrong),
           ),
           content: Column(
@@ -3218,6 +3382,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                     ctx,
                     initialDate: selectedDate ?? DateTime.now(),
                     firstDate: Jalali.now(),
+                    pickOnTap: true,
                   );
                   if (picked != null)
                     setDialogState(() => selectedDate = picked);
@@ -3241,7 +3406,9 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                       const SizedBox(width: 8),
                       Text(
                         selectedDate == null
-                            ? 'موعد جدید را انتخاب کنید'
+                            ? (setNew
+                                  ? 'موعد را انتخاب کنید'
+                                  : 'موعد جدید را انتخاب کنید')
                             : _toShamsi(selectedDate!.toIso8601String()),
                         style: TextStyle(
                           fontSize: 13,
@@ -3260,7 +3427,9 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                 maxLines: 3,
                 style: TextStyle(color: c.textStrong),
                 decoration: InputDecoration(
-                  hintText: 'دلیل درخواست تمدید (الزامی)...',
+                  hintText: setNew
+                      ? 'توضیح (الزامی)...'
+                      : 'دلیل درخواست تمدید (الزامی)...',
                   hintStyle: TextStyle(color: c.textMuted, fontSize: 13),
                   filled: true,
                   fillColor: c.surfaceContainerLow,
@@ -3274,7 +3443,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Get.back(),
+              onPressed: () => AppNav.back(),
               child: Text('انصراف', style: TextStyle(color: c.textMuted)),
             ),
             TextButton(
@@ -3288,10 +3457,10 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                   AppSnack.error('خطا', 'دلیل درخواست الزامی است');
                   return;
                 }
-                Get.back();
+                AppNav.back();
                 _requestDeadlineExtension(selectedDate!, reason);
               },
-              child: Text('ارسال درخواست', style: TextStyle(color: c.primary)),
+              child: Text('تأیید', style: TextStyle(color: c.primary)),
             ),
           ],
         ),
@@ -3331,7 +3500,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         actions: [
           TextButton(
             onPressed: () {
-              Get.back();
+              AppNav.back();
               _showRejectionReasonDialog(
                 title: 'رد درخواست تمدید موعد',
                 onSubmit: (reason) =>
@@ -3342,7 +3511,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
           ),
           TextButton(
             onPressed: () {
-              Get.back();
+              AppNav.back();
               _approveDeadlineRequest(request['id']);
             },
             child: Text('تأیید', style: TextStyle(color: c.success)),
@@ -3360,7 +3529,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         backgroundColor: c.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text(
-          'درخواست رفع تأخیرِ دوره‌ای',
+          'درخواست رفع تأخیر دوره‌ای',
           style: TextStyle(fontSize: 16, color: c.textStrong),
         ),
         content: TextField(
@@ -3380,12 +3549,12 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Get.back(),
+            onPressed: () => AppNav.back(),
             child: Text('انصراف', style: TextStyle(color: c.textMuted)),
           ),
           TextButton(
             onPressed: () {
-              Get.back();
+              AppNav.back();
               _requestOverdueClear(reasonController.text.trim());
             },
             child: Text('ارسال درخواست', style: TextStyle(color: c.primary)),
@@ -3424,7 +3593,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         actions: [
           TextButton(
             onPressed: () {
-              Get.back();
+              AppNav.back();
               _showRejectionReasonDialog(
                 title: 'رد درخواست رفع تأخیر',
                 onSubmit: (reason) =>
@@ -3435,7 +3604,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
           ),
           TextButton(
             onPressed: () {
-              Get.back();
+              AppNav.back();
               _approveOverdueClear(request['id']);
             },
             child: Text('تأیید', style: TextStyle(color: c.success)),
@@ -3560,7 +3729,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Get.back(),
+              onPressed: () => AppNav.back(),
               child: Text('انصراف', style: TextStyle(color: c.textMuted)),
             ),
             TextButton(
@@ -3572,7 +3741,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                   );
                   return;
                 }
-                Get.back();
+                AppNav.back();
                 if (directApply) {
                   _applyRenewalDirect(
                     newStart!,
@@ -3633,7 +3802,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         actions: [
           TextButton(
             onPressed: () {
-              Get.back();
+              AppNav.back();
               _showRejectionReasonDialog(
                 title: 'رد درخواست تمدید دوره',
                 reasonRequired: true,
@@ -3644,7 +3813,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
           ),
           TextButton(
             onPressed: () {
-              Get.back();
+              AppNav.back();
               _approveRenewal(request['id']);
             },
             child: Text('تأیید', style: TextStyle(color: c.success)),
@@ -3682,7 +3851,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Get.back(),
+            onPressed: () => AppNav.back(),
             child: Text('انصراف', style: TextStyle(color: c.textMuted)),
           ),
           TextButton(
@@ -3692,7 +3861,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                 AppSnack.error('خطا', 'دلیل درخواست الزامی است');
                 return;
               }
-              Get.back();
+              AppNav.back();
               _requestTermination(reason);
             },
             child: Text('ارسال درخواست', style: TextStyle(color: c.primary)),
@@ -3726,7 +3895,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         actions: [
           TextButton(
             onPressed: () {
-              Get.back();
+              AppNav.back();
               _showRejectionReasonDialog(
                 title: 'رد درخواست اتمام کار',
                 reasonRequired: true,
@@ -3741,7 +3910,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
           ),
           TextButton(
             onPressed: () {
-              Get.back();
+              AppNav.back();
               _reviewTermination(request['id'], approve: true);
             },
             child: Text('تأیید', style: TextStyle(color: c.success)),
@@ -3762,17 +3931,17 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
           style: TextStyle(fontSize: 16, color: c.textStrong),
         ),
         content: Text(
-          'آیا از پایان‌دادنِ فوریِ این کارِ دوره‌ای مطمئن هستید؟',
+          'آیا از پایان‌دادن فوری این کار دوره‌ای مطمئن هستید؟',
           style: TextStyle(color: c.textMuted),
         ),
         actions: [
           TextButton(
-            onPressed: () => Get.back(),
+            onPressed: () => AppNav.back(),
             child: Text('انصراف', style: TextStyle(color: c.textMuted)),
           ),
           TextButton(
             onPressed: () {
-              Get.back();
+              AppNav.back();
               _terminatePeriodNow();
             },
             child: Text('اتمام', style: TextStyle(color: c.danger)),
@@ -3871,7 +4040,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Get.back(),
+            onPressed: () => AppNav.back(),
             child: Text('انصراف', style: TextStyle(color: c.textMuted)),
           ),
           TextButton(
@@ -3881,7 +4050,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                 AppSnack.error('خطا', 'دلیل رد الزامی است');
                 return;
               }
-              Get.back();
+              AppNav.back();
               onSubmit(reason);
             },
             child: Text('رد کردن', style: TextStyle(color: c.danger)),
@@ -3893,6 +4062,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
 
   void _showManageViewersSheet() {
     String searchQuery = '';
+    final adding = <String>{};
     final searchController = TextEditingController();
     final c = AppColors.of(context);
 
@@ -3936,25 +4106,8 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
+                // 🔧 طبق درخواست: بدونِ عنوان/توضیح — فقط جستجویِ کاربران
                 const SizedBox(height: 16),
-                Text(
-                  'افزودن بیننده',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                    color: c.textStrong,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Text(
-                    'بیننده فقط می‌تواند کار را ببیند، بدون اقدام روی آن',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 12, color: c.textMuted),
-                  ),
-                ),
-                const SizedBox(height: 12),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: TextField(
@@ -3997,43 +4150,67 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                             style: TextStyle(color: c.textMuted, fontSize: 13),
                           ),
                         )
-                      : ListView(
-                          shrinkWrap: true,
-                          children: candidates.map((u) {
-                            final display = userDisplay(u);
-                            return ListTile(
-                              leading: CircleAvatar(
-                                radius: 16,
-                                backgroundColor: c.primary.withValues(
-                                  alpha: 0.12,
-                                ),
-                                child: Text(
-                                  display.toString().isNotEmpty
-                                      ? display.toString()[0]
-                                      : '?',
-                                  style: TextStyle(
-                                    color: c.primary,
-                                    fontSize: 13,
+                      : Material(
+                          type: MaterialType.transparency,
+                          child: ListView(
+                            shrinkWrap: true,
+                            children: candidates.map((u) {
+                              final display = userDisplay(u);
+                              final uid = u['id'].toString();
+                              final isAdding = adding.contains(uid);
+                              // 🔧 طبق درخواست: کلِ ردیف (نام، آواتار، فضایِ خالی
+                              // و آیکنِ «+») قابلِ‌لمس است، نه فقط نام
+                              Future<void> add() async {
+                                if (adding.contains(uid)) return;
+                                setSheetState(() => adding.add(uid));
+                                await _addViewer(u['id']);
+                                adding.remove(uid);
+                                setSheetState(() {});
+                              }
+
+                              return ListTile(
+                                onTap: add,
+                                leading: CircleAvatar(
+                                  radius: 16,
+                                  backgroundColor: c.primary.withValues(
+                                    alpha: 0.12,
+                                  ),
+                                  child: Text(
+                                    display.toString().isNotEmpty
+                                        ? display.toString()[0]
+                                        : '?',
+                                    style: TextStyle(
+                                      color: c.primary,
+                                      fontSize: 13,
+                                    ),
                                   ),
                                 ),
-                              ),
-                              title: Text(
-                                display,
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: c.textStrong,
+                                title: Text(
+                                  display,
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: c.textStrong,
+                                  ),
                                 ),
-                              ),
-                              trailing: Icon(
-                                Icons.add_circle_outline,
-                                color: c.primary,
-                              ),
-                              onTap: () {
-                                _addViewer(u['id']);
-                                setSheetState(() {});
-                              },
-                            );
-                          }).toList(),
+                                trailing: isAdding
+                                    ? SizedBox(
+                                        width: 22,
+                                        height: 22,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: c.primary,
+                                        ),
+                                      )
+                                    : IconButton(
+                                        onPressed: add,
+                                        icon: Icon(
+                                          Icons.add_circle_outline,
+                                          color: c.primary,
+                                        ),
+                                      ),
+                              );
+                            }).toList(),
+                          ),
                         ),
                 ),
                 const SizedBox(height: 12),
@@ -4114,7 +4291,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                 children: [
                   Expanded(
                     child: TextButton(
-                      onPressed: () => Get.back(),
+                      onPressed: () => AppNav.back(),
                       child: Text(
                         'انصراف',
                         style: TextStyle(color: c.textMuted),
@@ -4130,7 +4307,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                           AppSnack.error('خطا', 'دلیل رد الزامی است');
                           return;
                         }
-                        Get.back();
+                        AppNav.back();
                         _approveOrReject(false, notes: notes);
                       },
                       style: ElevatedButton.styleFrom(
@@ -4221,7 +4398,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                 children: [
                   Expanded(
                     child: TextButton(
-                      onPressed: () => Get.back(),
+                      onPressed: () => AppNav.back(),
                       child: Text(
                         'انصراف',
                         style: TextStyle(color: c.textMuted),
@@ -4232,7 +4409,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                   Expanded(
                     child: ElevatedButton(
                       onPressed: () {
-                        Get.back();
+                        AppNav.back();
                         _updateStatus(
                           'completed',
                           notes: notesController.text.trim(),
@@ -4263,6 +4440,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     String? notes,
     DateTime? dueDate,
   }) async {
+    if (_isUpdating) return;
     setState(() => _isUpdating = true);
     try {
       final res = await ApiClient.dio.post(
@@ -4278,19 +4456,49 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
       setState(() => _isUpdating = false);
 
       if (data['success'] == true) {
-        _hasChanges = true;
-        _loadDetail();
-        AppSnack.success('✅ موفق', data['message'] ?? 'کار ارجاع شد');
-      } else {
+        _leaveAfterAction('✅ موفق', data['message'] ?? 'کار ارجاع شد');
+      } else if (!_handleOverdueDelegateBlock(data)) {
         AppSnack.error('خطا', data['message'] ?? 'خطا در ارجاع');
       }
     } catch (e) {
       setState(() => _isUpdating = false);
-      AppSnack.error('خطا', _dioErrorMessage(e, 'خطا در اتصال به سرور'));
+      if (!_handleOverdueDelegateBlock(e)) {
+        AppSnack.error('خطا', _dioErrorMessage(e, 'خطا در اتصال به سرور'));
+      }
     }
   }
 
+  /// 🔧 طبق درخواست (مثلِ نسخه‌ی وب): وقتی موعدِ کار گذشته و سرور ارجاع را با
+  /// کدِ `overdue_periodic` رد می‌کند، کنارِ همان پیامِ هشدار دکمه‌ی
+  /// «تمدید موعد» هم می‌آید. سرور این خطا را با HTTP 400 برمی‌گرداند، پس هم
+  /// پاسخِ عادی و هم DioException را بررسی می‌کند. اگر این حالت نبود false
+  bool _handleOverdueDelegateBlock(Object? dataOrError) {
+    Object? body = dataOrError;
+    if (dataOrError is dio.DioException) body = dataOrError.response?.data;
+    if (body is String) body = ApiClient.parseResponse(body);
+    if (body is! Map || body['code'] != 'overdue_periodic') return false;
+    AppSnack.warning(
+      'موعد کار گذشته',
+      (body['message'] ??
+              'موعد این کار گذشته است — امکان ارجاع نیست. ابتدا موعد کار را تمدید کنید')
+          .toString(),
+      duration: const Duration(seconds: 8),
+      mainButton: TextButton(
+        onPressed: () {
+          if (Get.isSnackbarOpen) Get.closeCurrentSnackbar();
+          _showRequestDeadlineDialog();
+        },
+        child: const Text(
+          'تمدید موعد',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+      ),
+    );
+    return true;
+  }
+
   Future<void> _approveOrReject(bool approve, {String? notes}) async {
+    if (_isUpdating) return;
     setState(() => _isUpdating = true);
     try {
       final res = await ApiClient.dio.post(
@@ -4305,9 +4513,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
       setState(() => _isUpdating = false);
 
       if (data['success'] == true) {
-        _hasChanges = true;
-        _loadDetail();
-        AppSnack.success(
+        _leaveAfterAction(
           approve ? '✅ تأیید شد' : 'رد شد',
           data['message'] ?? '',
         );
@@ -4322,6 +4528,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
 
   // 🔧 «تأیید و نگه‌داری» — فقط تعریف‌کننده: کار تأیید و در فهرست خودش می‌ماند
   Future<void> _approveAndKeep() async {
+    if (_isUpdating) return;
     setState(() => _isUpdating = true);
     try {
       final res = await ApiClient.dio.post(
@@ -4349,6 +4556,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
   // 🔧 «تأیید و ارجاع» — فقط مسئولِ فعلی: کار تأیید و هم‌زمان به فرد
   // دیگری ارجاع می‌شود
   Future<void> _approveAndDelegate(int toUserId, {String? notes}) async {
+    if (_isUpdating) return;
     setState(() => _isUpdating = true);
     try {
       final res = await ApiClient.dio.post(
@@ -4363,18 +4571,18 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
       final data = ApiClient.parseResponse(res.data);
       setState(() => _isUpdating = false);
       if (data['success'] == true) {
-        _hasChanges = true;
-        _loadDetail();
-        AppSnack.success(
+        _leaveAfterAction(
           '✅ تأیید شد',
           data['message'] ?? 'کار تأیید و ارجاع داده شد',
         );
-      } else {
+      } else if (!_handleOverdueDelegateBlock(data)) {
         AppSnack.error('خطا', data['message'] ?? 'خطا در عملیات');
       }
     } catch (e) {
       setState(() => _isUpdating = false);
-      AppSnack.error('خطا', _dioErrorMessage(e, 'خطا در اتصال به سرور'));
+      if (!_handleOverdueDelegateBlock(e)) {
+        AppSnack.error('خطا', _dioErrorMessage(e, 'خطا در اتصال به سرور'));
+      }
     }
   }
 
@@ -4422,11 +4630,11 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
             ListTile(
               leading: Icon(Icons.check_circle_outline, color: c.success),
               title: Text(
-                'تأیید ساده',
+                'تأیید',
                 style: TextStyle(fontSize: 14, color: c.textStrong),
               ),
               onTap: () {
-                Get.back();
+                AppNav.back();
                 _approveOrReject(true);
               },
             ),
@@ -4434,15 +4642,11 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
               ListTile(
                 leading: Icon(Icons.person_outline, color: c.primary),
                 title: Text(
-                  'تأیید و نگه‌داری نزد من',
+                  'تأیید و نگه‌داری',
                   style: TextStyle(fontSize: 14, color: c.textStrong),
                 ),
-                subtitle: Text(
-                  'کار تأیید می‌شود و ادامه‌ی آن نزد شما می‌ماند',
-                  style: TextStyle(fontSize: 11.5, color: c.textMuted),
-                ),
                 onTap: () {
-                  Get.back();
+                  AppNav.back();
                   _approveAndKeep();
                 },
               ),
@@ -4453,11 +4657,11 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                 child: ListTile(
                   leading: Icon(Icons.send_rounded, color: c.warning),
                   title: Text(
-                    'تأیید و ارجاع به فرد دیگر',
+                    'تأیید و ارجاع',
                     style: TextStyle(fontSize: 14, color: c.textStrong),
                   ),
                   onTap: () {
-                    Get.back();
+                    AppNav.back();
                     _showApproveAndDelegatePicker();
                   },
                 ),
@@ -4625,6 +4829,11 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                     padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                     child: TextField(
                       controller: notesController,
+                      // 🔧 رفعِ باگ: توضیحِ ارجاع چندخطی — قبلاً تک‌خطی بود و Enter خطِ جدید نمی‌ساخت
+                      minLines: 1,
+                      maxLines: 4,
+                      keyboardType: TextInputType.multiline,
+                      textInputAction: TextInputAction.newline,
                       style: TextStyle(color: c.textStrong, fontSize: 13.5),
                       decoration: InputDecoration(
                         hintText: 'توضیح (اختیاری)...',
@@ -4657,7 +4866,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                         onPressed: selectedUserId == null
                             ? null
                             : () {
-                                Get.back();
+                                AppNav.back();
                                 _approveAndDelegate(
                                   selectedUserId,
                                   notes: notesController.text.trim(),
@@ -4706,7 +4915,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
 
       if (data['success'] == true) {
         // برگشت به صفحه قبل با پیام و امکان بازگردانی
-        Get.back(result: true);
+        AppNav.back(result: true);
         AppSnack.info(
           '🗑️ حذف شد',
           'کار حذف شد',
@@ -4761,12 +4970,12 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Get.back(),
+            onPressed: () => AppNav.back(),
             child: Text('انصراف', style: TextStyle(color: c.textMuted)),
           ),
           TextButton(
             onPressed: () async {
-              Get.back();
+              AppNav.back();
               await _deleteTask();
             },
             child: Text('حذف', style: TextStyle(color: c.danger)),
@@ -4776,7 +4985,26 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     );
   }
 
+  /// 🔧 طبق درخواست: بعد از عملیاتی که کار را از دستِ کاربر خارج یا تمام
+  /// می‌کند (تکمیل، تأیید، رد، ارجاع، تأیید و ارجاع، اتمام دوره)، صفحه بسته
+  /// می‌شود و به همان صفحه‌ای برمی‌گردد که جزئیات از آن باز شده بود (با
+  /// نتیجه‌ی true تا آن صفحه لیستش را تازه کند)؛ اگر صفحه‌ی قبلی‌ای نبود
+  /// (مثلاً باز شدن از نوتیفیکیشن)، به داشبورد می‌رود. پیامِ موفقیت روی
+  /// همان صفحه‌ی مقصد نشان داده می‌شود.
+  void _leaveAfterAction(String title, String message) {
+    _hasChanges = true;
+    final nav = Get.key.currentState;
+    if (nav != null && nav.canPop()) {
+      AppNav.back(result: true);
+    } else {
+      final user = ApiClient.currentUser;
+      if (user != null) Get.offAll(() => MainShell(user: user));
+    }
+    AppSnack.success(title, message);
+  }
+
   Future<void> _updateStatus(String status, {String? notes}) async {
+    if (_isUpdating) return;
     setState(() => _isUpdating = true);
     try {
       final res = await ApiClient.dio.post(
@@ -4791,6 +5019,13 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
       setState(() => _isUpdating = false);
 
       if (data['success'] == true) {
+        if (status == 'completed') {
+          _leaveAfterAction(
+            '✅ موفق',
+            data['message'] ?? 'وضعیت به‌روزرسانی شد',
+          );
+          return;
+        }
         _hasChanges = true;
         _loadDetail();
         AppSnack.success('✅ موفق', data['message'] ?? 'وضعیت به‌روزرسانی شد');
@@ -4807,11 +5042,6 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     final isImage = att['is_image'] == true;
     final fileType = (att['file_type'] ?? '').toString();
     final canDelete = att['can_delete'] == true;
-    // 🔧 طبق rename-attachment.php، فقط کسی که خودش فایل را آپلود کرده
-    // می‌تواند نامش را عوض کند (شرطش با can_delete یکی نیست)
-    final canRename =
-        _currentUserId != null &&
-        att['uploader_id']?.toString() == _currentUserId.toString();
 
     IconData icon;
     Color color;
@@ -4873,12 +5103,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
             icon: Icon(Icons.download_outlined, size: 20, color: c.primary),
             onPressed: () => _openFile(att['file_path'] ?? ''),
           ),
-          // تغییر نام
-          if (canRename)
-            IconButton(
-              icon: Icon(Icons.edit_outlined, size: 19, color: c.textMuted),
-              onPressed: () => _showRenameAttachmentDialog(att),
-            ),
+          // 🔧 طبق درخواست: پیوست فقط «دانلود» و «حذف» دارد (بدونِ تغییرِ نام)
           // حذف
           if (canDelete)
             IconButton(
@@ -4906,12 +5131,12 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Get.back(),
+            onPressed: () => AppNav.back(),
             child: Text('انصراف', style: TextStyle(color: c.textMuted)),
           ),
           TextButton(
             onPressed: () async {
-              Get.back(); // اول دیالوگ را ببند
+              AppNav.back(); // اول دیالوگ را ببند
               await _deleteAttachment(attId); // بعد حذف کن
             },
             child: Text('حذف', style: TextStyle(color: c.danger)),
@@ -5262,27 +5487,36 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                       'مسئول: $assigneeName',
                       style: TextStyle(fontSize: 11, color: c.textMuted),
                     ),
+                  // مثلِ وب: اگر توضیح دارد و قابلِ‌ویرایش است، با لمسِ
+                  // خودِ متن ویرایش می‌شود
                   if ((item['description'] ?? '').toString().isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 2),
-                      child: Text(
-                        item['description'].toString(),
-                        style: TextStyle(fontSize: 11.5, color: c.textMuted),
+                    GestureDetector(
+                      onTap: (canManage && !isAssigned)
+                          ? () => _showChecklistDescDialog(item)
+                          : null,
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          item['description'].toString(),
+                          style: TextStyle(fontSize: 11.5, color: c.textMuted),
+                        ),
                       ),
                     ),
                 ],
               ),
             ),
-            // 🔧 طبق درخواست: پیوستِ فایل/عکس/صدا برایِ همین آیتمِ مشخص —
-            // فقط برایِ کسی که مجاز به عمل‌کردن روی همین آیتم است (دقیقاً
-            // همان قانونِ toggle.php که بک‌اند هم برایِ این پیوست چک می‌کند)
-            if (canToggle)
+            // 🔧 طبق درخواست (مثلِ وب — chk-desc-icon): به‌جایِ پیوستِ فایل،
+            // آیکنِ «پیام» برایِ افزودنِ توضیح؛ فقط برایِ تعریف‌کننده، آیتمِ
+            // تیک‌نخورده و ارجاع‌نشده، و وقتی هنوز توضیحی ندارد
+            if (canManage &&
+                !isAssigned &&
+                (item['description'] ?? '').toString().isEmpty)
               GestureDetector(
-                onTap: () => _uploadChecklistItemAttachment(item['id']),
+                onTap: () => _showChecklistDescDialog(item),
                 child: Padding(
                   padding: const EdgeInsets.all(4),
                   child: Icon(
-                    Icons.attach_file_rounded,
+                    Icons.chat_outlined,
                     size: 16,
                     color: c.textMuted,
                   ),
@@ -5496,6 +5730,188 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     );
   }
 
+  /// ردیفِ «دسترسی به» — مثلِ وب (renderViewersCell): دکمه‌ی «افزودن
+  /// دسترسی»، و فهرستِ کاربران؛ پیش‌فرض فقط نام، با لمس جزئیاتِ دسترسی
+  /// (پیوست‌ها/تاریخچه/چک‌لیست + اعمال + حذف) باز می‌شود
+  Widget _viewersRow(AppColors c) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 26,
+              height: 26,
+              decoration: BoxDecoration(
+                color: c.primary.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.visibility_outlined,
+                size: 14,
+                color: c.primary,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              'دسترسی به',
+              style: TextStyle(fontSize: 13, color: c.textMuted),
+            ),
+            const Spacer(),
+            GestureDetector(
+              onTap: _showManageViewersSheet,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.person_add_alt_1_outlined,
+                    size: 16,
+                    color: c.primary,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    'افزودن دسترسی',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: c.primary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        if (_viewers.isEmpty)
+          Padding(
+            padding: const EdgeInsetsDirectional.only(start: 36),
+            child: Text(
+              'کسی اضافه نشده',
+              style: TextStyle(fontSize: 12.5, color: c.textMuted),
+            ),
+          )
+        else
+          ..._viewers.map((v) => _viewerItem(c, v)),
+      ],
+    );
+  }
+
+  Widget _viewerItem(AppColors c, dynamic v) {
+    final id = v['id'].toString();
+    final open = _openViewerRows.contains(id);
+    final d = _viewerDraft(v);
+    final name = (v['full_name'] ?? '').toString().trim();
+    Widget sw(String key, String label) => Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // 🔧 طبق درخواست: فاصله‌ی سوییچ تا متن کمتر — Transform.scale فقط
+        // ظاهر را کوچک می‌کرد و جایِ اصلی (پهنایِ کاملِ Switch) خالی می‌ماند؛
+        // FittedBox خودِ اندازه‌ی چیدمان را هم کوچک می‌کند
+        // اندازه‌ی ظاهری همان سوییچِ استانداردِ اپ (AppSwitch)؛ فقط جایِ خالیِ
+        // دورش (پهنایِ اصلیِ Switch پیش از کوچک‌شدن) حذف می‌شود
+        // طبق درخواست: حدودِ ۱۵٪ کوچک‌تر از سوییچِ استاندارد
+        SizedBox(
+          width: 34,
+          height: 24,
+          child: OverflowBox(
+            maxWidth: 64,
+            maxHeight: 48,
+            child: Transform.scale(
+              scale: 0.85,
+              child: AppSwitch(
+                value: d[key] ?? true,
+                activeColor: c.primary,
+                onChanged: (val) => setState(() => d[key] = val),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 5),
+        Text(label, style: TextStyle(fontSize: 12, color: c.textStrong)),
+      ],
+    );
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: c.bgPage,
+        borderRadius: BorderRadius.circular(AppRadius.chip),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => setState(
+              () => open ? _openViewerRows.remove(id) : _openViewerRows.add(id),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    name.isEmpty ? 'کاربر' : name,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: c.textStrong,
+                    ),
+                  ),
+                ),
+                Icon(
+                  open
+                      ? Icons.keyboard_arrow_up_rounded
+                      : Icons.keyboard_arrow_down_rounded,
+                  size: 18,
+                  color: c.textMuted,
+                ),
+              ],
+            ),
+          ),
+          if (open) ...[
+            const SizedBox(height: 6),
+            // 🔧 طبق درخواست: «حذف» و «اعمال» آیکن شدند و در همان ردیفِ سه
+            // سوییچ، منتهی‌الیه سمتِ چپ (اول حذف، بعد اعمال) قرار گرفتند
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: Wrap(
+                    spacing: 10,
+                    runSpacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      sw('att', 'پیوست‌ها'),
+                      sw('hist', 'تاریخچه'),
+                      sw('chk', 'چک‌لیست'),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'حذف',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () => _removeViewer(v['id']),
+                  icon: Icon(
+                    Icons.delete_outline_rounded,
+                    size: 20,
+                    color: c.danger,
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'اعمال',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () => _applyViewerPermission(v),
+                  icon: Icon(Icons.check_rounded, size: 22, color: c.success),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   /// ردیفِ «موعد انجام» — مثلِ [_infoRow] ولی با دو آیکنِ کوچکِ عملیاتی
   /// جلویِ تاریخ: تمدیدِ موعد (برایِ مسئولِ فعلی، وقتی واقعاً امکانش
   /// هست — همان شرطِ دکمه‌ی شناورِ «تمدید موعد») و حذفِ موعد (فقط وقتی
@@ -5526,6 +5942,20 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         t['task_type'] == 'periodic' &&
         t['creator_id']?.toString() == t['assignee_id']?.toString() &&
         hasDueDate;
+    // 🔧 طبق درخواست (مثلِ نسخه‌ی وب): وقتی کار موعد ندارد (مثلاً موعدش
+    // حذف شده)، علامتِ «+» برایِ مسئولِ انجام تا بتواند موعد بگذارد
+    final canSetDueDate =
+        !hasDueDate &&
+        isAssignee &&
+        t['task_type'] == 'periodic' &&
+        t['is_workflow_task'] != 1 &&
+        t['is_workflow_task'] != true &&
+        !isPending &&
+        status != 'completed' &&
+        status != 'approved' &&
+        status != 'rejected' &&
+        t['has_pending_deadline_request'] != 1 &&
+        t['has_pending_deadline_request'] != true;
 
     return Row(
       children: [
@@ -5541,27 +5971,45 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         const SizedBox(width: 10),
         Text('موعد انجام', style: TextStyle(fontSize: 13, color: c.textMuted)),
         const Spacer(),
-        if (canExtend)
-          GestureDetector(
-            onTap: _showRequestDeadlineDialog,
-            child: Icon(Icons.event_repeat_rounded, size: 17, color: c.primary),
-          ),
-        if (canClear) ...[
-          if (canExtend) const SizedBox(width: 10),
-          GestureDetector(
-            onTap: _confirmClearDueDate,
-            child: Icon(Icons.event_busy_rounded, size: 17, color: c.danger),
-          ),
-        ],
-        if (canExtend || canClear) const SizedBox(width: 8),
+        // 🔧 طبق درخواست (مثلِ وب): اول تاریخ، بعد آیکن‌ها؛ هر آیکن یک
+        // مربعِ ۲۶×۲۶ با پس‌زمینه‌ی طوسیِ روشن و آیکنِ طوسی
+        // (.deadline-request-icon) که با لمس رنگِ معنایی‌اش را می‌گیرد —
+        // تمدید: ساعت‌شنی/سبز، حذف: ضربدر/قرمز، تعیینِ موعد: «+»/سبز
         Text(
-          _toShamsi(t['due_date']),
+          hasDueDate ? _toShamsi(t['due_date']) : 'بدون موعد',
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w600,
             color: c.textStrong,
           ),
         ),
+        if (canExtend) ...[
+          const SizedBox(width: 8),
+          _DeadlineIconButton(
+            icon: Icons.hourglass_bottom_rounded,
+            activeColor: const Color(0xFF1B7B39),
+            tooltip: 'درخواست تمدید موعد انجام',
+            onTap: _showRequestDeadlineDialog,
+          ),
+        ],
+        if (canSetDueDate) ...[
+          const SizedBox(width: 8),
+          _DeadlineIconButton(
+            icon: Icons.add_rounded,
+            activeColor: const Color(0xFF1B7B39),
+            tooltip: 'تعیین موعد',
+            onTap: () => _showRequestDeadlineDialog(setNew: true),
+          ),
+        ],
+        if (canClear) ...[
+          const SizedBox(width: 8),
+          _DeadlineIconButton(
+            icon: Icons.close_rounded,
+            activeColor: const Color(0xFFDC2626),
+            tooltip: 'حذف موعد انجام (این کار بدون ددلاین می‌ماند)',
+            onTap: _confirmClearDueDate,
+          ),
+        ],
       ],
     );
   }
@@ -5610,29 +6058,25 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     );
   }
 
-  Widget _chip(String label, Color color) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-    decoration: BoxDecoration(
-      color: color.withValues(alpha: 0.14),
-      borderRadius: BorderRadius.circular(AppRadius.chip),
-    ),
-    child: Text(
-      label,
-      style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w600),
-    ),
-  );
+  // رنگِ بنفشِ هدرِ کار — همان #8e57fe نسخه‌ی وب
+  static const _headerPurple = Color(0xFF8E57FE);
 
-  // 🔧 طبق عکسِ ارسالی: نشانِ وضعیت فقط قاب دارد (بدونِ پرشدگی)، برخلافِ
-  // نشان‌هایِ اولویت/نوع که پرشده‌اند
-  Widget _outlineChip(String label, Color color) => Container(
+  // بجِ رویِ هدرِ بنفش — مثلِ وب، پس‌زمینه‌ی روشن و متنِ رنگی (کنتراستِ ثابت)
+  Widget _headerBadge(
+    String label, {
+    required Color bg,
+    required Color fg,
+    Color? border,
+  }) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
     decoration: BoxDecoration(
-      border: Border.all(color: color.withValues(alpha: 0.5)),
+      color: bg,
       borderRadius: BorderRadius.circular(AppRadius.chip),
+      border: Border.all(color: border ?? Colors.transparent),
     ),
     child: Text(
       label,
-      style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w600),
+      style: TextStyle(fontSize: 11, color: fg, fontWeight: FontWeight.w600),
     ),
   );
 }
@@ -5848,6 +6292,61 @@ class _ChecklistAssigneeSheetState extends State<_ChecklistAssigneeSheet> {
         label,
         style: TextStyle(fontSize: 14, color: c.textStrong),
         textAlign: TextAlign.right,
+      ),
+    );
+  }
+}
+
+/// آیکنِ کنارِ «موعد انجام» — مثلِ .deadline-request-icon نسخه‌ی وب:
+/// مربعِ ۲۶×۲۶، پس‌زمینه‌ی #e9e9e9 و آیکنِ #9ca3af؛ چون موبایل «هاور»
+/// ندارد، هنگامِ لمس پس‌زمینه رنگِ معنایی و آیکن سفید می‌شود
+class _DeadlineIconButton extends StatefulWidget {
+  final IconData icon;
+  final Color activeColor;
+  final String tooltip;
+  final VoidCallback onTap;
+  const _DeadlineIconButton({
+    required this.icon,
+    required this.activeColor,
+    required this.tooltip,
+    required this.onTap,
+  });
+
+  @override
+  State<_DeadlineIconButton> createState() => _DeadlineIconButtonState();
+}
+
+class _DeadlineIconButtonState extends State<_DeadlineIconButton> {
+  bool _pressed = false;
+
+  void _set(bool v) {
+    if (mounted && _pressed != v) setState(() => _pressed = v);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: widget.tooltip,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: (_) => _set(true),
+        onTapCancel: () => _set(false),
+        onTapUp: (_) => _set(false),
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          width: 26,
+          height: 26,
+          decoration: BoxDecoration(
+            color: _pressed ? widget.activeColor : const Color(0xFFE9E9E9),
+            borderRadius: BorderRadius.circular(AppRadius.chip),
+          ),
+          child: Icon(
+            widget.icon,
+            size: 16,
+            color: _pressed ? Colors.white : const Color(0xFF9CA3AF),
+          ),
+        ),
       ),
     );
   }

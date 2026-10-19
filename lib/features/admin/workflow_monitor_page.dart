@@ -4,10 +4,12 @@ import 'package:get/get.dart';
 import 'package:shamsi_date/shamsi_date.dart';
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_radius.dart';
 import '../../core/utils/persian_number.dart';
 import '../../core/widgets/app_snack.dart';
 import '../../core/widgets/scrollable_chip_row.dart';
 import '../shell/widgets/app_bottom_nav.dart';
+import '../../core/navigation/app_nav.dart';
 
 /// «نظارت بر روتین‌های فعال» — پورتِ pages/workflow-monitor.php برایِ
 /// موبایل. آدرسِ داده دقیقاً همان API نسخه‌ی وب است:
@@ -66,6 +68,10 @@ class _WorkflowMonitorPageState extends State<WorkflowMonitorPage> {
   String _filter =
       'active'; // all|active|in_progress|delayed|completed|cancelled
   String? _routineId;
+  // 🔧 طبق درخواست (مثلِ وب — فیلترِ «واحد»): واحدِ مرحله‌ی فعلیِ روتین
+  // (current_section)، فهرست از activity-sections.php
+  List<dynamic> _sections = [];
+  String? _sectionKey;
   bool _onlyMine = false;
   String _query = '';
 
@@ -93,7 +99,7 @@ class _WorkflowMonitorPageState extends State<WorkflowMonitorPage> {
         });
       } else {
         setState(() {
-          _error = data['message']?.toString() ?? 'خطا در دریافتِ روتین‌ها';
+          _error = data['message']?.toString() ?? 'خطا در دریافت روتین‌ها';
           _isLoading = false;
         });
       }
@@ -101,12 +107,25 @@ class _WorkflowMonitorPageState extends State<WorkflowMonitorPage> {
       if (routinesData['success'] == true) {
         _routines = routinesData['routines'] as List? ?? [];
       }
-    } catch (_) {
+      _loadSections();
+    } catch (e) {
       setState(() {
-        _error = 'خطا در اتصال به سرور — احتمالاً دسترسیِ لازم را ندارید';
+        _error = ApiClient.errorMessage(e, 'خطا در اتصال به سرور');
         _isLoading = false;
       });
     }
+  }
+
+  // جدا و بی‌صدا — اگر نیامد، فقط فیلترِ «واحد» نمایش داده نمی‌شود
+  Future<void> _loadSections() async {
+    try {
+      final res = await ApiClient.dio.get(
+        '/api/organization/activity-sections.php',
+      );
+      if (res.data['success'] == true && mounted) {
+        setState(() => _sections = res.data['sections'] as List? ?? []);
+      }
+    } catch (_) {}
   }
 
   List<dynamic> get _filtered {
@@ -123,6 +142,11 @@ class _WorkflowMonitorPageState extends State<WorkflowMonitorPage> {
     if (_routineId != null) {
       list = list
           .where((w) => w['workflow_id']?.toString() == _routineId)
+          .toList();
+    }
+    if (_sectionKey != null) {
+      list = list
+          .where((w) => w['current_section']?.toString() == _sectionKey)
           .toList();
     }
     if (_onlyMine) {
@@ -144,11 +168,15 @@ class _WorkflowMonitorPageState extends State<WorkflowMonitorPage> {
     return list;
   }
 
+  int _countStatus(String status) =>
+      _workflows.where((w) => w['status'] == status).length;
+
+  // مثلِ وب: parseInt(w.progress) || 0 — پیشرفت ممکن است رشته باشد
   int get _avgProgress {
     if (_workflows.isEmpty) return 0;
     final sum = _workflows.fold<num>(
       0,
-      (s, w) => s + (w['progress'] is num ? w['progress'] as num : 0),
+      (s, w) => s + (num.tryParse(w['progress']?.toString() ?? '') ?? 0),
     );
     return (sum / _workflows.length).round();
   }
@@ -160,20 +188,20 @@ class _WorkflowMonitorPageState extends State<WorkflowMonitorPage> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         backgroundColor: c.surface,
         title: Text(
-          'حذفِ روتین',
+          'حذف روتین',
           style: TextStyle(color: c.textStrong, fontSize: 15),
         ),
         content: Text(
-          '«${w['title'] ?? ''}» حذف شود؟ این کار قابلِ بازگشت است.',
+          '«${w['title'] ?? ''}» حذف شود؟ این کار قابل بازگشت است.',
           style: TextStyle(color: c.textMuted, fontSize: 13),
         ),
         actions: [
           TextButton(
-            onPressed: () => Get.back(result: false),
+            onPressed: () => AppNav.back(result: false),
             child: const Text('انصراف'),
           ),
           TextButton(
-            onPressed: () => Get.back(result: true),
+            onPressed: () => AppNav.back(result: true),
             child: Text('حذف', style: TextStyle(color: c.danger)),
           ),
         ],
@@ -263,7 +291,7 @@ class _WorkflowMonitorPageState extends State<WorkflowMonitorPage> {
               angle: math.pi,
               child: const Icon(Icons.arrow_forward_ios_rounded, size: 20),
             ),
-            onPressed: () => Get.back(),
+            onPressed: () => AppNav.back(),
           ),
         ),
         body: _isLoading
@@ -306,21 +334,51 @@ class _WorkflowMonitorPageState extends State<WorkflowMonitorPage> {
                     24 + MediaQuery.of(context).padding.bottom,
                   ),
                   children: [
+                    // 🔧 طبق درخواست (مثلِ وب — stats-grid): چهار کارت، آمار از
+                    // روی همان فهرستِ کامل (loadStats/updateAvgProgress وب)
                     Row(
                       children: [
                         Expanded(
                           child: _statCard(
                             c,
-                            'تعداد',
-                            toPersianDigits(_workflows.length),
+                            icon: Icons.play_circle_outline_rounded,
+                            tint: const Color(0xFF2563EB),
+                            label: 'در حال اجرا',
+                            value: toPersianDigits(_countStatus('in_progress')),
                           ),
                         ),
                         const SizedBox(width: 10),
                         Expanded(
                           child: _statCard(
                             c,
-                            'میانگین پیشرفت',
-                            toPersianDigits('$_avgProgress٪'),
+                            icon: Icons.warning_amber_rounded,
+                            tint: const Color(0xFFEF4444),
+                            label: 'دارای تأخیر',
+                            value: toPersianDigits(_countStatus('delayed')),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _statCard(
+                            c,
+                            icon: Icons.check_circle_outline_rounded,
+                            tint: const Color(0xFF1B7B39),
+                            label: 'تکمیل شده',
+                            value: toPersianDigits(_countStatus('completed')),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _statCard(
+                            c,
+                            icon: Icons.trending_up_rounded,
+                            tint: const Color(0xFFF59E0B),
+                            label: 'میانگین پیشرفت',
+                            value: toPersianDigits('$_avgProgress٪'),
                           ),
                         ),
                       ],
@@ -330,7 +388,7 @@ class _WorkflowMonitorPageState extends State<WorkflowMonitorPage> {
                       onChanged: (v) => setState(() => _query = v),
                       style: TextStyle(color: c.textStrong, fontSize: 14),
                       decoration: InputDecoration(
-                        hintText: 'جستجو بر اساسِ عنوان یا شناسه...',
+                        hintText: 'جستجو بر اساس عنوان یا شناسه...',
                         hintStyle: TextStyle(color: c.textMuted, fontSize: 13),
                         prefixIcon: Icon(
                           Icons.search_rounded,
@@ -377,8 +435,9 @@ class _WorkflowMonitorPageState extends State<WorkflowMonitorPage> {
                               isExpanded: true,
                               dropdownColor: c.surface,
                               style: TextStyle(
+                                fontFamily: 'Vazir',
                                 color: c.textStrong,
-                                fontSize: 12.5,
+                                fontSize: 13,
                               ),
                               decoration: InputDecoration(
                                 isDense: true,
@@ -411,6 +470,51 @@ class _WorkflowMonitorPageState extends State<WorkflowMonitorPage> {
                               onChanged: (v) => setState(() => _routineId = v),
                             ),
                           ),
+                        if (_sections.isNotEmpty) ...[
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: DropdownButtonFormField<String>(
+                              initialValue: _sectionKey,
+                              isExpanded: true,
+                              dropdownColor: c.surface,
+                              style: TextStyle(
+                                fontFamily: 'Vazir',
+                                color: c.textStrong,
+                                fontSize: 13,
+                              ),
+                              decoration: InputDecoration(
+                                isDense: true,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 8,
+                                ),
+                                filled: true,
+                                fillColor: c.surface,
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide: BorderSide(color: c.borderSoft),
+                                ),
+                              ),
+                              items: [
+                                const DropdownMenuItem(
+                                  value: null,
+                                  child: Text('همه واحدها'),
+                                ),
+                                ..._sections.map(
+                                  (s) => DropdownMenuItem(
+                                    value: s['section_key'].toString(),
+                                    child: Text(
+                                      s['section_label']?.toString() ??
+                                          s['section_key'].toString(),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                              onChanged: (v) => setState(() => _sectionKey = v),
+                            ),
+                          ),
+                        ],
                         const SizedBox(width: 8),
                         GestureDetector(
                           onTap: () => setState(() => _onlyMine = !_onlyMine),
@@ -463,25 +567,53 @@ class _WorkflowMonitorPageState extends State<WorkflowMonitorPage> {
     );
   }
 
-  Widget _statCard(AppColors c, String label, String value) => Container(
-    padding: const EdgeInsets.symmetric(vertical: 12),
+  /// کارتِ آمار — مثلِ .stat-tile وب: آیکن در مربعِ رنگیِ کم‌رنگ + عدد و برچسب
+  Widget _statCard(
+    AppColors c, {
+    required IconData icon,
+    required Color tint,
+    required String label,
+    required String value,
+  }) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
     decoration: BoxDecoration(
       color: c.surface,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(AppRadius.card),
       border: Border.all(color: c.borderSoft),
     ),
-    child: Column(
+    child: Row(
       children: [
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            color: c.primary,
+        Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: tint.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(AppRadius.chip + 3),
+          ),
+          child: Icon(icon, size: 20, color: tint),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                value,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: c.textStrong,
+                ),
+              ),
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 11.5, color: c.textMuted),
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 2),
-        Text(label, style: TextStyle(fontSize: 11, color: c.textMuted)),
       ],
     ),
   );
@@ -662,7 +794,7 @@ class _WorkflowDetailSheetState extends State<_WorkflowDetailSheet> {
         });
       } else {
         setState(() {
-          _error = data['message']?.toString() ?? 'خطا در دریافتِ جزئیات';
+          _error = data['message']?.toString() ?? 'خطا در دریافت جزئیات';
           _isLoading = false;
         });
       }
@@ -802,7 +934,7 @@ class _WorkflowDetailSheetState extends State<_WorkflowDetailSheet> {
                       ),
                       child: OutlinedButton.icon(
                         onPressed: () {
-                          Get.back();
+                          AppNav.back();
                           _confirmDeleteFromSheet(context);
                         },
                         icon: Icon(
@@ -811,7 +943,7 @@ class _WorkflowDetailSheetState extends State<_WorkflowDetailSheet> {
                           color: c.danger,
                         ),
                         label: Text(
-                          'حذفِ این روتین',
+                          'حذف این روتین',
                           style: TextStyle(color: c.danger),
                         ),
                         style: OutlinedButton.styleFrom(
@@ -839,7 +971,7 @@ class _WorkflowDetailSheetState extends State<_WorkflowDetailSheet> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         backgroundColor: c.surface,
         title: Text(
-          'حذفِ روتین',
+          'حذف روتین',
           style: TextStyle(color: c.textStrong, fontSize: 15),
         ),
         content: Text(
@@ -848,11 +980,11 @@ class _WorkflowDetailSheetState extends State<_WorkflowDetailSheet> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Get.back(result: false),
+            onPressed: () => AppNav.back(result: false),
             child: const Text('انصراف'),
           ),
           TextButton(
-            onPressed: () => Get.back(result: true),
+            onPressed: () => AppNav.back(result: true),
             child: Text('حذف', style: TextStyle(color: c.danger)),
           ),
         ],

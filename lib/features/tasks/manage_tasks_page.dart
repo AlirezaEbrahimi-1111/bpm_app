@@ -1,9 +1,9 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 import '../../core/theme/app_colors.dart';
 import 'my_tasks_page.dart';
 import '../shell/widgets/app_bottom_nav.dart';
+import '../../core/navigation/app_nav.dart';
 
 /// «مدیریت کارها» — همان صفحه‌ی «کارها» با همان امکانات، ولی روی
 /// فهرستِ کاملِ کارهایی که کاربر اجازه‌ی دیدنشان را دارد (API نسخه‌ی وب:
@@ -36,7 +36,7 @@ class ManageTasksPage extends StatelessWidget {
               angle: math.pi,
               child: const Icon(Icons.arrow_forward_ios_rounded, size: 20),
             ),
-            onPressed: () => Get.back(),
+            onPressed: () => AppNav.back(),
           ),
         ),
         body: MyTasksPage(user: user, manageMode: true),

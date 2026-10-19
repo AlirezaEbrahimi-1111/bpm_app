@@ -4,6 +4,7 @@ import '../../../core/widgets/app_snack.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/task_group_style.dart';
+import '../../../core/navigation/app_nav.dart';
 
 /// شیتِ «مدیریتِ گروه‌های کار» — CRUD کامل (نام/رنگ/آیکون/دامنه)، دقیقاً
 /// معادلِ `pages/group-management.php` در دسکتاپ. خودش لیستش را از
@@ -117,12 +118,12 @@ class _TaskGroupManagementSheetState extends State<_TaskGroupManagementSheet> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Get.back(),
+            onPressed: () => AppNav.back(),
             child: Text('انصراف', style: TextStyle(color: c.textMuted)),
           ),
           TextButton(
             onPressed: () {
-              Get.back();
+              AppNav.back();
               _delete(group);
             },
             child: Text('حذف', style: TextStyle(color: c.danger)),
@@ -344,6 +345,7 @@ class _TaskGroupEditorSheetState extends State<_TaskGroupEditorSheet> {
   }
 
   Future<void> _save() async {
+    if (_isSaving) return;
     final name = _nameController.text.trim();
     if (name.isEmpty) {
       AppSnack.error('خطا', 'نام گروه الزامی است');
@@ -374,7 +376,7 @@ class _TaskGroupEditorSheetState extends State<_TaskGroupEditorSheet> {
       if (!mounted) return;
       setState(() => _isSaving = false);
       if (data['success'] == true) {
-        Get.back(result: true);
+        AppNav.back(result: true);
         AppSnack.success(
           '✅ موفق',
           data['message'] ??
@@ -408,166 +410,163 @@ class _TaskGroupEditorSheetState extends State<_TaskGroupEditorSheet> {
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
       ),
       padding: EdgeInsets.fromLTRB(
-          20,
-          12,
-          20,
-          24 + MediaQuery.of(context).padding.bottom,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: c.borderSoft,
-                  borderRadius: BorderRadius.circular(2),
-                ),
+        20,
+        12,
+        20,
+        24 + MediaQuery.of(context).padding.bottom,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: c.borderSoft,
+                borderRadius: BorderRadius.circular(2),
               ),
             ),
-            const SizedBox(height: 16),
-            Text(
-              _isEdit ? 'ویرایش گروه' : 'گروه جدید',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-                color: c.textStrong,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            _isEdit ? 'ویرایش گروه' : 'گروه جدید',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+              color: c.textStrong,
+            ),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _nameController,
+            textAlign: TextAlign.right,
+            style: TextStyle(color: c.textStrong),
+            decoration: InputDecoration(
+              hintText: 'نام گروه',
+              hintStyle: TextStyle(color: c.textMuted),
+              filled: true,
+              fillColor: c.surface,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: c.borderSoft),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: c.borderSoft),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: c.primary, width: 1.5),
               ),
             ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _nameController,
-              textAlign: TextAlign.right,
-              style: TextStyle(color: c.textStrong),
-              decoration: InputDecoration(
-                hintText: 'نام گروه',
-                hintStyle: TextStyle(color: c.textMuted),
-                filled: true,
-                fillColor: c.surface,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: c.borderSoft),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: c.borderSoft),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: c.primary, width: 1.5),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text('رنگ', style: TextStyle(fontSize: 12.5, color: c.textMuted)),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: taskGroupColors.map((clr) {
-                final selected = clr == _color;
-                return GestureDetector(
-                  onTap: () => setState(() => _color = clr),
-                  child: Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      color: parseTaskGroupColor(clr),
-                      shape: BoxShape.circle,
-                      border: selected
-                          ? Border.all(color: c.textStrong, width: 2)
-                          : null,
-                    ),
-                    child: selected
-                        ? const Icon(Icons.check, color: Colors.white, size: 16)
+          ),
+          const SizedBox(height: 16),
+          Text('رنگ', style: TextStyle(fontSize: 12.5, color: c.textMuted)),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: taskGroupColors.map((clr) {
+              final selected = clr == _color;
+              return GestureDetector(
+                onTap: () => setState(() => _color = clr),
+                child: Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: parseTaskGroupColor(clr),
+                    shape: BoxShape.circle,
+                    border: selected
+                        ? Border.all(color: c.textStrong, width: 2)
                         : null,
                   ),
-                );
-              }).toList(),
-            ),
+                  child: selected
+                      ? const Icon(Icons.check, color: Colors.white, size: 16)
+                      : null,
+                ),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 16),
+          Text('آیکون', style: TextStyle(fontSize: 12.5, color: c.textMuted)),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: taskGroupIconKeys.map((key) {
+              final selected = key == _icon;
+              return GestureDetector(
+                onTap: () => setState(() => _icon = key),
+                child: Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: selected ? c.primary : c.surface,
+                    shape: BoxShape.circle,
+                    border: selected ? null : Border.all(color: c.borderSoft),
+                  ),
+                  child: Icon(
+                    taskGroupIconFor(key),
+                    size: 17,
+                    color: selected ? Colors.white : c.textMuted,
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+          if (!_isEdit) ...[
             const SizedBox(height: 16),
-            Text('آیکون', style: TextStyle(fontSize: 12.5, color: c.textMuted)),
+            Text('دامنه', style: TextStyle(fontSize: 12.5, color: c.textMuted)),
             const SizedBox(height: 8),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: taskGroupIconKeys.map((key) {
-                final selected = key == _icon;
-                return GestureDetector(
-                  onTap: () => setState(() => _icon = key),
-                  child: Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: selected ? c.primary : c.surface,
-                      shape: BoxShape.circle,
-                      border: selected ? null : Border.all(color: c.borderSoft),
-                    ),
-                    child: Icon(
-                      taskGroupIconFor(key),
-                      size: 17,
-                      color: selected ? Colors.white : c.textMuted,
-                    ),
-                  ),
-                );
-              }).toList(),
+            Row(
+              children: [
+                Expanded(
+                  child: _scopeChip(c, label: 'شخصی', value: 'personal'),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _scopeChip(c, label: 'سازمانی', value: 'org'),
+                ),
+              ],
             ),
-            if (!_isEdit) ...[
-              const SizedBox(height: 16),
-              Text(
-                'دامنه',
-                style: TextStyle(fontSize: 12.5, color: c.textMuted),
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: _scopeChip(c, label: 'شخصی', value: 'personal'),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _scopeChip(c, label: 'سازمانی', value: 'org'),
-                  ),
-                ],
-              ),
-              Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: Text(
-                  'گروه سازمانی برای همه‌ی کاربران سازمان دیده می‌شود؛ فقط مدیران می‌توانند بسازند.',
-                  style: TextStyle(fontSize: 11, color: c.textMuted),
-                ),
-              ),
-            ],
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: ElevatedButton(
-                onPressed: _isSaving ? null : _save,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: c.primary,
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: _isSaving
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2,
-                        ),
-                      )
-                    : Text(_isEdit ? 'ذخیره تغییرات' : 'ساخت گروه'),
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                'گروه سازمانی برای همه‌ی کاربران سازمان دیده می‌شود؛ فقط مدیران می‌توانند بسازند.',
+                style: TextStyle(fontSize: 11, color: c.textMuted),
               ),
             ),
           ],
-        ),
+          const SizedBox(height: 20),
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: ElevatedButton(
+              onPressed: _isSaving ? null : _save,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: c.primary,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: _isSaving
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2,
+                      ),
+                    )
+                  : Text(_isEdit ? 'ذخیره تغییرات' : 'ساخت گروه'),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

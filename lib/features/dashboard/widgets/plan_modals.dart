@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:shamsi_date/shamsi_date.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_radius.dart';
 import '../../../core/utils/persian_number.dart';
 import '../../tasks/task_detail_page.dart';
 import '../../tasks/widgets/task_quick_actions_sheet.dart';
@@ -124,7 +125,9 @@ void _showPlanModal(
       child: Container(
         decoration: BoxDecoration(
           color: c.surfaceContainerLow,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          borderRadius: const BorderRadius.vertical(
+            top: Radius.circular(AppRadius.sheet),
+          ),
         ),
         child: SafeArea(
           top: false,
@@ -417,7 +420,9 @@ class _WeekPlanSheetState extends State<_WeekPlanSheet> {
       child: Container(
         decoration: BoxDecoration(
           color: c.surfaceContainerLow,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          borderRadius: const BorderRadius.vertical(
+            top: Radius.circular(AppRadius.sheet),
+          ),
         ),
         child: SafeArea(
           top: false,
@@ -662,12 +667,13 @@ class _WeekPlanSheetState extends State<_WeekPlanSheet> {
 
   Widget _weekNav(AppColors c) {
     return Container(
-      // 🔧 طبق درخواست: مستطیلِ بدونِ گردیِ گوشه، و عرضِ کمتر (هم پدینگ و
-      // هم اندازه‌ی ناحیه‌ی لمسیِ دکمه‌های فلش کوچک‌تر شد) تا متن به لبه‌ی
-      // کادر نزدیک‌تر باشد
+      // 🔧 طبق درخواست: عرضِ کمتر (هم پدینگ و هم اندازه‌ی ناحیه‌ی لمسیِ
+      // دکمه‌های فلش کوچک‌تر شد) تا متن به لبه‌ی کادر نزدیک‌تر باشد؛ و
+      // گردیِ گوشه طبقِ ثابتِ سراسریِ چیپ‌ها (AppRadius.chip)
       padding: const EdgeInsets.symmetric(horizontal: 8),
       decoration: BoxDecoration(
         color: c.surface,
+        borderRadius: BorderRadius.circular(AppRadius.chip),
         border: Border.all(color: c.borderSoft),
       ),
       child: Row(
@@ -795,7 +801,9 @@ class _MonthPlanSheetState extends State<_MonthPlanSheet> {
       child: Container(
         decoration: BoxDecoration(
           color: c.surfaceContainerLow,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          borderRadius: const BorderRadius.vertical(
+            top: Radius.circular(AppRadius.sheet),
+          ),
         ),
         child: SafeArea(
           top: false,
@@ -1005,12 +1013,13 @@ class _MonthPlanSheetState extends State<_MonthPlanSheet> {
 
   Widget _monthNav(AppColors c, Jalali monthStart) {
     return Container(
-      // 🔧 طبق درخواست: مستطیلِ بدونِ گردیِ گوشه، و عرضِ کمتر (هم پدینگ و
-      // هم اندازه‌ی ناحیه‌ی لمسیِ دکمه‌های فلش کوچک‌تر شد) تا متن به لبه‌ی
-      // کادر نزدیک‌تر باشد
+      // 🔧 طبق درخواست: عرضِ کمتر (هم پدینگ و هم اندازه‌ی ناحیه‌ی لمسیِ
+      // دکمه‌های فلش کوچک‌تر شد) تا متن به لبه‌ی کادر نزدیک‌تر باشد؛ و
+      // گردیِ گوشه طبقِ ثابتِ سراسریِ چیپ‌ها (AppRadius.chip)
       padding: const EdgeInsets.symmetric(horizontal: 8),
       decoration: BoxDecoration(
         color: c.surface,
+        borderRadius: BorderRadius.circular(AppRadius.chip),
         border: Border.all(color: c.borderSoft),
       ),
       child: Row(

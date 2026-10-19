@@ -20,6 +20,9 @@ Future<DateTime?> showCustomPersianDatePicker(
   DateTime? initialDate,
   Jalali? firstDate,
   Jalali? lastDate,
+  // 🔧 طبق درخواست (تمدید موعد): با یک لمس روی روز، همان تاریخ انتخاب و
+  // تقویم بسته می‌شود — بدونِ نیاز به دکمه‌ی «تأیید»
+  bool pickOnTap = false,
 }) {
   return showModalBottomSheet<DateTime>(
     context: context,
@@ -33,6 +36,7 @@ Future<DateTime?> showCustomPersianDatePicker(
       borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
     ),
     builder: (_) => _PersianDatePickerSheet(
+      pickOnTap: pickOnTap,
       initialDate: initialDate,
       firstDate: firstDate ?? Jalali.now(),
       lastDate: lastDate ?? Jalali(1410, 12, 29),
@@ -44,8 +48,10 @@ class _PersianDatePickerSheet extends StatefulWidget {
   final DateTime? initialDate;
   final Jalali firstDate;
   final Jalali lastDate;
+  final bool pickOnTap;
 
   const _PersianDatePickerSheet({
+    this.pickOnTap = false,
     this.initialDate,
     required this.firstDate,
     required this.lastDate,
@@ -228,7 +234,13 @@ class _PersianDatePickerSheetState extends State<_PersianDatePickerSheet> {
 
                   return GestureDetector(
                     onTap: inRange
-                        ? () => setState(() => _selected = date)
+                        ? () {
+                            if (widget.pickOnTap) {
+                              Navigator.of(context).pop(date.toDateTime());
+                              return;
+                            }
+                            setState(() => _selected = date);
+                          }
                         : null,
                     child: Container(
                       alignment: Alignment.center,

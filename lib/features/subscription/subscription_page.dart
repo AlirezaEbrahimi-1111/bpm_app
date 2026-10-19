@@ -7,6 +7,7 @@ import 'plan_detail_page.dart';
 import 'plan_details_sheet.dart';
 import 'free_plan_detail_page.dart';
 import '../shell/widgets/app_bottom_nav.dart';
+import '../../core/navigation/app_nav.dart';
 
 /// «خرید و ارتقای اشتراک» — طبقِ طرحِ ارسالی (روشن + تاریک).
 ///
@@ -110,7 +111,7 @@ class SubscriptionPage extends StatelessWidget {
               angle: math.pi,
               child: const Icon(Icons.arrow_forward_ios_rounded, size: 20),
             ),
-            onPressed: () => Get.back(),
+            onPressed: () => AppNav.back(),
           ),
         ),
         body: ListView(
@@ -133,7 +134,7 @@ class SubscriptionPage extends StatelessWidget {
                 'تحلیل گلوگاه‌ها',
                 'روتین‌های چند مرحله‌ای',
                 'تعریف واحدها و ارجاع نامحدود',
-                'دسترسیِ پنلِ وب',
+                'دسترسی پنل وب',
               ],
               badgeAsset: 'assets/images/subscription/badge_special_offer.webp',
               glowIntensity: 1,
@@ -151,8 +152,8 @@ class SubscriptionPage extends StatelessWidget {
               subtitle: 'تیمی و همکاران',
               features: const [
                 'نمای برنامه روزانه، هفتگی و ماهانه',
-                'کارِ تیمی و آنلاین',
-                'ایجادِ کار برایِ همکاران',
+                'کار تیمی و آنلاین',
+                'ایجاد کار برای همکاران',
               ],
               glowIntensity: 0.55,
               isCurrent: silverIsCurrent,
@@ -168,9 +169,9 @@ class SubscriptionPage extends StatelessWidget {
               title: 'پلن رایگان',
               subtitle: 'پایه شخصی',
               features: const [
-                'مدیریتِ کارهایِ شخصی',
-                'نمایِ ساده و پایه',
-                'دسترسیِ محدود',
+                'مدیریت کارهای شخصی',
+                'نمای ساده و پایه',
+                'دسترسی محدود',
               ],
               glowIntensity: 0.25,
               isCurrent: freeIsCurrent,

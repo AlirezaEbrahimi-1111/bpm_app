@@ -23,6 +23,7 @@ import '../../main.dart';
 import '../../core/theme/theme_controller.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/app_switch.dart';
+import '../../core/navigation/app_nav.dart';
 
 /// منوی کشویی کناری (Drawer)
 /// - هدر گرادیان با اطلاعات کاربر (نام، نقش، واحد، موبایل)
@@ -199,7 +200,7 @@ class _AppDrawerState extends State<AppDrawer> {
                   label: 'داشبورد',
                   selected: currentIndex == 0,
                   onTap: () {
-                    Get.back();
+                    AppNav.back();
                     onTabSelected(0);
                   },
                 ),
@@ -210,7 +211,7 @@ class _AppDrawerState extends State<AppDrawer> {
                   label: 'خرید و ارتقای اشتراک',
                   color: const Color(0xFFF5B94D),
                   onTap: () {
-                    Get.back();
+                    AppNav.back();
                     Get.to(() => const SubscriptionPage());
                   },
                 ),
@@ -219,7 +220,7 @@ class _AppDrawerState extends State<AppDrawer> {
                   icon: Icons.fact_check_outlined,
                   label: 'مدیریت کارها',
                   onTap: () {
-                    Get.back();
+                    AppNav.back();
                     Get.to(() => ManageTasksPage(user: user));
                   },
                 ),
@@ -231,7 +232,7 @@ class _AppDrawerState extends State<AppDrawer> {
                   label: 'کارهای من',
                   selected: currentIndex == 3,
                   onTap: () {
-                    Get.back();
+                    AppNav.back();
                     onTabSelected(3);
                   },
                 ),
@@ -241,8 +242,8 @@ class _AppDrawerState extends State<AppDrawer> {
                   label: 'کارهای واگذار شده',
                   feature: PlanFeature.delegatedTasks,
                   onTap: () {
-                    Get.back();
-                    Get.to(() => const DelegatedTasksPage());
+                    AppNav.back();
+                    Get.to(() => DelegatedTasksPage(user: user));
                   },
                 ),
                 _drawerItem(
@@ -263,7 +264,9 @@ class _AppDrawerState extends State<AppDrawer> {
                 // نقش مخفی شوند، خودِ منو هم مخفی می‌شود.
                 Builder(
                   builder: (context) {
-                    final role = (user['role'] ?? '').toString();
+                    final role =
+                        (ApiClient.currentUser?['role'] ?? user['role'] ?? '')
+                            .toString();
                     final canViewTasks =
                         hasOrgPermission(role, OrgPermission.viewAllOrgTasks) ||
                         hasOrgPermission(role, OrgPermission.viewSectionTasks);
@@ -304,7 +307,7 @@ class _AppDrawerState extends State<AppDrawer> {
                           planLabel: 'نظارت بر کارها',
                           roleAllowed: canViewTasks,
                           onTap: () {
-                            Get.back();
+                            AppNav.back();
                             Get.to(() => const TasksOverviewPage());
                           },
                         ),
@@ -316,7 +319,7 @@ class _AppDrawerState extends State<AppDrawer> {
                           planLabel: 'نظارت بر روتین‌های فعال',
                           roleAllowed: canMonitorRoutines,
                           onTap: () {
-                            Get.back();
+                            AppNav.back();
                             Get.to(() => const WorkflowMonitorPage());
                           },
                         ),
@@ -328,7 +331,7 @@ class _AppDrawerState extends State<AppDrawer> {
                           planLabel: 'گزارش حقوق پرسنل',
                           roleAllowed: canViewPayroll,
                           onTap: () {
-                            Get.back();
+                            AppNav.back();
                             Get.to(() => const PayrollReportPage());
                           },
                         ),
@@ -340,7 +343,9 @@ class _AppDrawerState extends State<AppDrawer> {
                 // دسترسیِ نقش از `org_permissions.dart`، مستقل از قفلِ پلن
                 Builder(
                   builder: (context) {
-                    final role = (user['role'] ?? '').toString();
+                    final role =
+                        (ApiClient.currentUser?['role'] ?? user['role'] ?? '')
+                            .toString();
                     final canManageUsers = hasOrgPermission(
                       role,
                       OrgPermission.manageUsers,
@@ -401,7 +406,7 @@ class _AppDrawerState extends State<AppDrawer> {
                           planLabel: 'مدیریت کاربران',
                           roleAllowed: canManageUsers,
                           onTap: () {
-                            Get.back();
+                            AppNav.back();
                             Get.to(
                               () => ManageUsersPage(currentUserRole: role),
                             );
@@ -418,7 +423,7 @@ class _AppDrawerState extends State<AppDrawer> {
                           planLabel: 'مدیریت واحدهای فعالیت',
                           roleAllowed: canManageSections,
                           onTap: () {
-                            Get.back();
+                            AppNav.back();
                             showManageActivitySectionsSheet(context);
                           },
                         ),
@@ -430,7 +435,7 @@ class _AppDrawerState extends State<AppDrawer> {
                           planLabel: 'مدیریت گروه‌ها',
                           roleAllowed: canManageGroups,
                           onTap: () {
-                            Get.back();
+                            AppNav.back();
                             showTaskGroupManagementSheet(
                               context,
                               onChanged: () {},
@@ -447,7 +452,7 @@ class _AppDrawerState extends State<AppDrawer> {
                           planLabel: 'دستگاه‌های حضور و غیاب',
                           roleAllowed: canViewOrgSettings,
                           onTap: () {
-                            Get.back();
+                            AppNav.back();
                             Get.to(() => const AttendanceDevicesPage());
                           },
                         ),
@@ -461,7 +466,7 @@ class _AppDrawerState extends State<AppDrawer> {
                           planLabel: 'روزهای تعطیل',
                           roleAllowed: canViewOrgSettings,
                           onTap: () {
-                            Get.back();
+                            AppNav.back();
                             Get.to(() => const HolidaysPage());
                           },
                         ),
@@ -476,7 +481,7 @@ class _AppDrawerState extends State<AppDrawer> {
                           planLabel: 'تنظیمات سیستم',
                           roleAllowed: canViewOrgSettings,
                           onTap: () {
-                            Get.back();
+                            AppNav.back();
                             Get.to(() => const SystemSettingsPage());
                           },
                         ),
@@ -526,7 +531,7 @@ class _AppDrawerState extends State<AppDrawer> {
                   icon: Icons.person_outline_rounded,
                   label: 'پروفایل من',
                   onTap: () {
-                    Get.back();
+                    AppNav.back();
                     Get.to(() => ProfilePage(user: user));
                   },
                 ),
@@ -536,7 +541,7 @@ class _AppDrawerState extends State<AppDrawer> {
                   label: 'تنظیمات',
                   selected: currentIndex == 1,
                   onTap: () {
-                    Get.back();
+                    AppNav.back();
                     onTabSelected(1);
                   },
                 ),
@@ -546,7 +551,7 @@ class _AppDrawerState extends State<AppDrawer> {
                   icon: Icons.info_outline_rounded,
                   label: 'درباره ما',
                   onTap: () {
-                    Get.back();
+                    AppNav.back();
                     showAboutSheet(context);
                   },
                 ),
@@ -670,7 +675,7 @@ class _AppDrawerState extends State<AppDrawer> {
         content: const Text('آیا مطمئن هستید که می‌خواهید خارج شوید؟'),
         actions: [
           TextButton(
-            onPressed: () => Get.back(),
+            onPressed: () => AppNav.back(),
             child: Text(
               'انصراف',
               style: TextStyle(
@@ -682,7 +687,7 @@ class _AppDrawerState extends State<AppDrawer> {
           ),
           TextButton(
             onPressed: () async {
-              Get.back();
+              AppNav.back();
               await ApiClient.clearToken();
               Get.offAll(() => const LoginPage());
             },
@@ -736,7 +741,7 @@ class _ThemeToggleTile extends StatelessWidget {
                 onChanged: (v) async {
                   await ThemeController.setDark(v);
                   // 🔧 بعد از تغییر تم، دراور خودکار بسته شود
-                  Get.back();
+                  AppNav.back();
                 },
               ),
             ],

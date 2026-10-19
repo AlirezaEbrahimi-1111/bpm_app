@@ -8,6 +8,7 @@ import '../../core/widgets/app_snack.dart';
 import '../../core/utils/persian_number.dart';
 import '../../core/widgets/app_switch.dart';
 import '../shell/widgets/app_bottom_nav.dart';
+import '../../core/navigation/app_nav.dart';
 
 /// «مدیریت کاربران» — پورتِ صفحه‌ی وب pages/users.php برایِ موبایل.
 /// آدرسِ داده و عملیات دقیقاً همان API نسخه‌ی وب است:
@@ -80,7 +81,7 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
       if (usersData['success'] == true) {
         _users = usersData['users'] as List? ?? [];
       } else {
-        _error = usersData['message']?.toString() ?? 'خطا در دریافتِ کاربران';
+        _error = usersData['message']?.toString() ?? 'خطا در دریافت کاربران';
       }
       final sectionsData = results[1].data;
       if (sectionsData['success'] == true) {
@@ -97,7 +98,7 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
       }
     } catch (e) {
       _error =
-          'خطا در اتصال به سرور — احتمالاً دسترسیِ «مدیریتِ کاربران» ندارید';
+          'خطا در اتصال به سرور — احتمالا دسترسی «مدیریت کاربران» ندارید';
     }
     if (mounted) setState(() => _isLoading = false);
   }
@@ -196,16 +197,16 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         backgroundColor: c.surface,
         title: Text(
-          'کارِ باز دارد',
+          'کار باز دارد',
           style: TextStyle(color: c.textStrong, fontSize: 16),
         ),
         content: Text(
-          '$name هنوز ${toPersianDigits(count)} کارِ باز دارد. قبل از غیرفعال‌سازی، باید تکلیفِ این کارها (واگذاری/تکمیل) مشخص شود. این بخش فعلاً فقط در نسخه‌ی وب انجام‌پذیر است.',
+          '$name هنوز ${toPersianDigits(count)} کار باز دارد. قبل از غیرفعال‌سازی، باید تکلیف این کارها (واگذاری/تکمیل) مشخص شود. این بخش فعلا فقط در نسخه‌ی وب انجام‌پذیر است.',
           style: TextStyle(color: c.textMuted, fontSize: 13.5),
         ),
         actions: [
           TextButton(
-            onPressed: () => Get.back(),
+            onPressed: () => AppNav.back(),
             child: const Text('متوجه شدم'),
           ),
         ],
@@ -225,11 +226,11 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Get.back(result: false),
+            onPressed: () => AppNav.back(result: false),
             child: const Text('انصراف'),
           ),
           TextButton(
-            onPressed: () => Get.back(result: true),
+            onPressed: () => AppNav.back(result: true),
             child: Text('تأیید', style: TextStyle(color: c.primary)),
           ),
         ],
@@ -242,7 +243,7 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
     final name = '${user['first_name'] ?? ''} ${user['last_name'] ?? ''}'
         .trim();
     final confirmed = await _confirm(
-      '🗑️ حذفِ «${name.isEmpty ? 'این کاربر' : name}» — این کار قابلِ بازگشت نیست. مطمئن هستید؟',
+      '🗑️ حذف «${name.isEmpty ? 'این کاربر' : name}» — این کار قابل بازگشت نیست. مطمئن هستید؟',
     );
     if (!confirmed) return;
     try {
@@ -444,7 +445,7 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
                     height: 48,
                     child: ElevatedButton.icon(
                       onPressed: () {
-                        Get.back();
+                        AppNav.back();
                         _openUserFormSheet(user: u);
                       },
                       icon: const Icon(Icons.edit_outlined, size: 18),
@@ -542,128 +543,154 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
               angle: math.pi,
               child: const Icon(Icons.arrow_forward_ios_rounded, size: 20),
             ),
-            onPressed: () => Get.back(),
+            onPressed: () => AppNav.back(),
           ),
         ),
-        floatingActionButton: FloatingActionButton(
-          onPressed: () => _openUserFormSheet(user: null),
-          backgroundColor: c.primary,
-          child: const Icon(
-            Icons.person_add_alt_1_rounded,
-            color: Colors.white,
-          ),
-        ),
-        body: _isLoading
-            ? Center(child: CircularProgressIndicator(color: c.primary))
-            : _error != null
-            ? Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.error_outline_rounded,
-                        size: 48,
-                        color: c.textMuted,
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        _error!,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: c.textMuted),
-                      ),
-                      const SizedBox(height: 16),
-                      TextButton(
-                        onPressed: _load,
-                        child: const Text('تلاش مجدد'),
-                      ),
-                    ],
-                  ),
-                ),
-              )
-            : RefreshIndicator(
-                color: c.primary,
-                onRefresh: _load,
-                child: ListView(
-                  // 🔧 طبق درخواست: فاصله‌ی دکمه‌های ناوبریِ گوشی هم رعایت شود
-                  // تا آخرین کارت پشتِ آن‌ها نرود
-                  padding: EdgeInsets.fromLTRB(
-                    16,
-                    12,
-                    16,
-                    24 + MediaQuery.of(context).padding.bottom,
-                  ),
-                  children: [
-                    TextField(
-                      onChanged: (v) => setState(() => _query = v),
-                      style: TextStyle(color: c.textStrong, fontSize: 14),
-                      decoration: InputDecoration(
-                        hintText: 'جستجوی نام، شماره یا نام‌کاربری...',
-                        hintStyle: TextStyle(color: c.textMuted, fontSize: 13),
-                        prefixIcon: Icon(
-                          Icons.search_rounded,
-                          color: c.textMuted,
-                        ),
-                        filled: true,
-                        fillColor: c.surface,
-                        contentPadding: const EdgeInsets.symmetric(vertical: 4),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          borderSide: BorderSide(color: c.borderSoft),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          borderSide: BorderSide(color: c.borderSoft),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          borderSide: BorderSide(color: c.primary, width: 1.5),
+        // 🔧 طبق درخواست: دکمه‌ی «افزودنِ کار» مثلِ بقیه‌ی صفحات، ثابت وسطِ
+        // نوارِ پایین. دکمه‌ی «افزودنِ کاربر» هم سرِ جایِ قبلی‌اش می‌ماند —
+        // چون Scaffold فقط یک جایِ دکمه‌ی شناور دارد، آن را رویِ body
+        // (همان گوشه‌ی پایینِ سمتِ چپ، ۱۶ از لبه‌ها) گذاشتیم
+        floatingActionButton: const AppCreateTaskFab(),
+        floatingActionButtonLocation: const LoweredDockedFabLocation(),
+        body: Stack(
+          children: [
+            Positioned.fill(
+              child: _isLoading
+                  ? Center(child: CircularProgressIndicator(color: c.primary))
+                  : _error != null
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.error_outline_rounded,
+                              size: 48,
+                              color: c.textMuted,
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              _error!,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: c.textMuted),
+                            ),
+                            const SizedBox(height: 16),
+                            TextButton(
+                              onPressed: _load,
+                              child: const Text('تلاش مجدد'),
+                            ),
+                          ],
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        _statusChip(
-                          c,
-                          'all',
-                          'همه (${toPersianDigits(_users.length)})',
+                    )
+                  : RefreshIndicator(
+                      color: c.primary,
+                      onRefresh: _load,
+                      child: ListView(
+                        // 🔧 طبق درخواست: فاصله‌ی دکمه‌های ناوبریِ گوشی هم رعایت شود
+                        // تا آخرین کارت پشتِ آن‌ها نرود
+                        padding: EdgeInsets.fromLTRB(
+                          16,
+                          12,
+                          16,
+                          24 + MediaQuery.of(context).padding.bottom,
                         ),
-                        const SizedBox(width: 8),
-                        _statusChip(
-                          c,
-                          'active',
-                          'فعال (${toPersianDigits(_users.where((u) => u['is_active'] == 1 || u['is_active'] == true).length)})',
-                        ),
-                        const SizedBox(width: 8),
-                        _statusChip(
-                          c,
-                          'inactive',
-                          'غیرفعال (${toPersianDigits(_users.where((u) => u['is_active'] == 0 || u['is_active'] == false).length)})',
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
-                    if (_filtered.isEmpty)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 60),
-                        child: Center(
-                          child: Text(
-                            'کاربری یافت نشد',
-                            style: TextStyle(color: c.textMuted, fontSize: 14),
+                        children: [
+                          TextField(
+                            onChanged: (v) => setState(() => _query = v),
+                            style: TextStyle(color: c.textStrong, fontSize: 14),
+                            decoration: InputDecoration(
+                              hintText: 'جستجوی نام، شماره یا نام‌کاربری...',
+                              hintStyle: TextStyle(
+                                color: c.textMuted,
+                                fontSize: 13,
+                              ),
+                              prefixIcon: Icon(
+                                Icons.search_rounded,
+                                color: c.textMuted,
+                              ),
+                              filled: true,
+                              fillColor: c.surface,
+                              contentPadding: const EdgeInsets.symmetric(
+                                vertical: 4,
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(14),
+                                borderSide: BorderSide(color: c.borderSoft),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(14),
+                                borderSide: BorderSide(color: c.borderSoft),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(14),
+                                borderSide: BorderSide(
+                                  color: c.primary,
+                                  width: 1.5,
+                                ),
+                              ),
+                            ),
                           ),
-                        ),
-                      )
-                    else
-                      ..._filtered.map((u) => _userCard(c, u)),
-                  ],
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              _statusChip(
+                                c,
+                                'all',
+                                'همه (${toPersianDigits(_users.length)})',
+                              ),
+                              const SizedBox(width: 8),
+                              _statusChip(
+                                c,
+                                'active',
+                                'فعال (${toPersianDigits(_users.where((u) => u['is_active'] == 1 || u['is_active'] == true).length)})',
+                              ),
+                              const SizedBox(width: 8),
+                              _statusChip(
+                                c,
+                                'inactive',
+                                'غیرفعال (${toPersianDigits(_users.where((u) => u['is_active'] == 0 || u['is_active'] == false).length)})',
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 14),
+                          if (_filtered.isEmpty)
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 60),
+                              child: Center(
+                                child: Text(
+                                  'کاربری یافت نشد',
+                                  style: TextStyle(
+                                    color: c.textMuted,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ),
+                            )
+                          else
+                            ..._filtered.map((u) => _userCard(c, u)),
+                        ],
+                      ),
+                    ),
+            ),
+            PositionedDirectional(
+              end: 16,
+              bottom: 16,
+              child: FloatingActionButton(
+                heroTag: null,
+                onPressed: () => _openUserFormSheet(user: null),
+                backgroundColor: c.primary,
+                child: const Icon(
+                  Icons.person_add_alt_1_rounded,
+                  color: Colors.white,
                 ),
               ),
+            ),
+          ],
+        ),
         // 🔧 طبق درخواست: نوارِ ناوبریِ پایین در همه‌ی صفحاتِ اپ — چون این
         // صفحه با Get.to باز می‌شود، Scaffoldِ پوسته‌ی اصلی را نمی‌بیند.
-        // دکمه‌ی شناورِ «افزودنِ کار» اضافه نشد، چون این صفحه از قبل
-        // دکمه‌ی شناورِ خودش (افزودنِ کاربر) را دارد
         bottomNavigationBar: const AppBottomNav(),
       ),
     );
@@ -955,6 +982,7 @@ class _UserFormSheetState extends State<_UserFormSheet> {
   }
 
   Future<void> _submit() async {
+    if (_isSaving) return;
     if (_firstName.text.trim().isEmpty || _lastName.text.trim().isEmpty) {
       AppSnack.error('خطا', 'نام و نام خانوادگی الزامی است');
       return;
@@ -1310,7 +1338,11 @@ class _UserFormSheetState extends State<_UserFormSheet> {
           isExpanded: true,
           decoration: _dec(c, 'واحد فعالیت'),
           dropdownColor: c.surface,
-          style: TextStyle(color: c.textStrong, fontSize: 14),
+          style: TextStyle(
+            fontFamily: 'Vazir',
+            color: c.textStrong,
+            fontSize: 14,
+          ),
           items: [
             const DropdownMenuItem(value: null, child: Text('عمومی')),
             ...widget.sections.map(
@@ -1331,7 +1363,7 @@ class _UserFormSheetState extends State<_UserFormSheet> {
               borderRadius: BorderRadius.circular(10),
             ),
             child: Text(
-              'پس از ایجاد کاربر، شیفت‌کاری، حقوق، نقش و مدیرِ مستقیم را از «ویرایش» تنظیم کنید.',
+              'پس از ایجاد کاربر، شیفت‌کاری، حقوق، نقش و مدیر مستقیم را از «ویرایش» تنظیم کنید.',
               style: TextStyle(fontSize: 11.5, color: c.textMuted),
             ),
           ),
@@ -1349,7 +1381,11 @@ class _UserFormSheetState extends State<_UserFormSheet> {
           isExpanded: true,
           decoration: _dec(c, 'نوع شیفت'),
           dropdownColor: c.surface,
-          style: TextStyle(color: c.textStrong, fontSize: 14),
+          style: TextStyle(
+            fontFamily: 'Vazir',
+            color: c.textStrong,
+            fontSize: 14,
+          ),
           items: const [
             DropdownMenuItem(value: 'single', child: Text('تک شیفت')),
             DropdownMenuItem(value: 'double', child: Text('دو شیفت')),
@@ -1496,7 +1532,11 @@ class _UserFormSheetState extends State<_UserFormSheet> {
           isExpanded: true,
           decoration: _dec(c, '— بدون مدیر —'),
           dropdownColor: c.surface,
-          style: TextStyle(color: c.textStrong, fontSize: 14),
+          style: TextStyle(
+            fontFamily: 'Vazir',
+            color: c.textStrong,
+            fontSize: 14,
+          ),
           items: [
             const DropdownMenuItem(value: null, child: Text('— بدون مدیر —')),
             ...eligibleManagers.map((m) {
@@ -1534,7 +1574,11 @@ class _UserFormSheetState extends State<_UserFormSheet> {
             isExpanded: true,
             decoration: _dec(c, 'نقش'),
             dropdownColor: c.surface,
-            style: TextStyle(color: c.textStrong, fontSize: 14),
+            style: TextStyle(
+              fontFamily: 'Vazir',
+              color: c.textStrong,
+              fontSize: 14,
+            ),
             items: _assignableRoles
                 .map(
                   (r) => DropdownMenuItem(
@@ -1555,7 +1599,7 @@ class _UserFormSheetState extends State<_UserFormSheet> {
               border: Border.all(color: c.borderSoft),
             ),
             child: Text(
-              'نقش فعلی: ${_roleLabels[_role] ?? _role} — با دسترسیِ شما قابلِ‌تغییر نیست',
+              'نقش فعلی: ${_roleLabels[_role] ?? _role} — با دسترسی شما قابل‌تغییر نیست',
               style: TextStyle(fontSize: 12.5, color: c.textMuted),
             ),
           ),

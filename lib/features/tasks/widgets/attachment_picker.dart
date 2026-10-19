@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/app_snack.dart';
+import '../../../core/navigation/app_nav.dart';
 
 /// سه‌راهیِ افزودنِ پیوست — طبق درخواست: هم انتخابِ فایلِ موجود، هم
 /// گرفتنِ عکسِ مستقیم با دوربین، هم ضبطِ صدای مستقیم با میکروفون؛ هر
@@ -48,7 +49,7 @@ Future<PlatformFile?> showAttachmentSourceSheet(
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Text(
-              'افزودنِ پیوست',
+              'افزودن پیوست',
               style: TextStyle(
                 fontWeight: FontWeight.bold,
                 fontSize: 16,
@@ -63,7 +64,7 @@ Future<PlatformFile?> showAttachmentSourceSheet(
               'انتخاب از فایل‌ها',
               style: TextStyle(fontSize: 14, color: c.textStrong),
             ),
-            onTap: () => Get.back(result: 'file'),
+            onTap: () => AppNav.back(result: 'file'),
           ),
           ListTile(
             leading: Icon(Icons.camera_alt_outlined, color: c.primary),
@@ -71,7 +72,7 @@ Future<PlatformFile?> showAttachmentSourceSheet(
               'گرفتن عکس با دوربین',
               style: TextStyle(fontSize: 14, color: c.textStrong),
             ),
-            onTap: () => Get.back(result: 'camera'),
+            onTap: () => AppNav.back(result: 'camera'),
           ),
           ListTile(
             leading: Icon(Icons.mic_none_rounded, color: c.primary),
@@ -79,7 +80,7 @@ Future<PlatformFile?> showAttachmentSourceSheet(
               'ضبط صدا',
               style: TextStyle(fontSize: 14, color: c.textStrong),
             ),
-            onTap: () => Get.back(result: 'audio'),
+            onTap: () => AppNav.back(result: 'audio'),
           ),
         ],
       ),
@@ -122,7 +123,7 @@ Future<PlatformFile?> pickCameraPhoto() async {
         : 'photo_${DateTime.now().millisecondsSinceEpoch}.jpg';
     return PlatformFile(name: name, size: bytes.length, bytes: bytes);
   } catch (_) {
-    AppSnack.error('خطا', 'خطا در گرفتنِ عکس با دوربین');
+    AppSnack.error('خطا', 'خطا در گرفتن عکس با دوربین');
     return null;
   }
 }
@@ -162,8 +163,8 @@ class _AudioRecorderSheetState extends State<_AudioRecorderSheet> {
   Future<void> _start() async {
     try {
       if (!await _recorder.hasPermission()) {
-        AppSnack.error('خطا', 'دسترسیِ میکروفون داده نشد');
-        Get.back();
+        AppSnack.error('خطا', 'دسترسی میکروفون داده نشد');
+        AppNav.back();
         return;
       }
       final dir = await getTemporaryDirectory();
@@ -181,8 +182,8 @@ class _AudioRecorderSheetState extends State<_AudioRecorderSheet> {
         setState(() => _elapsed += const Duration(seconds: 1));
       });
     } catch (_) {
-      AppSnack.error('خطا', 'خطا در شروعِ ضبطِ صدا');
-      if (mounted) Get.back();
+      AppSnack.error('خطا', 'خطا در شروع ضبط صدا');
+      if (mounted) AppNav.back();
     }
   }
 
@@ -203,19 +204,19 @@ class _AudioRecorderSheetState extends State<_AudioRecorderSheet> {
       final f = File(path);
       if (await f.exists()) await f.delete();
     }
-    if (mounted) Get.back();
+    if (mounted) AppNav.back();
   }
 
   Future<void> _send() async {
     final path = _path;
     if (path == null) {
-      Get.back();
+      AppNav.back();
       return;
     }
     final file = File(path);
     final bytes = await file.readAsBytes();
     if (mounted) {
-      Get.back(
+      AppNav.back(
         result: PlatformFile(
           name: 'voice_${DateTime.now().millisecondsSinceEpoch}.m4a',
           size: bytes.length,
@@ -281,7 +282,7 @@ class _AudioRecorderSheetState extends State<_AudioRecorderSheet> {
           ),
           const SizedBox(height: 4),
           Text(
-            _isRecording ? 'در حالِ ضبط...' : 'ضبط متوقف شد',
+            _isRecording ? 'در حال ضبط...' : 'ضبط متوقف شد',
             style: TextStyle(fontSize: 12.5, color: c.textMuted),
           ),
           const SizedBox(height: 20),

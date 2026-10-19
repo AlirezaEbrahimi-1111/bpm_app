@@ -5,6 +5,7 @@ import '../../core/network/api_client.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/persian_number.dart';
 import '../shell/widgets/app_bottom_nav.dart';
+import '../../core/navigation/app_nav.dart';
 
 const _jalaliMonths = [
   'فروردین',
@@ -82,13 +83,14 @@ class _PayrollReportPageState extends State<PayrollReportPage> {
         });
       } else {
         setState(() {
-          _error = data['message']?.toString() ?? 'خطا در دریافتِ گزارش';
+          _error = data['message']?.toString() ?? 'خطا در دریافت گزارش';
           _isLoading = false;
         });
       }
-    } catch (_) {
+    } catch (e) {
+      // 🔧 مثلِ وب: پیامِ خودِ سرور (مثلاً «دسترسی غیرمجاز»)
       setState(() {
-        _error = 'خطا در اتصال به سرور — احتمالاً دسترسیِ لازم را ندارید';
+        _error = ApiClient.errorMessage(e, 'خطا در اتصال به سرور');
         _isLoading = false;
       });
     }
@@ -249,7 +251,7 @@ class _PayrollReportPageState extends State<PayrollReportPage> {
               angle: math.pi,
               child: const Icon(Icons.arrow_forward_ios_rounded, size: 20),
             ),
-            onPressed: () => Get.back(),
+            onPressed: () => AppNav.back(),
           ),
         ),
         body: _isLoading

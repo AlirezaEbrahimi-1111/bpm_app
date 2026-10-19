@@ -3,8 +3,8 @@ import 'package:get/get.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 /// مدیریت انتخاب دستیِ کاربر برای تمِ روشن/تاریک (سوییچ داخل منوی
-/// دراور). پیش‌فرضِ اپ همیشه «روشن» است — مگر این‌که کاربر خودش قبلاً
-/// دستی «تاریک» را انتخاب کرده باشد (که در حافظه‌ی امن ذخیره می‌شود و
+/// دراور). 🔧 طبق درخواست: پیش‌فرضِ اپ «تاریک» است — مگر این‌که کاربر خودش
+/// قبلاً دستی «روشن» را انتخاب کرده باشد (که در حافظه‌ی امن ذخیره می‌شود و
 /// دفعه‌ی بعد هم همان اعمال می‌ماند).
 ///
 /// 🔧 چرا ValueNotifier جدا از Get.isDarkMode:
@@ -19,19 +19,19 @@ class ThemeController {
   static const _storage = FlutterSecureStorage();
   static const _key = 'theme_mode';
 
-  static final ValueNotifier<bool> isDarkNotifier = ValueNotifier<bool>(false);
+  static final ValueNotifier<bool> isDarkNotifier = ValueNotifier<bool>(true);
 
   /// یک‌بار در شروع اپ صدا زده می‌شود تا انتخاب ذخیره‌شده (اگر باشد)
   /// اعمال شود. اگر کاربر هرگز دستی چیزی انتخاب نکرده باشد، پیش‌فرض
-  /// «روشن» باقی می‌ماند (نه پیرویِ سیستم).
+  /// «تاریک» است (نه پیرویِ سیستم).
   static Future<void> init() async {
     try {
       final saved = await _storage.read(key: _key);
-      final dark = saved == 'dark';
+      final dark = saved != 'light';
       isDarkNotifier.value = dark;
       Get.changeThemeMode(dark ? ThemeMode.dark : ThemeMode.light);
     } catch (_) {
-      // خطای خواندن یعنی همان پیش‌فرضِ روشن بماند
+      // خطای خواندن یعنی همان پیش‌فرضِ تاریک بماند
     }
   }
 

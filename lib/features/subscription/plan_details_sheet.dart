@@ -5,6 +5,7 @@ import '../../core/plan/plan_access.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/persian_number.dart';
 import 'plan_feature_list.dart';
+import '../../core/navigation/app_nav.dart';
 
 /// تاریخِ شمسیِ کوتاه، مثلاً ۱۴۰۵/۰۷/۱۲
 String formatPlanDate(DateTime d) {
@@ -212,7 +213,7 @@ class _PlanDetailsSheetState extends State<_PlanDetailsSheet> {
                 SizedBox(
                   height: 46,
                   child: OutlinedButton(
-                    onPressed: () => Get.back(),
+                    onPressed: () => AppNav.back(),
                     style: OutlinedButton.styleFrom(
                       side: BorderSide(color: c.borderSoft),
                       shape: RoundedRectangleBorder(

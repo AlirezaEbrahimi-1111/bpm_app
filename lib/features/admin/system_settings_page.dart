@@ -1,13 +1,13 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:get/get.dart';
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/app_snack.dart';
 import '../../core/widgets/app_switch.dart';
 import '../../core/utils/persian_number.dart';
 import '../shell/widgets/app_bottom_nav.dart';
+import '../../core/navigation/app_nav.dart';
 
 const _groupIcons = {
   'attendance': Icons.calendar_month_rounded,
@@ -104,19 +104,20 @@ class _SystemSettingsPageState extends State<SystemSettingsPage> {
         });
       } else {
         setState(() {
-          _error = data['message']?.toString() ?? 'خطا در دریافتِ تنظیمات';
+          _error = data['message']?.toString() ?? 'خطا در دریافت تنظیمات';
           _isLoading = false;
         });
       }
-    } catch (_) {
+    } catch (e) {
       setState(() {
-        _error = 'خطا در اتصال به سرور — احتمالاً دسترسیِ لازم را ندارید';
+        _error = ApiClient.errorMessage(e, 'خطا در اتصال به سرور');
         _isLoading = false;
       });
     }
   }
 
   Future<void> _save() async {
+    if (_isSaving) return;
     // اعتبارسنجیِ سمتِ کلاینت (min/max) — همان قوانینِ وب، برایِ پیامِ فوری‌تر
     for (final g in _groups.values) {
       final settings = (g['settings'] as Map).cast<String, dynamic>();
@@ -222,7 +223,7 @@ class _SystemSettingsPageState extends State<SystemSettingsPage> {
             angle: math.pi,
             child: const Icon(Icons.arrow_forward_ios_rounded, size: 20),
           ),
-          onPressed: () => Get.back(),
+          onPressed: () => AppNav.back(),
         ),
       ),
       body: _isLoading

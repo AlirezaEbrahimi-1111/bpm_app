@@ -14,9 +14,14 @@ import 'core/theme/notification_bar_preference.dart';
 import 'core/theme/font_size_preference.dart';
 import 'core/theme/starred_tasks_preference.dart';
 import 'core/theme/dashboard_filter_pin_preference.dart';
+import 'core/navigation/app_nav.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // 🔧 طبق درخواست: پس‌زمینه‌ی اپ تا پشتِ دکمه‌هایِ گوشی (نوارِ ناوبریِ
+  // سیستم) ادامه پیدا کند — نوارِ سیستم شفاف می‌شود و اپ زیرش کشیده
+  // می‌شود؛ خودِ دکمه‌ها/محتوایِ قابلِ‌لمس با SafeArea بالایِ آن می‌مانند
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   await ApiClient.init();
   ApiClient.onSessionExpired = _handleSessionExpired;
   ConnectivityService.instance.start();
@@ -46,7 +51,7 @@ void _handleSessionExpired() {
   _sessionExpiredHandled = true;
   ApiClient.clearToken().then((_) {
     Get.offAll(() => const LoginPage());
-    AppSnack.warning('نشست شما منقضی شده', 'لطفاً دوباره وارد شوید');
+    AppSnack.warning('نشست شما منقضی شده', 'لطفا دوباره وارد شوید');
   });
   Future.delayed(
     const Duration(seconds: 3),
@@ -93,11 +98,10 @@ class BpmApp extends StatelessWidget {
         useMaterial3: true,
         fontFamily: 'Vazir',
       ),
-      // 🔧 اصلاح: پیش‌فرضِ اپ همیشه «روشن» است، نه پیرویِ تنظیمات سیستم —
-      // اگر کاربر قبلاً دستی «تاریک» را از دراور انتخاب کرده باشد،
-      // ThemeController.init() (بالاتر در main، بعد از runApp) همان را
-      // اعمال می‌کند.
-      themeMode: ThemeMode.light,
+      // 🔧 طبق درخواست: پیش‌فرض تاریک (از همان فریمِ اول، بدونِ چشمک‌زدنِ
+      // تمِ روشن)؛ اگر کاربر دستی «روشن» را انتخاب کرده باشد، ThemeController
+      // بلافاصله بعد از runApp همان را اعمال می‌کند
+      themeMode: ThemeMode.dark,
       // 🔧 طبق درخواست: اندازه‌ی فونتِ کلِ اپ (کوچک/متوسط/بزرگ، ±۲۰٪) از
       // صفحه‌ی تنظیمات قابلِ‌تغییر است — با اعمالِ textScaler دقیقاً همین‌جا
       // (ریشه‌ی اپ)، همه‌ی fontSizeهایِ هاردکدِ کلِ پروژه خودکار اسکیل می‌شوند
@@ -105,9 +109,21 @@ class BpmApp extends StatelessWidget {
         valueListenable: FontSizePreference.sizeNotifier,
         builder: (context, fontSize, _) {
           final mq = MediaQuery.of(context);
-          return MediaQuery(
-            data: mq.copyWith(textScaler: TextScaler.linear(fontSize.scale)),
-            child: child!,
+          // نوارِ دکمه‌هایِ گوشی شفاف؛ رنگِ آیکن‌هایش طبقِ تمِ روشن/تیره
+          final isDark = Theme.of(context).brightness == Brightness.dark;
+          return AnnotatedRegion<SystemUiOverlayStyle>(
+            value: SystemUiOverlayStyle(
+              systemNavigationBarColor: Colors.transparent,
+              systemNavigationBarDividerColor: Colors.transparent,
+              systemNavigationBarContrastEnforced: false,
+              systemNavigationBarIconBrightness: isDark
+                  ? Brightness.light
+                  : Brightness.dark,
+            ),
+            child: MediaQuery(
+              data: mq.copyWith(textScaler: TextScaler.linear(fontSize.scale)),
+              child: child!,
+            ),
           );
         },
       ),
@@ -771,9 +787,10 @@ class _LoginPageState extends State<LoginPage> {
 
   // ── ارسال کد ──
   Future<void> _sendOtp() async {
+    if (_isSendingOtp) return;
     final phone = _usernameController.text.trim();
     if (!RegExp(r'^09[0-9]{9}$').hasMatch(phone)) {
-      AppSnack.error('خطا', 'لطفاً شماره موبایل معتبر وارد کنید');
+      AppSnack.error('خطا', 'لطفا شماره موبایل معتبر وارد کنید');
       return;
     }
     setState(() => _isSendingOtp = true);
@@ -913,7 +930,7 @@ class _LoginPageState extends State<LoginPage> {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: () => Get.back(),
+                  onPressed: () => AppNav.back(),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: _primary,
                     foregroundColor: Colors.white,
@@ -1045,7 +1062,7 @@ class _LoginPageState extends State<LoginPage> {
 
   void _login() async {
     if (_usernameController.text.isEmpty || _passwordController.text.isEmpty) {
-      AppSnack.error('خطا', 'لطفاً نام کاربری و رمز عبور را وارد کنید');
+      AppSnack.error('خطا', 'لطفا نام کاربری و رمز عبور را وارد کنید');
       return;
     }
     setState(() => _isLoading = true);

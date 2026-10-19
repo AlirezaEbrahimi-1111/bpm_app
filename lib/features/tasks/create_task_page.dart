@@ -15,6 +15,7 @@ import '../../core/widgets/app_switch.dart';
 import 'widgets/persian_date_picker_sheet.dart';
 import 'widgets/task_group_management_sheet.dart';
 import 'widgets/attachment_picker.dart';
+import '../../core/navigation/app_nav.dart';
 
 /// صفحه‌ی «تعریف کار جدید» — طبق طرح ارسالی (روشن + تاریک).
 /// 🔧 طبق درخواستِ صریح، ترتیبِ بخش‌ها با خودِ عکس یک تفاوت دارد: چک‌لیست
@@ -56,6 +57,12 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
   int? _selectedGroupId;
   String _groupLabel = 'بدون گروه';
   bool _isLoading = false;
+  // 🔧 طبق درخواست: بعد از ذخیره صفحه بسته نمی‌شود و فرم خالی می‌شود؛ این
+  // پرچم می‌گوید در این نوبت دست‌کم یک کار ساخته شده، تا موقعِ برگشتن
+  // صفحه‌ی قبلی (داشبورد/کارها) لیستش را تازه کند
+  bool _createdAny = false;
+  // پیوست‌هایِ «بازتعریف» فقط یک بار (برایِ اولین کارِ ساخته‌شده) کپی شوند
+  bool _redefineConsumed = false;
   // چک‌لیست
   // 🔧 طبق درخواست: هر آیتم علاوه‌بر عنوان، توضیحِ اختیاری هم دارد —
   // دقیقاً مثلِ نسخه‌ی وب که با آیکنِ گفتگو کنارِ هر آیتم اضافه می‌شود
@@ -109,7 +116,8 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
   }
 
   Future<void> _loadAssigneeData() async {
-    _myRole = widget.userRole;
+    // نقشِ تازه‌شده از سرور (ApiClient.refreshCurrentUser)، نه نسخه‌ی موقعِ ورود
+    _myRole = ApiClient.currentUser?['role']?.toString() ?? widget.userRole;
 
     try {
       final r = await ApiClient.dio.get(
@@ -188,6 +196,9 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
   }
 
   Future<void> _submit() async {
+    // 🔧 رفعِ باگِ «دو کار ساخته شد»: قفلِ هم‌زمان (نه فقط غیرفعال‌شدنِ
+    // دکمه که بعد از rebuild اعمال می‌شود) — ضربه‌ی دوم قبل از rebuild هم رد می‌شود
+    if (_isLoading) return;
     if (_titleController.text.trim().isEmpty) {
       AppSnack.error('خطا', 'عنوان کار الزامی است');
       return;
@@ -207,7 +218,8 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       return;
     }
 
-    setState(() => _isLoading = true);
+    _isLoading = true;
+    setState(() {});
 
     final body = <String, dynamic>{
       'title': _titleController.text.trim(),
@@ -233,17 +245,20 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       if (_endDate != null) body['end_date'] = _toApiDate(_endDate!);
       body['period_type'] = _periodType;
     }
-    final redefineAttachmentIds =
-        widget.redefineFrom?['attachment_ids'] as List?;
+    final redefineAttachmentIds = _redefineConsumed
+        ? null
+        : widget.redefineFrom?['attachment_ids'] as List?;
     if (redefineAttachmentIds != null && redefineAttachmentIds.isNotEmpty) {
       body['copy_attachment_ids'] = redefineAttachmentIds;
     }
 
     try {
       final res = await ApiClient.dio.post('/api/tasks/create.php', data: body);
-      setState(() => _isLoading = false);
 
       if (res.data['success'] == true) {
+        // 🔧 رفعِ باگ: قبلاً لودینگ همین‌جا (پیش از ذخیره‌ی چک‌لیست و
+        // آپلودِ پیوست‌ها) خاموش می‌شد و دکمه دوباره فعال می‌شد — ضربه‌ی
+        // دوبار در همین فاصله کارِ دوم می‌ساخت. حالا تا پایانِ کل کار قفل است
         final newTaskId = res.data['task_id'];
         if (newTaskId != null && _checklistItems.isNotEmpty) {
           await _saveChecklist(newTaskId);
@@ -251,21 +266,52 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
         if (newTaskId != null && _pickedFiles.isNotEmpty) {
           await _uploadFiles(newTaskId);
         }
-        Get.back(result: true);
+        if (!mounted) return;
+        final wasRedefine = widget.redefineFrom != null && !_redefineConsumed;
+        _createdAny = true;
+        _resetForm();
         AppSnack.success(
           '✅ موفق',
-          widget.redefineFrom != null
-              ? 'کار بازتعریف شد'
-              : 'کار با موفقیت ایجاد شد',
+          wasRedefine ? 'کار بازتعریف شد' : 'کار با موفقیت ایجاد شد',
         );
       } else {
         AppSnack.error('خطا', res.data['message'] ?? 'خطا در ایجاد کار');
       }
     } catch (e) {
-      setState(() => _isLoading = false);
       AppSnack.error('خطا', 'خطا در اتصال به سرور');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
+
+  /// 🔧 طبق درخواست: بعد از ذخیره، فرم به حالتِ اولیه برمی‌گردد (همه‌ی
+  /// فیلدها خالی) تا کارِ بعدی تعریف شود. داده‌هایِ پایه (کاربران،
+  /// واحدها، گروه‌ها) دوباره بارگذاری نمی‌شوند، چون تغییری نکرده‌اند
+  void _resetForm() {
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _titleController.clear();
+      _descController.clear();
+      _checklistController.clear();
+      _taskType = 'periodic';
+      _priority = 'medium';
+      _periodType = 'daily';
+      _dueDate = null;
+      _startDate = null;
+      _endDate = null;
+      _selectedGroupId = null;
+      _groupLabel = 'بدون گروه';
+      _checklistItems.clear();
+      _pickedFiles.clear();
+      _assigneeType = 'self';
+      _assigneeValue = null;
+      _assigneeLabel = 'خودم';
+      _shareHistory = true;
+      _redefineConsumed = true;
+    });
+  }
+
+  void _close() => Navigator.of(context).pop(_createdAny ? true : null);
 
   // 🔧 طبقِ بک‌اند (api/tasks/upload-attachment.php): عکس/سند، صوتی
   // (mp3/m4a/ogg) و حالا ویدیو (mp4/mov) هم پشتیبانی می‌شود
@@ -302,8 +348,8 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       // منتظرِ ردِ سرور بمانیم
       if (!_allowedAttachmentExtensions.contains(ext)) {
         AppSnack.error(
-          'فرمتِ فایل پشتیبانی نمی‌شود',
-          'فقط عکس، PDF، Word، Excel، فایلِ صوتیِ mp3/m4a/ogg و ویدیوی mp4/mov مجاز است.',
+          'فرمت فایل پشتیبانی نمی‌شود',
+          'فقط عکس، PDF، Word، Excel، فایل صوتی mp3/m4a/ogg و ویدیوی mp4/mov مجاز است.',
         );
         return;
       }
@@ -358,7 +404,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
         backgroundColor: c.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text(
-          'توضیحِ آیتمِ چک‌لیست',
+          'توضیح آیتم چک‌لیست',
           style: TextStyle(fontSize: 16, color: c.textStrong),
         ),
         content: TextField(
@@ -379,7 +425,10 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('انصراف')),
+          TextButton(
+            onPressed: () => AppNav.back(),
+            child: const Text('انصراف'),
+          ),
           TextButton(
             onPressed: () {
               setState(() {
@@ -388,7 +437,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
                   description: controller.text.trim(),
                 );
               });
-              Get.back();
+              AppNav.back();
             },
             child: const Text('ذخیره'),
           ),
@@ -423,212 +472,221 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
     // 🔧 طبق درخواست: دکمه‌ی جست‌وجویِ سراسری (AppShellOverlays) در این صفحه نیست
-    return Scaffold(
-      backgroundColor: c.bgPage,
-      appBar: AppBar(
+    // PopScope: دکمه‌ی برگشتِ گوشی هم مثلِ دکمه‌ی برگشتِ نوارِ بالا، اگر
+    // کاری ساخته شده باشد نتیجه‌ی true برمی‌گرداند (تازه‌شدنِ لیست‌ها)،
+    // و تا ذخیره در جریان است صفحه بسته نمی‌شود
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && !_isLoading) _close();
+      },
+      child: Scaffold(
         backgroundColor: c.bgPage,
-        elevation: 0,
-        centerTitle: true,
-        iconTheme: IconThemeData(color: c.textStrong),
-        title: Text(
-          widget.redefineFrom != null ? 'بازتعریف کار' : 'تعریف کار جدید',
-          style: TextStyle(
-            color: c.textStrong,
-            fontWeight: FontWeight.bold,
-            fontSize: 16,
+        appBar: AppBar(
+          backgroundColor: c.bgPage,
+          elevation: 0,
+          centerTitle: true,
+          iconTheme: IconThemeData(color: c.textStrong),
+          title: Text(
+            widget.redefineFrom != null ? 'بازتعریف کار' : 'تعریف کار جدید',
+            style: TextStyle(
+              color: c.textStrong,
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+            ),
+          ),
+          leading: IconButton(
+            icon: Transform.rotate(
+              angle: math.pi, // 🔧 طبق درخواست: ۱۸۰ درجه چرخید
+              child: const Icon(Icons.arrow_forward_ios_rounded, size: 20),
+            ),
+            onPressed: _close,
           ),
         ),
-        leading: IconButton(
-          icon: Transform.rotate(
-            angle: math.pi, // 🔧 طبق درخواست: ۱۸۰ درجه چرخید
-            child: const Icon(Icons.arrow_forward_ios_rounded, size: 20),
-          ),
-          onPressed: () => Get.back(),
-        ),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // ── این یک کار روتین است؟ — فعلاً غیرفعال (به‌زودی) ──
-            // 🔧 طبق درخواست: بدونِ آیکن و بدونِ کادر/بکگراند — فقط
-            // سوییچ و برچسب، و طبقِ درخواستِ بعدی: سوییچ بلافاصله پشتِ
-            // متن (نه با فاصله‌ی زیاد تا لبه‌ی مقابل) — هر دو با هم
-            // سمتِ راست بچسبند
-            PlanGate(
-              feature: PlanFeature.routineTask,
-              label: 'کار روتین',
-              child: Opacity(
-                opacity: 0.5,
-                child: IgnorePointer(
-                  child: Row(
-                    children: [
-                      AppSwitch(
-                        value: false,
-                        onChanged: (_) {},
-                        activeColor: c.primary,
-                      ),
-                      const SizedBox(width: 10),
-                      // Expanded (نه Flexible+Spacer که عرض را نصف می‌کرد و متن
-                      // را دو خطی می‌کرد) — متن یک‌خطی و چسبیده به سوییچ
-                      Expanded(
-                        child: Text(
-                          'این یک کار روتین است (به‌زودی)',
-                          textAlign: TextAlign.right,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontSize: 13, color: c.textStrong),
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // ── این یک کار روتین است؟ — فعلاً غیرفعال (به‌زودی) ──
+              // 🔧 طبق درخواست: بدونِ آیکن و بدونِ کادر/بکگراند — فقط
+              // سوییچ و برچسب، و طبقِ درخواستِ بعدی: سوییچ بلافاصله پشتِ
+              // متن (نه با فاصله‌ی زیاد تا لبه‌ی مقابل) — هر دو با هم
+              // سمتِ راست بچسبند
+              PlanGate(
+                feature: PlanFeature.routineTask,
+                label: 'کار روتین',
+                child: Opacity(
+                  opacity: 0.5,
+                  child: IgnorePointer(
+                    child: Row(
+                      children: [
+                        AppSwitch(
+                          value: false,
+                          onChanged: (_) {},
+                          activeColor: c.primary,
                         ),
-                      ),
-                    ],
+                        const SizedBox(width: 10),
+                        // Expanded (نه Flexible+Spacer که عرض را نصف می‌کرد و متن
+                        // را دو خطی می‌کرد) — متن یک‌خطی و چسبیده به سوییچ
+                        Expanded(
+                          child: Text(
+                            'این یک کار روتین است (به‌زودی)',
+                            textAlign: TextAlign.right,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 13, color: c.textStrong),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
-            const SizedBox(height: 10),
-
-            // 🔧 طبق درخواست: عنوان/برچسبِ هر بخش با فیلد/کنترلِ خودش در
-            // یک خط (به‌جای عنوانِ جدا بالای هر فیلد)
-            _labeledRow(
-              c,
-              icon: Icons.edit_outlined,
-              label: 'عنوان کار',
-              field: _bareTextField(
-                c,
-                controller: _titleController,
-                hint: 'عنوان کار را وارد کنید',
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // 🔧 طبق درخواست: چک‌لیست بلافاصله بعد از عنوان
-            _labeledRow(
-              c,
-              icon: Icons.checklist_rounded,
-              label: 'چک‌لیست',
-              trailing: _checklistItems.isEmpty
-                  ? null
-                  : toPersianDigits('${_checklistItems.length} مورد'),
-              field: _checklistAddField(c),
-            ),
-            if (_checklistItems.isNotEmpty) ...[
               const SizedBox(height: 10),
-              _checklistItemsList(c),
-            ],
-            const SizedBox(height: 16),
 
-            _groupPicker(c),
-            const SizedBox(height: 16),
-
-            _labeledRow(
-              c,
-              icon: Icons.priority_high_rounded,
-              label: 'اولویت',
-              labelFontSize: 11.5,
-              field: _prioritySelector(c),
-            ),
-            const SizedBox(height: 16),
-
-            _labeledRow(
-              c,
-              icon: Icons.grid_view_rounded,
-              label: 'نوع کار',
-              labelFontSize: 11.5,
-              field: _typeSelector(c),
-            ),
-            const SizedBox(height: 16),
-
-            // 🔧 طبق درخواست: عنوان/برچسبِ «توضیحات» داخلِ خودِ کادر آمد
-            // (نه بالای آن، جدا)
-            _descriptionField(c),
-            const SizedBox(height: 16),
-
-            PlanGate(
-              feature: PlanFeature.assignToOthers,
-              label: 'واگذاری کار به دیگران',
-              child: _assigneePicker(c),
-            ),
-            const SizedBox(height: 16),
-
-            if (_taskType == 'periodic') ...[
-              _dateTile(
-                c,
-                icon: Icons.calendar_today_outlined,
-                label: _isSelfTask ? 'موعد انجام (اختیاری)' : 'موعد انجام',
-                value: _dueDate != null ? _toShamsi(_dueDate!) : null,
-                hint: _isSelfTask ? 'بدون موعد' : 'انتخاب تاریخ',
-                onTap: () async {
-                  final d = await _pickDate();
-                  if (d != null) setState(() => _dueDate = d);
-                },
-              ),
-            ] else ...[
-              _dateTile(
-                c,
-                icon: Icons.play_circle_outline_rounded,
-                label: 'تاریخ شروع',
-                value: _startDate != null ? _toShamsi(_startDate!) : null,
-                hint: 'انتخاب تاریخ',
-                onTap: () async {
-                  final d = await _pickDate();
-                  if (d != null) setState(() => _startDate = d);
-                },
-              ),
-              const SizedBox(height: 10),
-              _dateTile(
-                c,
-                icon: Icons.event_busy_rounded,
-                label: 'تاریخ پایان (اختیاری)',
-                value: _endDate != null ? _toShamsi(_endDate!) : null,
-                hint: 'نامحدود',
-                onTap: () async {
-                  final d = await _pickDate();
-                  if (d != null) setState(() => _endDate = d);
-                },
-              ),
-              const SizedBox(height: 10),
+              // 🔧 طبق درخواست: عنوان/برچسبِ هر بخش با فیلد/کنترلِ خودش در
+              // یک خط (به‌جای عنوانِ جدا بالای هر فیلد)
               _labeledRow(
                 c,
-                icon: Icons.repeat_rounded,
-                label: 'دوره تکرار',
-                field: _periodSelector(c),
+                icon: Icons.edit_outlined,
+                label: 'عنوان کار',
+                field: _bareTextField(
+                  c,
+                  controller: _titleController,
+                  hint: 'عنوان کار را وارد کنید',
+                ),
               ),
-            ],
-            const SizedBox(height: 16),
+              const SizedBox(height: 16),
 
-            // 🔧 طبق درخواست: آیکنِ چشم حذف شد
-            PlanGate(
-              feature: PlanFeature.historyForDelegates,
-              label: 'نمایش تاریخچه برای ارجاع‌شونده',
-              child: _toggleRow(
+              // 🔧 طبق درخواست: چک‌لیست بلافاصله بعد از عنوان
+              _labeledRow(
                 c,
-                label: 'نمایش تاریخچه کار برای کاربران ارجاع‌شونده',
-                value: _shareHistory,
-                onChanged: (v) => setState(() => _shareHistory = v),
+                icon: Icons.checklist_rounded,
+                label: 'چک‌لیست',
+                trailing: _checklistItems.isEmpty
+                    ? null
+                    : toPersianDigits('${_checklistItems.length} مورد'),
+                field: _checklistAddField(c),
               ),
-            ),
-            const SizedBox(height: 16),
+              if (_checklistItems.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                _checklistItemsList(c),
+              ],
+              const SizedBox(height: 16),
 
-            _labeledRow(
-              c,
-              icon: Icons.attach_file_rounded,
-              label: 'فایل‌های پیوست',
-              trailing: _pickedFiles.isEmpty
-                  ? null
-                  : toPersianDigits('${_pickedFiles.length} فایل'),
-              field: _attachmentsAddField(c),
-            ),
-            if (_pickedFiles.isNotEmpty) ...[
-              const SizedBox(height: 10),
-              _attachmentsList(c),
+              _groupPicker(c),
+              const SizedBox(height: 16),
+
+              _labeledRow(
+                c,
+                icon: Icons.priority_high_rounded,
+                label: 'اولویت',
+                labelFontSize: 11.5,
+                field: _prioritySelector(c),
+              ),
+              const SizedBox(height: 16),
+
+              _labeledRow(
+                c,
+                icon: Icons.grid_view_rounded,
+                label: 'نوع کار',
+                labelFontSize: 11.5,
+                field: _typeSelector(c),
+              ),
+              const SizedBox(height: 16),
+
+              // 🔧 طبق درخواست: عنوان/برچسبِ «توضیحات» داخلِ خودِ کادر آمد
+              // (نه بالای آن، جدا)
+              _descriptionField(c),
+              const SizedBox(height: 16),
+
+              PlanGate(
+                feature: PlanFeature.assignToOthers,
+                label: 'واگذاری کار به دیگران',
+                child: _assigneePicker(c),
+              ),
+              const SizedBox(height: 16),
+
+              if (_taskType == 'periodic') ...[
+                _dateTile(
+                  c,
+                  icon: Icons.calendar_today_outlined,
+                  label: _isSelfTask ? 'موعد انجام (اختیاری)' : 'موعد انجام',
+                  value: _dueDate != null ? _toShamsi(_dueDate!) : null,
+                  hint: _isSelfTask ? 'بدون موعد' : 'انتخاب تاریخ',
+                  onTap: () async {
+                    final d = await _pickDate();
+                    if (d != null) setState(() => _dueDate = d);
+                  },
+                ),
+              ] else ...[
+                _dateTile(
+                  c,
+                  icon: Icons.play_circle_outline_rounded,
+                  label: 'تاریخ شروع',
+                  value: _startDate != null ? _toShamsi(_startDate!) : null,
+                  hint: 'انتخاب تاریخ',
+                  onTap: () async {
+                    final d = await _pickDate();
+                    if (d != null) setState(() => _startDate = d);
+                  },
+                ),
+                const SizedBox(height: 10),
+                _dateTile(
+                  c,
+                  icon: Icons.event_busy_rounded,
+                  label: 'تاریخ پایان (اختیاری)',
+                  value: _endDate != null ? _toShamsi(_endDate!) : null,
+                  hint: 'نامحدود',
+                  onTap: () async {
+                    final d = await _pickDate();
+                    if (d != null) setState(() => _endDate = d);
+                  },
+                ),
+                const SizedBox(height: 10),
+                _labeledRow(
+                  c,
+                  icon: Icons.repeat_rounded,
+                  label: 'دوره تکرار',
+                  field: _periodSelector(c),
+                ),
+              ],
+              const SizedBox(height: 16),
+
+              // 🔧 طبق درخواست: آیکنِ چشم حذف شد
+              PlanGate(
+                feature: PlanFeature.historyForDelegates,
+                label: 'نمایش تاریخچه برای ارجاع‌شونده',
+                child: _toggleRow(
+                  c,
+                  label: 'نمایش تاریخچه کار برای کاربران ارجاع‌شونده',
+                  value: _shareHistory,
+                  onChanged: (v) => setState(() => _shareHistory = v),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              _labeledRow(
+                c,
+                icon: Icons.attach_file_rounded,
+                label: 'فایل‌های پیوست',
+                trailing: _pickedFiles.isEmpty
+                    ? null
+                    : toPersianDigits('${_pickedFiles.length} فایل'),
+                field: _attachmentsAddField(c),
+              ),
+              if (_pickedFiles.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                _attachmentsList(c),
+              ],
             ],
-          ],
+          ),
         ),
+        // 🔧 طبق درخواست: دکمه‌ی ذخیره ثابت در پایینِ صفحه (تمام‌عرض)،
+        // به‌جایِ دکمه‌ی گردِ شناور
+        bottomNavigationBar: _saveBar(c),
       ),
-      // 🔧 طبق درخواست: دکمه‌ی ذخیره ثابت در پایینِ صفحه (تمام‌عرض)،
-      // به‌جایِ دکمه‌ی گردِ شناور
-      bottomNavigationBar: _saveBar(c),
     );
   }
 
@@ -1117,7 +1175,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
                       _selectedGroupId = null;
                       _groupLabel = 'بدون گروه';
                     });
-                    Get.back();
+                    AppNav.back();
                   },
                 ),
                 ..._groups.map((g) {
@@ -1140,7 +1198,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
                         _selectedGroupId = g['id'];
                         _groupLabel = g['name'] ?? '';
                       });
-                      Get.back();
+                      AppNav.back();
                     },
                   );
                 }),
@@ -1167,7 +1225,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
                         style: TextStyle(color: c.primary),
                       ),
                       onTap: () {
-                        Get.back();
+                        AppNav.back();
                         showTaskGroupManagementSheet(
                           context,
                           onChanged: _loadGroups,

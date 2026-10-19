@@ -8,6 +8,7 @@ import '../../core/theme/font_size_preference.dart';
 import '../../core/utils/persian_number.dart';
 import '../../core/widgets/app_switch.dart';
 import '../shell/widgets/about_sheet.dart';
+import '../../core/navigation/app_nav.dart';
 
 /// صفحه‌ی «تنظیمات» — طبق طرح ارسالی (روشن + تاریک).
 ///
@@ -266,7 +267,7 @@ class SettingsPage extends StatelessWidget {
                     : null,
                 onTap: () async {
                   await ThemeController.setDark(false);
-                  Get.back();
+                  AppNav.back();
                 },
               ),
               ListTile(
@@ -277,7 +278,7 @@ class SettingsPage extends StatelessWidget {
                     : null,
                 onTap: () async {
                   await ThemeController.setDark(true);
-                  Get.back();
+                  AppNav.back();
                 },
               ),
             ],
@@ -339,7 +340,7 @@ class SettingsPage extends StatelessWidget {
                       : null,
                   onTap: () async {
                     await FontSizePreference.set(size);
-                    Get.back();
+                    AppNav.back();
                   },
                 ),
               ),

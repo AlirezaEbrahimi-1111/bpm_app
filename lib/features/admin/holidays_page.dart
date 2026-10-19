@@ -4,10 +4,12 @@ import 'package:get/get.dart';
 import 'package:shamsi_date/shamsi_date.dart';
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_radius.dart';
 import '../../core/utils/persian_number.dart';
 import '../../core/widgets/app_snack.dart';
 import '../tasks/widgets/persian_date_picker_sheet.dart';
 import '../shell/widgets/app_bottom_nav.dart';
+import '../../core/navigation/app_nav.dart';
 
 // همان ترتیبِ استانداردِ اپ (شنبه=۱ در Jalali.weekDay)
 const _weekdaysFa = [
@@ -20,7 +22,9 @@ const _weekdaysFa = [
   'جمعه',
 ];
 // معادلِ PHP date('w') برایِ همین ترتیب — یکشنبه=۰...شنبه=۶
-const _weekdayToPhpDow = [6, 0, 1, 2, 3, 4, 5];
+// رنگ‌هایِ تقویمِ تعطیلات — همان rgba(239,68,68) و #8e57fe نسخه‌ی وب
+const _red = Color(0xFFEF4444);
+const _purple = Color(0xFF8E57FE);
 const _jalaliMonths = [
   'فروردین',
   'اردیبهشت',
@@ -235,98 +239,102 @@ class _HolidaysPageState extends State<HolidaysPage> {
             // (که کرش می‌داد)، فقط همان فضایِ خالیِ انتهاییِ گرید — که هیچ
             // محتوایی داخلش نیست — با LayoutBuilder+Align(heightFactor)
             // به‌صورتِ واقعی (نه فقط ظاهری) از فضای لِی‌اوت کم می‌شود
-            LayoutBuilder(
-              builder: (context, constraints) {
-                const spacing = 2.0;
-                final cellSize = (constraints.maxWidth - spacing * 6) / 7;
-                final rows = ((firstWeekDay + daysInMonth) / 7).ceil();
-                final naturalHeight = rows * cellSize + (rows - 1) * spacing;
-                const trim = 16.0;
-                final croppedHeight = (naturalHeight - trim).clamp(
-                  0.0,
-                  naturalHeight,
-                );
-                return ClipRect(
-                  child: Align(
-                    alignment: Alignment.topCenter,
-                    heightFactor: naturalHeight > 0
-                        ? croppedHeight / naturalHeight
-                        : 1,
-                    child: GridView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 7,
-                            mainAxisSpacing: 2,
-                            crossAxisSpacing: 2,
-                          ),
-                      itemCount: firstWeekDay + daysInMonth,
-                      itemBuilder: (ctx, index) {
-                        if (index < firstWeekDay) return const SizedBox();
-                        final day = index - firstWeekDay + 1;
-                        final jDate = Jalali(
-                          _calMonth.year,
-                          _calMonth.month,
-                          day,
-                        );
-                        final dateStr = _fmtGregorian(jDate.toDateTime());
-                        final holiday = _calHolidays[dateStr];
-                        final isFriday = jDate.weekDay == 7;
-                        final isToday =
-                            jDate.year == today.year &&
-                            jDate.month == today.month &&
-                            jDate.day == today.day;
+            // 🔧 رفعِ باگ: قبلاً ۱۶ پیکسل از پایینِ گرید بریده می‌شد (برایِ
+            // حذفِ فضایِ خالیِ زیرش) — در ماه‌هایی که روزها در ۵ ردیف بودند،
+            // همین برش ردیفِ آخر را ناقص می‌کرد. علتِ آن فضایِ خالی، paddingِ
+            // خودکارِ GridView (به‌اندازه‌ی نوارِ پایینِ گوشی) بود؛ حالا صفر است
+            GridView.builder(
+              shrinkWrap: true,
+              padding: EdgeInsets.zero,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 7,
+                mainAxisSpacing: 4,
+                crossAxisSpacing: 4,
+              ),
+              itemCount: firstWeekDay + daysInMonth,
+              itemBuilder: (ctx, index) {
+                if (index < firstWeekDay) return const SizedBox();
+                final day = index - firstWeekDay + 1;
+                final jDate = Jalali(_calMonth.year, _calMonth.month, day);
+                final dateStr = _fmtGregorian(jDate.toDateTime());
+                final holiday = _calHolidays[dateStr];
+                final isFriday = jDate.weekDay == 7;
+                final isToday =
+                    jDate.year == today.year &&
+                    jDate.month == today.month &&
+                    jDate.day == today.day;
+                final dark = Theme.of(context).brightness == Brightness.dark;
 
-                        Color? bg;
-                        Color textColor = c.textStrong;
-                        if (holiday != null) {
-                          bg = c.danger.withValues(alpha: 0.14);
-                          textColor = c.danger;
-                        } else if (isFriday) {
-                          bg = c.textMuted.withValues(alpha: 0.08);
-                        }
+                // 🔧 طبق درخواست: رنگ‌ها عیناً مثلِ وب (.calendar-day در custom.css)
+                Color bg = dark
+                    ? c.surfaceContainerLow
+                    : const Color(0xFFF8F9FC);
+                Color? border;
+                Color textColor = c.textStrong;
+                if (holiday != null) {
+                  bg = _red.withValues(alpha: dark ? 0.22 : 0.15);
+                  border = _red.withValues(alpha: 0.3);
+                  textColor = dark
+                      ? const Color(0xFFF87171)
+                      : const Color(0xFFDC2626);
+                } else if (isFriday) {
+                  bg = _red.withValues(alpha: dark ? 0.14 : 0.08);
+                }
+                if (isToday) {
+                  border = _purple;
+                  if (holiday == null) {
+                    bg = dark
+                        ? const Color(0xFF744CA4).withValues(alpha: 0.18)
+                        : _purple.withValues(alpha: 0.08);
+                  }
+                }
 
-                        return GestureDetector(
-                          onTap: () => _onCalDayTap(jDate),
-                          child: Container(
-                            margin: const EdgeInsets.all(1.5),
-                            alignment: Alignment.center,
-                            decoration: BoxDecoration(
-                              color: bg,
-                              shape: BoxShape.circle,
-                              border: isToday
-                                  ? Border.all(color: c.primary, width: 1.4)
-                                  : null,
-                            ),
-                            child: Text(
-                              toPersianDigits(day.toString()),
-                              style: TextStyle(
-                                fontSize: 12.5,
-                                fontWeight: isToday
-                                    ? FontWeight.bold
-                                    : FontWeight.normal,
-                                color: textColor,
-                              ),
-                            ),
-                          ),
-                        );
-                      },
+                return GestureDetector(
+                  onTap: () => _onCalDayTap(jDate),
+                  child: Container(
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: bg,
+                      borderRadius: BorderRadius.circular(AppRadius.chip),
+                      border: Border.all(
+                        color: border ?? Colors.transparent,
+                        width: 1.5,
+                      ),
+                    ),
+                    child: Text(
+                      toPersianDigits(day.toString()),
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        color: textColor,
+                      ),
                     ),
                   ),
                 );
               },
             ),
             // 🔧 طبق درخواست: فاصله‌ی بیشتر بینِ آخرین ردیفِ روزها و موارد راهنما
-            const SizedBox(height: 26),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+            const SizedBox(height: 16),
+            // 🔧 طبق درخواست: راهنما مثلِ وب (.legend-color) — مربعِ گردگوشه
+            Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 14,
+              runSpacing: 8,
               children: [
-                _legendDot(c, c.textMuted.withValues(alpha: 0.3), 'جمعه'),
-                const SizedBox(width: 14),
-                _legendDot(c, c.danger, 'تعطیل رسمی'),
-                const SizedBox(width: 14),
-                _legendDot(c, Colors.transparent, 'امروز', border: c.primary),
+                _legendDot(
+                  c,
+                  _red.withValues(alpha: 0.15),
+                  'جمعه (تعطیل پیش‌فرض)',
+                  border: _red.withValues(alpha: 0.3),
+                ),
+                _legendDot(c, _red.withValues(alpha: 0.3), 'تعطیل رسمی'),
+                _legendDot(
+                  c,
+                  _purple.withValues(alpha: 0.15),
+                  'امروز',
+                  border: _purple,
+                ),
               ],
             ),
           ],
@@ -340,18 +348,16 @@ class _HolidaysPageState extends State<HolidaysPage> {
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-          width: 10,
-          height: 10,
+          width: 14,
+          height: 14,
           decoration: BoxDecoration(
             color: color,
-            shape: BoxShape.circle,
-            border: border != null
-                ? Border.all(color: border, width: 1.4)
-                : null,
+            borderRadius: BorderRadius.circular(4),
+            border: border != null ? Border.all(color: border, width: 2) : null,
           ),
         ),
-        const SizedBox(width: 4),
-        Text(label, style: TextStyle(fontSize: 10.5, color: c.textMuted)),
+        const SizedBox(width: 6),
+        Text(label, style: TextStyle(fontSize: 11.5, color: c.textMuted)),
       ],
     );
   }
@@ -379,13 +385,13 @@ class _HolidaysPageState extends State<HolidaysPage> {
         });
       } else {
         setState(() {
-          _error = data['message']?.toString() ?? 'خطا در دریافتِ تعطیلات';
+          _error = data['message']?.toString() ?? 'خطا در دریافت تعطیلات';
           _isLoading = false;
         });
       }
-    } catch (_) {
+    } catch (e) {
       setState(() {
-        _error = 'خطا در اتصال به سرور — احتمالاً دسترسیِ لازم را ندارید';
+        _error = ApiClient.errorMessage(e, 'خطا در اتصال به سرور');
         _isLoading = false;
       });
     }
@@ -414,11 +420,11 @@ class _HolidaysPageState extends State<HolidaysPage> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Get.back(result: false),
+            onPressed: () => AppNav.back(result: false),
             child: const Text('انصراف'),
           ),
           TextButton(
-            onPressed: () => Get.back(result: true),
+            onPressed: () => AppNav.back(result: true),
             child: Text('حذف', style: TextStyle(color: c.danger)),
           ),
         ],
@@ -481,7 +487,7 @@ class _HolidaysPageState extends State<HolidaysPage> {
               angle: math.pi,
               child: const Icon(Icons.arrow_forward_ios_rounded, size: 20),
             ),
-            onPressed: () => Get.back(),
+            onPressed: () => AppNav.back(),
           ),
         ),
         // 🔧 طبق درخواست: دکمه‌ی «+» قبلی مخصوصِ افزودنِ تعطیلی بود، نه
@@ -532,7 +538,7 @@ class _HolidaysPageState extends State<HolidaysPage> {
                       child: Padding(
                         padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
                         child: Text(
-                          'لیستِ تعطیلات',
+                          'لیست تعطیلات',
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 14,
@@ -681,12 +687,13 @@ class _AddHolidaySheet extends StatefulWidget {
   State<_AddHolidaySheet> createState() => _AddHolidaySheetState();
 }
 
+/// 🔧 طبق درخواست: عیناً مثلِ مودالِ «افزودن روز تعطیل» وب — «تاریخ انتخاب
+/// شده»، «عنوان تعطیلی»، «توضیحات (اختیاری)» و دکمه‌هایِ انصراف/ذخیره.
+/// «تکرارِ هفتگی» حذف شد (در وب غیرفعال است: holidayType همیشه 'date')
 class _AddHolidaySheetState extends State<_AddHolidaySheet> {
   final _titleController = TextEditingController();
-  String _type = 'date'; // 'date' | 'weekly'
+  final _descController = TextEditingController();
   DateTime? _date;
-  // اندیسِ نمایشی در _weekdaysFa (۰=شنبه...۶=جمعه)؛ پیش‌فرض جمعه
-  int _dayOfWeekIndex = 6;
   bool _isSaving = false;
 
   @override
@@ -698,112 +705,44 @@ class _AddHolidaySheetState extends State<_AddHolidaySheet> {
   @override
   void dispose() {
     _titleController.dispose();
+    _descController.dispose();
     super.dispose();
   }
 
   Future<void> _pickDate() async {
-    final d = await showCustomPersianDatePicker(context, initialDate: _date);
+    final d = await showCustomPersianDatePicker(
+      context,
+      initialDate: _date,
+      pickOnTap: true,
+    );
     if (d != null) setState(() => _date = d);
   }
 
-  Future<void> _pickWeekday() async {
-    final c = widget.c;
-    // 🔧 رفعِ باگِ «bottom overflowed»: وقتی این شیت درحالی‌که فیلدِ عنوان
-    // فوکوس و صفحه‌کلید بازه باز می‌شد، ارتفاعِ در دسترس کم می‌آمد و
-    // محتوا سرریز می‌کرد. اول صفحه‌کلید را می‌بندیم؛ برای اطمینانِ کامل
-    // هم سقفِ ارتفاع + اسکرول‌شدنِ لیست اضافه شد.
-    FocusScope.of(context).unfocus();
-    final i = await showModalBottomSheet<int>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      // 🔧 رفعِ باگِ سرریزِ «bottom overflowed»: بدونِ isScrollControlled،
-      // خودِ Flutter برایِ showModalBottomSheet سقفِ ارتفاعِ ۹/۱۶ صفحه
-      // می‌گذارد که برایِ این لیستِ ۷ردیفه کافی نبود و همیشه سرریز
-      // می‌داد (مستقل از صفحه‌کلید). با این پرچم، شیت به‌اندازه‌ی
-      // محتوایِ واقعی‌اش بلند می‌شود.
-      isScrollControlled: true,
-      builder: (ctx) => Container(
-        decoration: BoxDecoration(
-          color: c.surfaceContainerLow,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: SafeArea(
-          top: false,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(height: 12),
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: c.borderSoft,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'انتخابِ روزِ هفته',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 15,
-                  color: c.textStrong,
-                ),
-              ),
-              const SizedBox(height: 4),
-              ...List.generate(7, (i) {
-                final selected = i == _dayOfWeekIndex;
-                return ListTile(
-                  title: Text(
-                    _weekdaysFa[i],
-                    textAlign: TextAlign.right,
-                    style: TextStyle(
-                      color: selected ? c.primary : c.textStrong,
-                      fontWeight: selected
-                          ? FontWeight.bold
-                          : FontWeight.normal,
-                    ),
-                  ),
-                  trailing: selected
-                      ? Icon(Icons.check_rounded, color: c.primary)
-                      : null,
-                  onTap: () => Navigator.of(ctx).pop(i),
-                );
-              }),
-              SizedBox(height: 8 + MediaQuery.of(ctx).padding.bottom),
-            ],
-          ),
-        ),
-      ),
-    );
-    if (i != null) setState(() => _dayOfWeekIndex = i);
-  }
-
   Future<void> _submit() async {
+    if (_isSaving) return;
     final title = _titleController.text.trim();
     if (title.isEmpty) {
-      AppSnack.error('خطا', 'عنوان الزامی است');
+      AppSnack.warning('توجه', 'لطفا عنوان تعطیلی را وارد کنید');
       return;
     }
-    if (_type == 'date' && _date == null) {
-      AppSnack.error('خطا', 'تاریخ را انتخاب کنید');
+    if (_date == null) {
+      AppSnack.warning('توجه', 'لطفا یک تاریخ از روی تقویم انتخاب کنید');
       return;
     }
     setState(() => _isSaving = true);
     try {
-      final data = <String, dynamic>{
-        'scope': 'org',
-        'type': _type,
-        'title': title,
-      };
-      if (_type == 'date') {
-        final d = _date!;
-        data['holiday_date'] =
-            '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
-      } else {
-        data['day_of_week'] = _weekdayToPhpDow[_dayOfWeekIndex];
-      }
-      final res = await ApiClient.dio.post('/api/holidays/add.php', data: data);
+      final d = _date!;
+      final res = await ApiClient.dio.post(
+        '/api/holidays/add.php',
+        data: {
+          'type': 'date',
+          'scope': 'org',
+          'title': title,
+          'description': _descController.text.trim(),
+          'holiday_date':
+              '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}',
+        },
+      );
       final res2 = res.data;
       if (res2['success'] == true) {
         AppSnack.success(
@@ -815,24 +754,52 @@ class _AddHolidaySheetState extends State<_AddHolidaySheet> {
       } else {
         AppSnack.error('خطا', res2['message']?.toString() ?? 'خطا در ثبت');
       }
-    } catch (_) {
-      AppSnack.error('خطا', 'خطا در اتصال به سرور');
+    } catch (e) {
+      AppSnack.error('خطا', ApiClient.errorMessage(e, 'خطا در اتصال به سرور'));
     }
     if (mounted) setState(() => _isSaving = false);
   }
 
+  String get _dateText {
+    if (_date == null) return 'انتخاب تاریخ';
+    final j = Jalali.fromDateTime(_date!);
+    return toPersianDigits(
+      '${_weekdaysFa[j.weekDay - 1]} ${j.day} ${_jalaliMonths[j.month - 1]} ${j.year}',
+    );
+  }
+
+  Widget _label(AppColors c, String text) => Padding(
+    padding: const EdgeInsets.only(bottom: 6),
+    child: Text(
+      text,
+      style: TextStyle(
+        fontSize: 13,
+        fontWeight: FontWeight.w600,
+        color: c.textStrong,
+      ),
+    ),
+  );
+
+  InputDecoration _decoration(AppColors c, String hint) => InputDecoration(
+    hintText: hint,
+    hintStyle: TextStyle(color: c.textMuted, fontSize: 13),
+    filled: true,
+    fillColor: c.surface,
+    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+    border: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: BorderSide(color: c.borderSoft),
+    ),
+    enabledBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: BorderSide(color: c.borderSoft),
+    ),
+  );
+
   @override
   Widget build(BuildContext context) {
     final c = widget.c;
-    // 🔧 رفعِ باگِ اصلی: Get.bottomSheet خودش (در سطحِ روتِ GetX، مستقلِ از
-    // isScrollControlled) همیشه یک Padding(bottom: viewInsets.bottom)
-    // دورِ محتوا می‌کشد — افزودنِ دوباره‌ی همین Padding اینجا باعث
-    // می‌شد با بازشدنِ صفحه‌کلید، فاصله دوبرابر شود و کل شیت تا نزدیکیِ
-    // بالای صفحه هل داده شود. دیگر اینجا اضافه نمی‌شود.
     return ConstrainedBox(
-      // این فقط سقفِ ارتفاع است، نه ارتفاعِ ثابت. دکمه‌ی «افزودن» بیرونِ
-      // بخشِ اسکرول‌شونده (fixed) است، پس همیشه بلافاصله زیرِ فیلدها —
-      // یا بالایِ صفحه‌کلید — دیده می‌شود، نه گم در وسطِ یک شیتِ بلند
       constraints: BoxConstraints(
         maxHeight: MediaQuery.of(context).size.height * 0.85,
       ),
@@ -860,7 +827,7 @@ class _AddHolidaySheetState extends State<_AddHolidaySheet> {
               ),
               const SizedBox(height: 16),
               Text(
-                'افزودنِ تعطیلی',
+                'افزودن روز تعطیل',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
@@ -875,122 +842,59 @@ class _AddHolidaySheetState extends State<_AddHolidaySheet> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Row(
-                        children: [
-                          Expanded(child: _typeChip(c, 'date', 'یک روزِ مشخص')),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: _typeChip(c, 'weekly', 'تکرارِ هفتگی'),
+                      _label(c, 'تاریخ انتخاب شده'),
+                      GestureDetector(
+                        onTap: _pickDate,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 13,
                           ),
-                        ],
+                          decoration: BoxDecoration(
+                            color: c.surface,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: c.borderSoft),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.calendar_today_outlined,
+                                size: 18,
+                                color: _date != null ? c.primary : c.textMuted,
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  _dateText,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: _date != null
+                                        ? c.textStrong
+                                        : c.textMuted,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 14),
+                      _label(c, 'عنوان تعطیلی'),
                       TextField(
                         controller: _titleController,
-                        textAlign: TextAlign.right,
                         style: TextStyle(color: c.textStrong),
-                        decoration: InputDecoration(
-                          hintText: 'عنوان — مثلاً: تعطیلِ رسمی',
-                          hintStyle: TextStyle(
-                            color: c.textMuted,
-                            fontSize: 13,
-                          ),
-                          filled: true,
-                          fillColor: c.surface,
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 12,
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(color: c.borderSoft),
-                          ),
-                        ),
+                        decoration: _decoration(c, 'مثال: عید نوروز'),
                       ),
-                      const SizedBox(height: 12),
-                      if (_type == 'date')
-                        GestureDetector(
-                          onTap: _pickDate,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 13,
-                            ),
-                            decoration: BoxDecoration(
-                              color: c.surface,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: c.borderSoft),
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.calendar_today_outlined,
-                                  size: 18,
-                                  color: _date != null
-                                      ? c.primary
-                                      : c.textMuted,
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Text(
-                                    _date != null
-                                        ? toPersianDigits(
-                                            '${Jalali.fromDateTime(_date!).day} ${_jalaliMonths[Jalali.fromDateTime(_date!).month - 1]} ${Jalali.fromDateTime(_date!).year}',
-                                          )
-                                        : 'انتخابِ تاریخ',
-                                    textAlign: TextAlign.right,
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      color: _date != null
-                                          ? c.textStrong
-                                          : c.textMuted,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        )
-                      else
-                        GestureDetector(
-                          onTap: _pickWeekday,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 13,
-                            ),
-                            decoration: BoxDecoration(
-                              color: c.surface,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: c.borderSoft),
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.event_repeat_rounded,
-                                  size: 18,
-                                  color: c.primary,
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Text(
-                                    _weekdaysFa[_dayOfWeekIndex],
-                                    textAlign: TextAlign.right,
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      color: c.textStrong,
-                                    ),
-                                  ),
-                                ),
-                                Icon(
-                                  Icons.keyboard_arrow_down_rounded,
-                                  size: 20,
-                                  color: c.textMuted,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
+                      const SizedBox(height: 14),
+                      _label(c, 'توضیحات (اختیاری)'),
+                      TextField(
+                        controller: _descController,
+                        minLines: 2,
+                        maxLines: 4,
+                        keyboardType: TextInputType.multiline,
+                        style: TextStyle(color: c.textStrong),
+                        decoration: _decoration(c, 'توضیحات اضافی...'),
+                      ),
                     ],
                   ),
                 ),
@@ -1002,60 +906,61 @@ class _AddHolidaySheetState extends State<_AddHolidaySheet> {
                   20,
                   20 + MediaQuery.of(context).padding.bottom,
                 ),
-                child: SizedBox(
-                  height: 48,
-                  child: ElevatedButton(
-                    onPressed: _isSaving ? null : _submit,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: c.primary,
-                      disabledBackgroundColor: c.primary.withValues(alpha: 0.4),
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: SizedBox(
+                        height: 48,
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: c.textStrong,
+                            side: BorderSide(color: c.borderSoft),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: const Text('انصراف'),
+                        ),
                       ),
                     ),
-                    child: _isSaving
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              color: Colors.white,
-                              strokeWidth: 2,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: SizedBox(
+                        height: 48,
+                        child: ElevatedButton(
+                          onPressed: _isSaving ? null : _submit,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: c.primary,
+                            disabledBackgroundColor: c.primary.withValues(
+                              alpha: 0.4,
                             ),
-                          )
-                        : const Text(
-                            'افزودن',
-                            style: TextStyle(fontWeight: FontWeight.bold),
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                           ),
-                  ),
+                          child: _isSaving
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    color: Colors.white,
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Text(
+                                  'ذخیره',
+                                  style: TextStyle(fontWeight: FontWeight.bold),
+                                ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _typeChip(AppColors c, String value, String label) {
-    final selected = _type == value;
-    return GestureDetector(
-      onTap: () => setState(() => _type = value),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        decoration: BoxDecoration(
-          color: selected ? c.primary.withValues(alpha: 0.1) : c.surface,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: selected ? c.primary : c.borderSoft),
-        ),
-        child: Text(
-          label,
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 13,
-            color: selected ? c.primary : c.textMuted,
-            fontWeight: selected ? FontWeight.bold : FontWeight.normal,
           ),
         ),
       ),

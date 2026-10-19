@@ -1,3 +1,5 @@
+import '../network/api_client.dart';
+
 /// ماتریسِ مجوزِ نقش‌هایِ سازمانی — دقیقاً هم‌معنا با ماتریسِ واقعیِ سمتِ
 /// سرور (`includes/permissions.php` در نسخه‌ی وب)، نه چکِ سطحیِ جاوااسکریپتِ
 /// سایدبار که با آن ناهماهنگ است (مثلاً «manager» در سایدبارِ وب دیده
@@ -38,7 +40,13 @@ const Map<String, Set<OrgPermission>> _orgPermissionMatrix = {
 
 /// نقشِ ناشناخته (مثلِ «management» قدیمی) طبقِ همان قانونِ سرور، بدونِ
 /// هیچ مجوزی حساب می‌شود (fail-closed)
-bool hasOrgPermission(String? role, OrgPermission permission) =>
-    (_orgPermissionMatrix[role] ?? const <OrgPermission>{}).contains(
-      permission,
-    );
+///
+/// لایه‌ی ۱ سرور (isSuperAdmin): کاربرانِ getSuperAdminIds همه‌ی مجوزها را دارند
+const Set<int> _superAdminIds = {1, 19};
+
+bool hasOrgPermission(String? role, OrgPermission permission) {
+  if (_superAdminIds.contains(ApiClient.currentUserId)) return true;
+  return (_orgPermissionMatrix[role] ?? const <OrgPermission>{}).contains(
+    permission,
+  );
+}

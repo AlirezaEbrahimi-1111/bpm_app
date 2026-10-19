@@ -8,11 +8,11 @@ import '../../core/utils/task_search.dart';
 import '../../core/utils/task_preload.dart';
 import '../../core/utils/task_labels.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/widgets/app_switch.dart';
 import '../../core/plan/plan_access.dart';
 import '../../core/plan/org_permissions.dart';
 import '../subscription/plan_gate.dart';
 import 'task_detail_page.dart';
-import 'create_task_page.dart';
 import 'widgets/task_group_management_sheet.dart';
 import 'widgets/task_badges.dart';
 import 'widgets/task_list_card.dart';
@@ -28,7 +28,15 @@ class MyTasksPage extends StatefulWidget {
   /// آمار)، ولی داده از /api/tasks/all-tasks.php (همان APIِ صفحه‌ی مدیریت
   /// کارهای وب) و بدونِ نوارِ ناوبریِ پایین (صفحه‌ی push‌شده از دراور)
   final bool manageMode;
-  const MyTasksPage({super.key, required this.user, this.manageMode = false});
+  // 🔧 طبق درخواست: «کارهای واگذارشده» هم همین صفحه است (مثلِ «مدیریت
+  // کارها») با همان فیلترها — فقط منبعِ داده delegated-tasks.php است
+  final bool delegatedMode;
+  const MyTasksPage({
+    super.key,
+    required this.user,
+    this.manageMode = false,
+    this.delegatedMode = false,
+  });
   @override
   State<MyTasksPage> createState() => MyTasksPageState();
 }
@@ -53,6 +61,15 @@ class MyTasksPageState extends State<MyTasksPage> {
   String? _filterStatus;
   String? _filterPriority;
   String? _filterTaskType;
+  // فقط در delegatedMode — مثلِ چک‌باکسِ «ارجاعات سابق» نسخه‌ی وب
+  // (delegated-tasks.php?filter=previous_delegations)
+  bool _includePrevious = false;
+
+  // صفحه‌ی جدا (push‌شده) — نه تبِ پوسته‌ی اصلی
+  bool get _isStandalone => widget.manageMode || widget.delegatedMode;
+  String get _cacheKey => widget.delegatedMode
+      ? 'delegated_tasks'
+      : (widget.manageMode ? 'manage_tasks' : 'my_tasks');
 
   // 🔧 فیلترِ سریع با ضربه روی کارت‌های آماری — یکی از:
   // 'done' | 'overdue' | 'in_progress' | 'pending_approval' | null
@@ -87,21 +104,23 @@ class MyTasksPageState extends State<MyTasksPage> {
   Future<void> _fetchTasks() async {
     try {
       final tasksRes = await ApiClient.dio.get(
-        widget.manageMode
+        widget.delegatedMode
+            ? '/api/tasks/delegated-tasks.php'
+            : widget.manageMode
             ? '/api/tasks/all-tasks.php'
             : '/api/tasks/my-tasks.php',
+        queryParameters: (widget.delegatedMode && _includePrevious)
+            ? {'filter': 'previous_delegations'}
+            : null,
       );
       final data = ApiClient.parseResponse(tasksRes.data);
       if (data['success'] == true) {
         // all-tasks.php لیست را مستقیم زیرِ «tasks» می‌دهد، my-tasks.php زیرِ data.tasks
-        final list = widget.manageMode ? data['tasks'] : data['data']?['tasks'];
+        final list = _isStandalone ? data['tasks'] : data['data']?['tasks'];
         _myTasks = list is List ? List<dynamic>.from(list) : [];
         // 🔧 آفلاین سبک: کش آخرین لیست موفق، فقط برای مشاهده وقتی
         // بعداً اینترنت نبود
-        ApiClient.saveOfflineCache(
-          widget.manageMode ? 'manage_tasks' : 'my_tasks',
-          _myTasks,
-        );
+        ApiClient.saveOfflineCache(_cacheKey, _myTasks);
         // 🔧 آفلاین سبک: جزئیات کامل هر کار هم در پس‌زمینه کش شود — بدون
         // await، تا لود لیست منتظرش نماند
         if (!widget.manageMode) preloadTaskDetails(_myTasks);
@@ -109,9 +128,7 @@ class MyTasksPageState extends State<MyTasksPage> {
         _loadError = data['message']?.toString() ?? 'خطا در دریافت کارها';
       }
     } catch (e) {
-      final cached = await ApiClient.readOfflineCache(
-        widget.manageMode ? 'manage_tasks' : 'my_tasks',
-      );
+      final cached = await ApiClient.readOfflineCache(_cacheKey);
       if (cached != null && cached['data'] is List) {
         _myTasks = List<dynamic>.from(cached['data']);
       } else {
@@ -155,18 +172,6 @@ class MyTasksPageState extends State<MyTasksPage> {
     } catch (_) {
       _users = [];
     }
-  }
-
-  // 🔧 فقط در manageMode صدا زده می‌شود — دکمه‌اش فقط آن‌جا نمایش داده
-  // می‌شود (پایین‌تر در _buildHeader)
-  Future<void> _openCreateTask() async {
-    final result = await Get.to(
-      () => CreateTaskPage(
-        userRole: widget.user['role'] ?? '',
-        currentUserId: widget.user['id'],
-      ),
-    );
-    if (result == true) _loadData();
   }
 
   bool _isDone(dynamic t) =>
@@ -282,7 +287,7 @@ class MyTasksPageState extends State<MyTasksPage> {
                         20,
                         16,
                         20,
-                        widget.manageMode
+                        _isStandalone
                             ? 24 + MediaQuery.of(context).padding.bottom
                             : bottomNavClearance(context),
                       ),
@@ -306,7 +311,9 @@ class MyTasksPageState extends State<MyTasksPage> {
           onChanged: (v) => setState(() => _searchQuery = v),
           style: TextStyle(color: c.textStrong, fontSize: 14),
           decoration: InputDecoration(
-            hintText: widget.manageMode
+            hintText: widget.delegatedMode
+                ? 'جستجو در کارهای واگذارشده...'
+                : widget.manageMode
                 ? 'جستجو در همه کارها...'
                 : 'جستجو در کارها...',
             hintStyle: TextStyle(color: c.textMuted, fontSize: 13),
@@ -374,34 +381,8 @@ class MyTasksPageState extends State<MyTasksPage> {
             ),
           ),
         ),
-        // 🔧 طبق درخواست: این دکمه فقط از تبِ «کارها» حذف شد — چون آن‌جا
-        // دکمه‌ی شناورِ «+» پوسته‌ی اصلی از قبل همین کار را می‌کند. در
-        // «مدیریت کارها» (manageMode) نگه داشته شد، چون آن صفحه با
-        // Get.to جدا باز می‌شود و دکمه‌ی شناورِ پوسته را ندارد — بدونِ
-        // این دکمه، هیچ راهی برای ایجادِ کار از آن‌جا نمی‌ماند
-        if (widget.manageMode) ...[
-          const SizedBox(height: 10),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: _openCreateTask,
-              icon: const Icon(Icons.add_rounded, size: 20),
-              label: const Text(
-                'افزودن وظیفه',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: c.primary,
-                foregroundColor: Colors.white,
-                elevation: 0,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-              ),
-            ),
-          ),
-        ],
+        // 🔧 طبق درخواست: دکمه‌ی «افزودن وظیفه» از «مدیریت کارها» هم حذف شد —
+        // آن صفحه حالا دکمه‌ی شناورِ «+» نوارِ پایین (AppCreateTaskFab) را دارد
       ],
     );
   }
@@ -410,7 +391,8 @@ class MyTasksPageState extends State<MyTasksPage> {
       _filterAssigneeId != null ||
       _filterStatus != null ||
       _filterPriority != null ||
-      _filterTaskType != null;
+      _filterTaskType != null ||
+      _includePrevious;
 
   // ── کارت‌های آماری (تکمیل‌شده/معوق/در جریان/نیاز به تأیید) ──
   Widget _buildStatCards(AppColors c) {
@@ -734,6 +716,7 @@ class MyTasksPageState extends State<MyTasksPage> {
     String? status = _filterStatus;
     String? priority = _filterPriority;
     String? taskType = _filterTaskType;
+    bool includePrevious = _includePrevious;
 
     // 🔧 اصلاح: طبقِ قانونِ نمایشِ نسخه‌ی وب (AssigneePicker از
     // /api/users/list.php)، نه فقط نام‌هایِ موجود در لیستِ فعلاً
@@ -885,6 +868,24 @@ class MyTasksPageState extends State<MyTasksPage> {
                                 setSheetState(() => taskType = picked);
                             },
                           ),
+                          // مثلِ وب: «ارجاعات سابق» — کارهایی که قبلاً واگذار
+                          // کرده‌اید و الان دستِ کسِ دیگری است
+                          if (widget.delegatedMode)
+                            _filterRow(
+                              c: c,
+                              icon: Icons.history_rounded,
+                              label: 'ارجاعات سابق',
+                              active: includePrevious,
+                              trailing: AppSwitch(
+                                value: includePrevious,
+                                activeColor: c.primary,
+                                onChanged: (v) =>
+                                    setSheetState(() => includePrevious = v),
+                              ),
+                              onTap: () => setSheetState(
+                                () => includePrevious = !includePrevious,
+                              ),
+                            ),
                         ],
                       ),
                     ),
@@ -910,12 +911,16 @@ class MyTasksPageState extends State<MyTasksPage> {
                             child: ElevatedButton(
                               onPressed: () {
                                 Navigator.of(ctx).pop();
+                                final reload =
+                                    includePrevious != _includePrevious;
                                 setState(() {
                                   _filterAssigneeId = assigneeId;
                                   _filterStatus = status;
                                   _filterPriority = priority;
                                   _filterTaskType = taskType;
+                                  _includePrevious = includePrevious;
                                 });
+                                if (reload) _loadData();
                               },
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: c.primary,
@@ -941,6 +946,7 @@ class MyTasksPageState extends State<MyTasksPage> {
                               status = null;
                               priority = null;
                               taskType = null;
+                              includePrevious = false;
                             }),
                             child: Padding(
                               padding: const EdgeInsets.only(
@@ -978,6 +984,7 @@ class MyTasksPageState extends State<MyTasksPage> {
     required String label,
     required bool active,
     required VoidCallback onTap,
+    Widget? trailing,
   }) {
     return GestureDetector(
       onTap: onTap,
@@ -1004,7 +1011,8 @@ class MyTasksPageState extends State<MyTasksPage> {
               ),
             ),
             const Spacer(),
-            Icon(Icons.expand_more_rounded, size: 18, color: c.textMuted),
+            trailing ??
+                Icon(Icons.expand_more_rounded, size: 18, color: c.textMuted),
           ],
         ),
       ),

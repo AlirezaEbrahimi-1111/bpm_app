@@ -2,13 +2,13 @@ import 'package:dio/dio.dart' as dio;
 import 'package:file_picker/file_picker.dart';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 import '../../core/widgets/app_snack.dart';
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/plan/plan_access.dart';
 import '../subscription/plan_gate.dart';
 import '../shell/widgets/app_bottom_nav.dart';
+import '../../core/navigation/app_nav.dart';
 
 /// صفحه‌ی «اطلاعات شخصی» — طبق طرح ارسالی (روشن + تاریک)
 ///
@@ -69,6 +69,7 @@ class _PersonalInfoPageState extends State<PersonalInfoPage> {
   }
 
   Future<void> _pickAndUploadAvatar() async {
+    if (_isUploadingAvatar) return;
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
@@ -111,6 +112,7 @@ class _PersonalInfoPageState extends State<PersonalInfoPage> {
   }
 
   Future<void> _saveChanges() async {
+    if (_isSaving) return;
     final fullName = _nameController.text.trim();
     if (fullName.isEmpty) {
       AppSnack.error('خطا', 'نام و نام خانوادگی نمی‌تواند خالی باشد');
@@ -123,7 +125,7 @@ class _PersonalInfoPageState extends State<PersonalInfoPage> {
     final firstName = parts.first;
     final lastName = parts.length > 1 ? parts.sublist(1).join(' ') : '';
     if (lastName.isEmpty) {
-      AppSnack.error('خطا', 'لطفاً نام و نام خانوادگی را با فاصله وارد کنید');
+      AppSnack.error('خطا', 'لطفا نام و نام خانوادگی را با فاصله وارد کنید');
       return;
     }
 
@@ -140,7 +142,7 @@ class _PersonalInfoPageState extends State<PersonalInfoPage> {
         widget.user['first_name'] = firstName;
         widget.user['last_name'] = lastName;
         await ApiClient.saveCachedUser(widget.user);
-        Get.back();
+        AppNav.back();
         AppSnack.success(
           '✅ موفق',
           (data['message'] ?? 'اطلاعات بروزرسانی شد').toString(),
@@ -197,7 +199,7 @@ class _PersonalInfoPageState extends State<PersonalInfoPage> {
               angle: math.pi, // 🔧 طبق درخواست: ۱۸۰ درجه چرخید
               child: const Icon(Icons.arrow_forward_ios_rounded, size: 20),
             ),
-            onPressed: () => Get.back(),
+            onPressed: () => AppNav.back(),
           ),
         ),
         body: SingleChildScrollView(

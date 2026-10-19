@@ -281,7 +281,23 @@ class DashboardPageState extends State<DashboardPage> {
     }).length;
   }
 
+  // 🔧 طبق درخواست (مثلِ نسخه‌ی وب — applyFilter در dashboard-user.php):
+  // ترتیب بر اساسِ موعدِ مؤثر (TF.effectiveDue) از قدیم به جدید؛ کارهایِ
+  // بی‌موعد آخرِ لیست. ترتیبِ کارهایِ هم‌تاریخ همان ترتیبِ سرور می‌ماند
+  // (sortِ جاوااسکریپت پایدار است، sortِ دارت نه — برای همین ایندکس هم مقایسه می‌شود)
   List<dynamic> get _filteredTasks {
+    final list = _unsortedFilteredTasks;
+    final indexed = List.generate(list.length, (i) => (i, list[i]));
+    indexed.sort((a, b) {
+      final da = taskEffectiveDue(a.$2) ?? '9999-99-99';
+      final db = taskEffectiveDue(b.$2) ?? '9999-99-99';
+      final cmp = da.compareTo(db);
+      return cmp != 0 ? cmp : a.$1.compareTo(b.$1);
+    });
+    return indexed.map((e) => e.$2).toList();
+  }
+
+  List<dynamic> get _unsortedFilteredTasks {
     // 🔧 وقتی روزی از نوارِ تقویم انتخاب شده، اولویت با همان روز است —
     // فیلترهای همه/امروز/عقب‌افتاده در این حالت غیرفعال (خاموش) می‌شوند
     if (_selectedDay != null) {
@@ -786,6 +802,25 @@ class DashboardPageState extends State<DashboardPage> {
             Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
+                // 🔧 طبق درخواست: ستاره‌ی «منتخب» کنارِ عنوان (مثلِ جزئیاتِ
+                // کار) — با لمس، کار منتخب/غیرمنتخب می‌شود؛ لیست با
+                // ValueListenableBuilderِ بالاتر خودکار تازه می‌شود
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => StarredTasksPreference.toggle(taskId),
+                  child: Padding(
+                    padding: const EdgeInsetsDirectional.only(end: 6),
+                    child: Icon(
+                      StarredTasksPreference.isStarred(taskId)
+                          ? Icons.star_rounded
+                          : Icons.star_outline_rounded,
+                      size: 20,
+                      color: StarredTasksPreference.isStarred(taskId)
+                          ? const Color(0xFFF5B94D)
+                          : c.textMuted,
+                    ),
+                  ),
+                ),
                 Expanded(
                   child: Text(
                     task['title'] ?? '',
