@@ -2380,53 +2380,6 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── درخواست‌های باز (تمدید موعد / رفع تأخیرِ دوره‌ای) ──
-          // 🔧 طبق درخواست: بالای صفحه (قبل از هدرِ بنفش)، تا بلافاصله دیده شوند
-          ..._deadlineRequests.map(
-            (r) => _requestBanner(
-              icon: Icons.event_repeat_rounded,
-              title: 'درخواست تمدید موعد',
-              subtitle:
-                  '${r['requester_name'] ?? ''} — تا ${r['requested_new_deadline_jalali'] ?? ''}',
-              isApprover: r['is_approver'] == true,
-              onReview: () => _showDeadlineReviewDialog(r),
-            ),
-          ),
-          ..._overdueClearRequests.map(
-            (r) => _requestBanner(
-              icon: Icons.history_toggle_off_rounded,
-              title: 'درخواست رفع تأخیر دوره‌ای',
-              subtitle:
-                  '${r['requester_name'] ?? ''} — ${toPersianDigits(r['periods_count']?.toString() ?? '0')} دوره',
-              isApprover: r['is_approver'] == true,
-              onReview: () => _showOverdueClearReviewDialog(r),
-            ),
-          ),
-          if (_renewalRequest != null)
-            _requestBanner(
-              icon: Icons.autorenew_rounded,
-              title: 'درخواست تمدید دوره',
-              subtitle:
-                  '${_renewalRequest!['requester_name'] ?? ''} — از ${toPersianDigits(_renewalRequest!['new_start_date']?.toString() ?? '')}',
-              isApprover:
-                  _currentUserId != null &&
-                  _renewalRequest!['current_approver_id']?.toString() ==
-                      _currentUserId.toString(),
-              onReview: () => _showRenewalReviewDialog(_renewalRequest!),
-            ),
-          if (_terminationRequest != null)
-            _requestBanner(
-              icon: Icons.flag_outlined,
-              title: 'درخواست اتمام کار',
-              subtitle:
-                  _terminationRequest!['requester_name']?.toString() ?? '',
-              isApprover:
-                  _currentUserId != null &&
-                  _terminationRequest!['reviewer_id']?.toString() ==
-                      _currentUserId.toString(),
-              onReview: () =>
-                  _showTerminationReviewDialog(_terminationRequest!),
-            ),
           // ── هدرِ بنفشِ کار ──
           // 🔧 طبق درخواست (مثلِ نسخه‌ی وب — .taskDetail-header): نوارِ بنفشِ
           // یکدست (#8e57fe) که عنوان، توضیحات و بج‌هایِ زیرش رویِ آن است
@@ -2516,6 +2469,53 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
           // 🔧 طبق درخواست: کارتِ «یادداشت ارجاع» زیرِ هدر حذف شد
           const SizedBox(height: 12),
 
+          // ── درخواست‌های باز (تمدید موعد / رفع تأخیرِ دوره‌ای) ──
+          // 🔧 طبق درخواست: زیرِ هدرِ عنوان و بالایِ «اطلاعات کار»
+          ..._deadlineRequests.map(
+            (r) => _requestBanner(
+              icon: Icons.event_repeat_rounded,
+              title: 'درخواست تمدید موعد',
+              subtitle:
+                  '${r['requester_name'] ?? ''} — تا ${r['requested_new_deadline_jalali'] ?? ''}',
+              isApprover: r['is_approver'] == true,
+              onReview: () => _showDeadlineReviewDialog(r),
+            ),
+          ),
+          ..._overdueClearRequests.map(
+            (r) => _requestBanner(
+              icon: Icons.history_toggle_off_rounded,
+              title: 'درخواست رفع تأخیر دوره‌ای',
+              subtitle:
+                  '${r['requester_name'] ?? ''} — ${toPersianDigits(r['periods_count']?.toString() ?? '0')} دوره',
+              isApprover: r['is_approver'] == true,
+              onReview: () => _showOverdueClearReviewDialog(r),
+            ),
+          ),
+          if (_renewalRequest != null)
+            _requestBanner(
+              icon: Icons.autorenew_rounded,
+              title: 'درخواست تمدید دوره',
+              subtitle:
+                  '${_renewalRequest!['requester_name'] ?? ''} — از ${toPersianDigits(_renewalRequest!['new_start_date']?.toString() ?? '')}',
+              isApprover:
+                  _currentUserId != null &&
+                  _renewalRequest!['current_approver_id']?.toString() ==
+                      _currentUserId.toString(),
+              onReview: () => _showRenewalReviewDialog(_renewalRequest!),
+            ),
+          if (_terminationRequest != null)
+            _requestBanner(
+              icon: Icons.flag_outlined,
+              title: 'درخواست اتمام کار',
+              subtitle:
+                  _terminationRequest!['requester_name']?.toString() ?? '',
+              isApprover:
+                  _currentUserId != null &&
+                  _terminationRequest!['reviewer_id']?.toString() ==
+                      _currentUserId.toString(),
+              onReview: () =>
+                  _showTerminationReviewDialog(_terminationRequest!),
+            ),
           // ── کارت اطلاعات ──
           // 🔧 طبق درخواست: شماره تسک، ایجادکننده، مسئول انجام، گروه،
           // تاریخ ایجاد، موعد انجام (با آیکن‌های تمدید/حذف موعد جلویش)
