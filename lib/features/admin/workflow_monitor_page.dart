@@ -218,6 +218,8 @@ class _WorkflowMonitorPageState extends State<WorkflowMonitorPage> {
         AppSnack.success(
           '🗑️ حذف شد',
           'روتین حذف شد',
+          // دکمه‌ی «بازگردانی» دارد — مثلِ «حذف شد»ِ کار، ۵ ثانیه
+          duration: const Duration(seconds: 5),
           mainButton: TextButton(
             onPressed: () => _restore(w['id']),
             child: const Text(

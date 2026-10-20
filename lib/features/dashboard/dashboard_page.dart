@@ -30,7 +30,19 @@ class DashboardPageState extends State<DashboardPage> {
   bool _isLoading = true;
   // 🔧 null یعنی هیچ‌کدام از فیلترهای همه/امروز/عقب‌افتاده فعال نیست
   // (چون یک روزِ خاص از نوارِ تقویم انتخاب شده)
-  String? _filter = 'همه';
+  // 🔧 طبق درخواست: دو تب «همه کارها» (۰) و «منتخب» (۱)؛ هر تب فیلترِ
+  // جدایِ خودش (همه/امروز/عقب افتاده) و پینِ جدایِ خودش را دارد
+  int _tab = 0;
+  String? _filterAll = 'همه';
+  String? _filterStarred = 'همه';
+  String? get _filter => _tab == 0 ? _filterAll : _filterStarred;
+  set _filter(String? v) {
+    if (_tab == 0) {
+      _filterAll = v;
+    } else {
+      _filterStarred = v;
+    }
+  }
 
   // 🔧 روزِ انتخاب‌شده از نوارِ تقویم — null یعنی هیچ روزی به‌طورِ خاص
   // انتخاب نشده و فیلترِ همه/امروز/عقب‌افتاده حاکم است
@@ -102,20 +114,12 @@ class DashboardPageState extends State<DashboardPage> {
     // پیش‌فرضِ داشبورد بارگذاری شود — چون خواندنِ ذخیره‌سازیِ محلی async
     // است، اگر از قبل آماده بود همین‌جا، وگرنه با یک شنونده‌ی یک‌باره
     // به‌محضِ آماده‌شدن اعمال می‌شود
-    final pinned = DashboardFilterPinPreference.pinnedNotifier.value;
-    if (pinned != null) {
-      _filter = pinned;
-    } else {
-      late final VoidCallback listener;
-      listener = () {
-        final p = DashboardFilterPinPreference.pinnedNotifier.value;
-        if (p != null && mounted) {
-          setState(() => _filter = p);
-        }
-        DashboardFilterPinPreference.pinnedNotifier.removeListener(listener);
-      };
-      DashboardFilterPinPreference.pinnedNotifier.addListener(listener);
-    }
+    _applyInitialPin(DashboardFilterPinPreference.pinnedNotifier, (p) {
+      _filterAll = p;
+    });
+    _applyInitialPin(DashboardFilterPinPreference.starredPinnedNotifier, (p) {
+      _filterStarred = p;
+    });
     // 🔧 با viewportFraction=۰.۲ (=۱/۵)، صفحه‌ی جاری همیشه خودش در
     // وسطِ ویوپورت می‌نشیند — یعنی «امروز» از همان اول، وسطِ ۵تایی است
     _dayPageController = PageController(
@@ -147,6 +151,26 @@ class DashboardPageState extends State<DashboardPage> {
   // 🔧 طبق درخواست: انتخابِ یک روز از مودالِ هفته/ماه، هم لیستِ کارها
   // را فیلتر می‌کند (قبلاً بود) و هم خودِ چرخِ تقویمِ بالای داشبورد را
   // به همان روز می‌برد (قبلاً فقط لیست تغییر می‌کرد، چرخ ثابت می‌ماند)
+  /// پینِ ذخیره‌شده را (اگر هنوز از حافظه خوانده نشده، به‌محضِ آماده‌شدن)
+  /// به‌عنوانِ فیلترِ پیش‌فرضِ همان تب اعمال می‌کند
+  void _applyInitialPin(
+    ValueNotifier<String?> notifier,
+    void Function(String) apply,
+  ) {
+    final pinned = notifier.value;
+    if (pinned != null) {
+      apply(pinned);
+      return;
+    }
+    late final VoidCallback listener;
+    listener = () {
+      final p = notifier.value;
+      if (p != null && mounted) setState(() => apply(p));
+      notifier.removeListener(listener);
+    };
+    notifier.addListener(listener);
+  }
+
   void _selectDay(DateTime day) {
     final base = DateTime.now();
     final baseMidnight = DateTime(base.year, base.month, base.day);
@@ -155,7 +179,9 @@ class DashboardPageState extends State<DashboardPage> {
     final index = (_dayWindowRadius + offset).clamp(0, _dayWindowRadius * 2);
     setState(() {
       _selectedDay = dayMidnight;
-      _filter = null;
+      // طبق درخواست: انتخابِ روز همیشه رویِ «همه کارها»
+      _tab = 0;
+      _filterAll = null;
     });
     _scrollPageToTopIfNeeded();
     if (_dayPageController.hasClients) {
@@ -311,20 +337,17 @@ class DashboardPageState extends State<DashboardPage> {
             due.day == sel.day;
       }).toList();
     }
+    // تبِ «منتخب» فقط کارهایِ ستاره‌دار؛ فیلترها رویِ همان اعمال می‌شوند
+    final base = _tab == 1
+        ? _tasks.where((t) => StarredTasksPreference.isStarred(t['id']))
+        : _tasks;
     if (_filter == 'امروز') {
-      return _tasks.where((t) => taskIsDueToday(t)).toList();
+      return base.where((t) => taskIsDueToday(t)).toList();
     }
     if (_filter == 'عقب افتاده') {
-      return _tasks.where((t) => taskIsOverdue(t)).toList();
+      return base.where((t) => taskIsOverdue(t)).toList();
     }
-    if (_filter == 'منتخب') {
-      return _tasks
-          .where(
-            (t) => !_isClosed(t) && StarredTasksPreference.isStarred(t['id']),
-          )
-          .toList();
-    }
-    return _tasks.where((t) => !_isClosed(t)).toList();
+    return base.where((t) => !_isClosed(t)).toList();
   }
 
   @override
@@ -465,7 +488,8 @@ class DashboardPageState extends State<DashboardPage> {
                   if (page != null) {
                     setState(() {
                       _selectedDay = days[page];
-                      _filter = null;
+                      _tab = 0;
+                      _filterAll = null;
                     });
                     _scrollPageToTopIfNeeded();
                   }
@@ -671,26 +695,28 @@ class DashboardPageState extends State<DashboardPage> {
   // 🔧 طبق درخواست: چون ۴ چیپ کنارِ عنوان جا نمی‌شد، عنوان و چیپ‌ها به
   // دو ردیفِ جدا تقسیم شدند
   Widget _buildTaskListHeader(AppColors c) {
+    final starredTab = _tab == 1;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'همه کارها',
-          style: TextStyle(
-            fontSize: 17,
-            fontWeight: FontWeight.bold,
-            color: c.textStrong,
-          ),
+        // 🔧 طبق درخواست: دو تب به‌جایِ عنوانِ «همه کارها»
+        Row(
+          children: [
+            _tabLabel(c, 'همه کارها', 0),
+            const SizedBox(width: 18),
+            _tabLabel(c, 'منتخب', 1),
+          ],
         ),
         const SizedBox(height: 10),
         // 🔧 طبق درخواست: چپ‌چین — centerEnd در راست‌به‌چپ یعنی چپ
         Align(
           alignment: AlignmentDirectional.centerEnd,
-          // 🔧 طبق درخواست: مثلِ نسخه‌ی وب، هر فیلتر یک سنجاقِ پین دارد —
-          // فیلترِ پین‌شده همیشه با بازشدنِ دوباره‌ی اپ، پیش‌فرض می‌ماند
-          // (محلی و دائمی روی گوشی، نه فقط تا پایانِ روز مثلِ وب)
+          // هر فیلتر یک سنجاقِ پین دارد — پینِ هر تب جداست و با بازشدنِ
+          // دوباره‌ی اپ، پیش‌فرضِ همان تب می‌ماند (محلی و دائمی روی گوشی)
           child: ValueListenableBuilder<String?>(
-            valueListenable: DashboardFilterPinPreference.pinnedNotifier,
+            valueListenable: starredTab
+                ? DashboardFilterPinPreference.starredPinnedNotifier
+                : DashboardFilterPinPreference.pinnedNotifier,
             builder: (context, pinned, _) => Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -699,13 +725,48 @@ class DashboardPageState extends State<DashboardPage> {
                 _filterChip(c, 'امروز', pinned),
                 const SizedBox(width: 8),
                 _filterChip(c, 'عقب افتاده', pinned),
-                const SizedBox(width: 8),
-                _filterChip(c, 'منتخب', pinned),
               ],
             ),
           ),
         ),
       ],
+    );
+  }
+
+  Widget _tabLabel(AppColors c, String label, int index) {
+    final selected = _tab == index;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => setState(() {
+        _tab = index;
+        // جابه‌جاییِ تب، انتخابِ روزِ خاص را لغو می‌کند
+        _selectedDay = null;
+        _filter ??= 'همه';
+      }),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.bold,
+              color: selected ? c.textStrong : c.textMuted,
+            ),
+          ),
+          const SizedBox(height: 4),
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            height: 3,
+            width: selected ? 28 : 0,
+            decoration: BoxDecoration(
+              color: c.primary,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -735,7 +796,10 @@ class DashboardPageState extends State<DashboardPage> {
           children: [
             GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTap: () => DashboardFilterPinPreference.toggle(label),
+              onTap: () => DashboardFilterPinPreference.toggle(
+                label,
+                starredTab: _tab == 1,
+              ),
               child: Icon(
                 isPinned ? Icons.push_pin_rounded : Icons.push_pin_outlined,
                 size: 13,

@@ -72,7 +72,7 @@ class AppSnack {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       borderRadius: 12,
       mainButton: mainButton,
-      duration: duration ?? const Duration(seconds: 3),
+      duration: duration ?? const Duration(seconds: 2),
     );
   }
 }

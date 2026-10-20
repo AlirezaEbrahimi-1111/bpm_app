@@ -19,6 +19,7 @@ import '../subscription/plan_gate.dart';
 import '../../core/theme/theme_controller.dart';
 import '../../core/theme/starred_tasks_preference.dart';
 import '../../core/theme/app_radius.dart';
+import 'widgets/task_badges.dart';
 import 'widgets/persian_date_picker_sheet.dart';
 import 'widgets/task_group_management_sheet.dart';
 import 'widgets/attachment_picker.dart';
@@ -1519,41 +1520,69 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     return '$date - ${toPersianDigits('${p(d.hour)}:${p(d.minute)}')}';
   }
 
-  /// ردیفِ «مهلت باقی‌مانده» / «تأخیر» — عیناً منطقِ buildPeriodicDelayBadge
-  /// وب: کارِ روتین/فرآیندی ساعتی (hours_delayed/hours_remaining)، بقیه روزِ
-  /// کاری (working_days_delayed/days_remaining) — همه از سرور (enrichTaskDates)
+  /// 🔧 طبق درخواست: ردیفِ «مهلت انجام» — همیشه نمایش داده می‌شود و متن/رنگش
+  /// عیناً TF.remainingBadge وب (assets/js/task-filters.js) است:
+  /// تکمیل / n روز / n روز دیگر / امروز / n روز کاری تاخیر، و برایِ کارِ روتین
+  /// ساعتی (n ساعت مانده / اکنون / ... تاخیر). عددها از سرور (enrichTaskDates)
   List<Widget> _remainingOrDelayRow(AppColors c, Map<String, dynamic> t) {
     int? n(dynamic v) => v == null ? null : int.tryParse(v.toString());
+    const overdue = (Color(0xFFFFE8E8), Color(0xFFD61F1F));
+    const today = (Color(0xFFFFF3D6), Color(0xFFC2740A));
+    const soon = (Color(0xFFFFF0CC), Color(0xFFA5620A));
+    const normal = (Color(0x1F1B7B39), Color(0xFF1B7B39));
+    (Color, Color)? style;
+    String text = '-';
+    var icon = Icons.schedule_rounded;
+
+    final status = t['status'];
     final isWf = t['is_workflow_task'] == 1 || t['is_workflow_task'] == true;
-    String? label;
-    String? text;
-    var delayed = false;
-    if (isWf) {
-      final hd = n(t['hours_delayed']) ?? 0;
-      final hr = n(t['hours_remaining']);
-      if (hd > 0) {
-        delayed = true;
-        label = 'تأخیر';
-        text = _formatHourDelay(hd, 'تأخیر');
-      } else if (hr != null && hr > 0) {
-        label = 'مهلت باقی‌مانده';
-        text = '${toPersianDigits(hr.toString())} ساعت مانده';
-      }
+    if (status == 'completed' || status == 'approved') {
+      style = normal;
+      text = 'تکمیل';
     } else {
-      final wd = n(t['working_days_delayed']) ?? 0;
-      final dr = n(t['days_remaining']);
-      if (wd > 0) {
-        delayed = true;
-        label = 'تأخیر';
-        text = '${toPersianDigits(wd.toString())} روز کاری تأخیر';
-      } else if (dr != null && dr > 0) {
-        label = 'مهلت باقی‌مانده';
-        text = '${toPersianDigits(dr.toString())} روز مانده';
+      final due = taskEffectiveDue(t);
+      if (due != null && isWf) {
+        final hd = n(t['hours_delayed']) ?? 0;
+        final hr = n(t['hours_remaining']);
+        if (hd > 0) {
+          style = overdue;
+          text = _formatHourDelay(hd, 'تاخیر');
+          icon = Icons.history_rounded;
+        } else if (hr == 0) {
+          style = today;
+          text = 'اکنون';
+        } else if (hr != null) {
+          style = hr <= 24 ? soon : normal;
+          text = '${toPersianDigits(hr.toString())} ساعت مانده';
+        }
+      } else if (due != null) {
+        final d = DateTime.tryParse(due);
+        if (d != null) {
+          final now = DateTime.now();
+          final diff = DateTime(
+            d.year,
+            d.month,
+            d.day,
+          ).difference(DateTime(now.year, now.month, now.day)).inDays;
+          if (diff < 0) {
+            final wd = (n(t['working_days_delayed']) ?? 0).clamp(1, 1 << 30);
+            style = overdue;
+            text = '${toPersianDigits(wd.toString())} روز کاری تاخیر';
+            icon = Icons.history_rounded;
+          } else if (diff == 0) {
+            style = today;
+            text = 'امروز';
+          } else if (diff <= 3) {
+            style = soon;
+            text = '${toPersianDigits(diff.toString())} روز دیگر';
+          } else {
+            style = normal;
+            text = '${toPersianDigits(diff.toString())} روز';
+          }
+        }
       }
     }
-    if (label == null || text == null) return const [];
-    // رنگِ بج مثلِ وب: تأخیر قرمز (bg-danger)، مهلت فیروزه‌ای (bg-info)
-    final color = delayed ? c.danger : const Color(0xFF0DCAF0);
+
     return [
       const Divider(height: 26),
       Row(
@@ -1565,41 +1594,46 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
               color: c.primary.withValues(alpha: 0.12),
               shape: BoxShape.circle,
             ),
-            child: Icon(
-              delayed ? Icons.history_rounded : Icons.schedule_rounded,
-              size: 14,
-              color: c.primary,
-            ),
+            child: Icon(Icons.timelapse_rounded, size: 14, color: c.primary),
           ),
           const SizedBox(width: 10),
-          Text(label, style: TextStyle(fontSize: 13, color: c.textMuted)),
-          const Spacer(),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: color,
-              borderRadius: BorderRadius.circular(AppRadius.chip),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  delayed ? Icons.history_rounded : Icons.schedule_rounded,
-                  size: 13,
-                  color: Colors.white,
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  text,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
-                  ),
-                ),
-              ],
-            ),
+          Text(
+            'مهلت انجام',
+            style: TextStyle(fontSize: 13, color: c.textMuted),
           ),
+          const Spacer(),
+          if (style == null)
+            Text(
+              text,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: c.textStrong,
+              ),
+            )
+          else
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: style.$1,
+                borderRadius: BorderRadius.circular(AppRadius.chip),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(icon, size: 13, color: style.$2),
+                  const SizedBox(width: 4),
+                  Text(
+                    text,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: style.$2,
+                    ),
+                  ),
+                ],
+              ),
+            ),
         ],
       ),
     ];
@@ -2050,8 +2084,10 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     );
   }
 
-  /// 🔧 طبق درخواست: «بیشتر» به‌جایِ شیتِ پایین، یک منویِ لیستی درست
-  /// بالایِ خودِ دکمه باز می‌کند
+  /// 🔧 طبق درخواست (طبقِ عکسِ ارسالی): «بیشتر» یک «اسپید دایل» باز می‌کند —
+  /// صفحه کم‌رنگ می‌شود و هر عملیات یک دکمه‌ی گردِ رنگی، درست بالایِ خودِ
+  /// دکمه‌ی «بیشتر» روی هم چیده می‌شود، با برچسب کنارش. نزدیک‌ترین دکمه به
+  /// «بیشتر» اولین گزینه است؛ لمسِ بیرون یا ضربدر = بستن
   Future<void> _showMoreActionsMenu(
     BuildContext btnCtx,
     List<_MoreAction> actions,
@@ -2061,40 +2097,138 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     final overlay = Overlay.of(btnCtx).context.findRenderObject() as RenderBox?;
     if (btnBox == null || overlay == null) return;
     final topLeft = btnBox.localToGlobal(Offset.zero, ancestor: overlay);
-    final size = overlay.size;
-    const itemH = 46.0;
-    final menuH = actions.length * itemH + 16;
-    final top = (topLeft.dy - menuH - 8).clamp(8.0, size.height);
-    final selected = await showMenu<int>(
+    final screen = overlay.size;
+    // مرکزِ دایره‌ی خودِ دکمه‌ی «بیشتر» (دایره ۴۲ پیکسل، بالایِ ویجت)
+    final centerX = topLeft.dx + btnBox.size.width / 2;
+    final circleCenterY = topLeft.dy + 21;
+    // برچسب‌ها سمتی می‌آیند که جایِ بیشتری دارد
+    final labelsOnRight = centerX < screen.width / 2;
+    const fab = 48.0;
+
+    final selected = await showGeneralDialog<int>(
       context: context,
-      color: c.surface,
-      elevation: 8,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppRadius.card),
-      ),
-      position: RelativeRect.fromLTRB(
-        topLeft.dx,
-        top,
-        size.width - topLeft.dx - btnBox.size.width,
-        size.height - top,
-      ),
-      items: [
-        for (var i = 0; i < actions.length; i++)
-          PopupMenuItem<int>(
-            value: i,
-            height: itemH,
-            child: Row(
+      barrierDismissible: true,
+      barrierLabel: 'بستن',
+      barrierColor: c.bgPage.withValues(alpha: 0.88),
+      transitionDuration: const Duration(milliseconds: 220),
+      pageBuilder: (ctx, anim, _) {
+        Widget item(int i) {
+          final a = actions[i];
+          final circle = Material(
+            color: a.color,
+            shape: const CircleBorder(),
+            elevation: 3,
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: () => Navigator.of(ctx).pop(i),
+              child: SizedBox(
+                width: fab,
+                height: fab,
+                child: Icon(a.icon, color: Colors.white, size: 22),
+              ),
+            ),
+          );
+          final label = GestureDetector(
+            onTap: () => Navigator.of(ctx).pop(i),
+            child: Text(
+              a.label,
+              style: TextStyle(
+                fontFamily: 'Vazir',
+                fontSize: 14,
+                fontWeight: FontWeight.normal,
+                decoration: TextDecoration.none,
+                color: c.textStrong,
+              ),
+            ),
+          );
+          // ورودِ پله‌پله: هر دکمه کمی دیرتر از دکمه‌ی پایینی‌اش
+          final t = CurvedAnimation(
+            parent: anim,
+            curve: Interval(
+              (i * 0.08).clamp(0.0, 0.6),
+              1,
+              curve: Curves.easeOutBack,
+            ),
+          );
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 14),
+            child: ScaleTransition(
+              scale: t,
+              alignment: Alignment.bottomCenter,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: labelsOnRight
+                    ? [circle, const SizedBox(width: 14), label]
+                    : [label, const SizedBox(width: 14), circle],
+              ),
+            ),
+          );
+        }
+
+        final column = Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: labelsOnRight
+              ? CrossAxisAlignment.start
+              : CrossAxisAlignment.end,
+          children: [
+            // اولین گزینه نزدیک‌ترین به «بیشتر» (پایین‌ترین)
+            for (var i = actions.length - 1; i >= 0; i--) item(i),
+          ],
+        );
+
+        // 🔧 Material = تمِ متن (بدونِ آن، متن زیرخطِ زردِ پیش‌فرض می‌گرفت)؛
+        // جهتِ LTR برایِ ستون تا همه‌ی دایره‌ها دقیقاً در یک راستا (بالایِ
+        // «بیشتر») باشند و برچسب‌ها از کنارِ آن‌ها هم‌تراز شروع شوند
+        return Material(
+          type: MaterialType.transparency,
+          child: Directionality(
+            textDirection: TextDirection.ltr,
+            child: Stack(
               children: [
-                Icon(actions[i].icon, size: 20, color: actions[i].color),
-                const SizedBox(width: 12),
-                Text(
-                  actions[i].label,
-                  style: TextStyle(fontSize: 13.5, color: c.textStrong),
+                Positioned(
+                  left: labelsOnRight ? centerX - fab / 2 : null,
+                  right: labelsOnRight
+                      ? null
+                      : screen.width - centerX - fab / 2,
+                  top: MediaQuery.of(ctx).padding.top + 8,
+                  bottom: screen.height - circleCenterY + 21 + 10,
+                  child: Align(
+                    alignment: labelsOnRight
+                        ? Alignment.bottomLeft
+                        : Alignment.bottomRight,
+                    child: SingleChildScrollView(reverse: true, child: column),
+                  ),
+                ),
+                // جایِ دکمه‌ی «بیشتر»: ضربدرِ بستن
+                Positioned(
+                  left: centerX - 21,
+                  top: circleCenterY - 21,
+                  child: FadeTransition(
+                    opacity: anim,
+                    child: Material(
+                      color: const Color(0xFF64748B),
+                      shape: const CircleBorder(),
+                      child: InkWell(
+                        customBorder: const CircleBorder(),
+                        onTap: () => Navigator.of(ctx).pop(),
+                        child: const SizedBox(
+                          width: 42,
+                          height: 42,
+                          child: Icon(
+                            Icons.close_rounded,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
               ],
             ),
           ),
-      ],
+        );
+      },
     );
     if (selected != null && mounted) actions[selected].onTap();
   }
@@ -2361,9 +2495,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     final status = t['status'] as String? ?? '';
     final priority = t['priority'] as String? ?? '';
     final statusLbl = TaskLabels.statusLabel(status);
-    final statusClr = TaskLabels.statusColor(status);
     final priorityLbl = TaskLabels.priorityLabel(priority);
-    final priorityClr = TaskLabels.priorityColor(priority);
     final isContinuous = t['task_type'] == 'continuous';
     final isAssignee =
         _currentUserId != null &&
@@ -2446,8 +2578,8 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                     ),
                     _headerBadge(
                       priorityLbl,
-                      bg: Color.lerp(Colors.white, priorityClr, 0.14)!,
-                      fg: priorityClr,
+                      bg: (_webPriorityColors[priority] ?? _webBadgeDefault).$1,
+                      fg: (_webPriorityColors[priority] ?? _webBadgeDefault).$2,
                     ),
                     (status == 'completed' || status == 'approved')
                         ? _headerBadge(
@@ -2458,8 +2590,10 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                           )
                         : _headerBadge(
                             statusLbl,
-                            bg: Color.lerp(Colors.white, statusClr, 0.14)!,
-                            fg: statusClr,
+                            bg: (_webStatusColors[status] ?? _webBadgeDefault)
+                                .$1,
+                            fg: (_webStatusColors[status] ?? _webBadgeDefault)
+                                .$2,
                           ),
                   ],
                 ),
@@ -2613,8 +2747,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                     isAssignee: isAssignee,
                     isPending: isPending,
                   ),
-                  // 🔧 طبق درخواست (مثلِ وب — buildPeriodicDelayBadge): بعد از
-                  // موعد، «مهلت باقی‌مانده» یا اگر گذشته «تأخیر»
+                  // 🔧 طبق درخواست (مثلِ وب): «مهلت انجام» درست بعد از موعد انجام
                   ..._remainingOrDelayRow(c, t),
                 ],
               ],
@@ -4482,7 +4615,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
       (body['message'] ??
               'موعد این کار گذشته است — امکان ارجاع نیست. ابتدا موعد کار را تمدید کنید')
           .toString(),
-      duration: const Duration(seconds: 8),
+      duration: const Duration(seconds: 5),
       mainButton: TextButton(
         onPressed: () {
           if (Get.isSnackbarOpen) Get.closeCurrentSnackbar();
@@ -6060,6 +6193,31 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
 
   // رنگِ بنفشِ هدرِ کار — همان #8e57fe نسخه‌ی وب
   static const _headerPurple = Color(0xFF8E57FE);
+
+  // 🔧 رفعِ باگِ «وضعیتِ سفید روی سفید»: رنگِ بج‌هایِ هدر عیناً از custom.css
+  // وب (.status-* / .priority-*) — پس‌زمینه‌ی روشن + متنِ تیره‌ی رنگی،
+  // مستقل از تمِ روشن/تاریک (چون رویِ هدرِ بنفش‌اند)
+  static const (Color, Color) _webBadgeDefault = (
+    Color(0xFFF1F3F5),
+    Color(0xFF495057),
+  );
+  static const Map<String, (Color, Color)> _webStatusColors = {
+    'not_started': (Color(0xFFF1F3F5), Color(0xFF495057)),
+    'in_progress': (Color(0xFFE7F0FF), Color(0xFF1554D1)),
+    'pending_approval': (Color(0xFFFFF4D6), Color(0xFFA16207)),
+    'delegated': (Color(0xFFEEE6FF), Color(0xFF8E57FE)),
+    'rejected': (Color(0xFFFFE3E6), Color(0xFFC81E1E)),
+    'stopped': (Color(0xFFF1F3F5), Color(0xFF495057)),
+    'period_done': (Color(0xFFCFFAFE), Color(0xFF0E7490)),
+    'termination_requested': (Color(0xFFE0FFF2), Color(0xFF158463)),
+    'needs_renewal': (Color(0xFFEEE6FF), Color(0xFF8E57FE)),
+    'overdue': (Color(0xFFFEE2E2), Color(0xFFB91C1C)),
+  };
+  static const Map<String, (Color, Color)> _webPriorityColors = {
+    'high': (Color(0xFFFFE3E3), Color(0xFFCC1F1F)),
+    'medium': (Color(0xFFFFF0D0), Color(0xFFC26A06)),
+    'low': (Color(0xFFDCEFE1), Color(0xFF1B7B39)),
+  };
 
   // بجِ رویِ هدرِ بنفش — مثلِ وب، پس‌زمینه‌ی روشن و متنِ رنگی (کنتراستِ ثابت)
   Widget _headerBadge(

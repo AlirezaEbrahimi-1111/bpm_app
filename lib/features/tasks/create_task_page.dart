@@ -549,6 +549,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
               // یک خط (به‌جای عنوانِ جدا بالای هر فیلد)
               _labeledRow(
                 c,
+                highlight: true,
                 icon: Icons.edit_outlined,
                 label: 'عنوان کار',
                 field: _bareTextField(
@@ -611,6 +612,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
               if (_taskType == 'periodic') ...[
                 _dateTile(
                   c,
+                  highlight: true,
                   icon: Icons.calendar_today_outlined,
                   label: _isSelfTask ? 'موعد انجام (اختیاری)' : 'موعد انجام',
                   value: _dueDate != null ? _toShamsi(_dueDate!) : null,
@@ -738,17 +740,23 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
 
   // ── ویجت‌های کمکی ─────────────────────────────────
 
+  // 🔧 طبق درخواست: highlight = قابِ بنفش (عنوان کار، گروه کار، موعد انجام)
+  // تا این سه بخشِ اصلی از بقیه مجزا دیده شوند
   Widget _rowContainer(
     AppColors c, {
     required Widget child,
     EdgeInsetsGeometry? padding,
+    bool highlight = false,
   }) => Container(
     padding:
         padding ?? const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
     decoration: BoxDecoration(
       color: c.surface,
       borderRadius: BorderRadius.circular(14),
-      border: Border.all(color: c.borderSoft),
+      border: Border.all(
+        color: highlight ? c.primary : c.borderSoft,
+        width: highlight ? 1.4 : 1,
+      ),
     ),
     child: child,
   );
@@ -763,9 +771,11 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     String? trailing,
     required Widget field,
     double labelFontSize = 13,
+    bool highlight = false,
   }) {
     return _rowContainer(
       c,
+      highlight: highlight,
       child: Row(
         children: [
           Icon(icon, size: 18, color: c.textMuted),
@@ -916,11 +926,13 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     String? value,
     required String hint,
     required VoidCallback onTap,
+    bool highlight = false,
   }) {
     return GestureDetector(
       onTap: onTap,
       child: _labeledRow(
         c,
+        highlight: highlight,
         icon: icon,
         label: label,
         field: Row(
@@ -1095,6 +1107,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       onTap: () => _showGroupSheet(c),
       child: _labeledRow(
         c,
+        highlight: true,
         icon: Icons.folder_outlined,
         label: 'گروه کار',
         field: Row(

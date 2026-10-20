@@ -675,8 +675,13 @@ class _QuickActionsSheet extends StatelessWidget {
   }
 
   void _showExtend(BuildContext context) {
+    // 🔧 رفعِ باگ: بعد از بستنِ همین منو، context آن از درخت خارج می‌شود؛
+    // چون تقویم async است، بعد از انتخابِ تاریخ چکِ «context.mounted» رد
+    // می‌شد و شیتِ تمدید هرگز باز نمی‌شد. از contextِ ریشه‌ی ناوبری
+    // (که همیشه زنده است) استفاده می‌شود
+    final root = Get.context ?? context;
     Navigator.of(context).pop();
-    _openExtendSheet(context, taskId: _taskId, c: c, onChanged: onChanged);
+    _openExtendSheet(root, taskId: _taskId, c: c, onChanged: onChanged);
   }
 }
 
@@ -728,7 +733,7 @@ bool _handleOverdueDelegateBlock(
     (body['message'] ??
             'موعد این کار گذشته است — امکان ارجاع نیست. ابتدا موعد کار را تمدید کنید')
         .toString(),
-    duration: const Duration(seconds: 8),
+    duration: const Duration(seconds: 5),
     mainButton: TextButton(
       onPressed: () {
         if (Get.isSnackbarOpen) Get.closeCurrentSnackbar();
