@@ -48,9 +48,9 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
-        ndk {
-            abiFilters.add("arm64-v8a")
-        }
+        // 🔧 ndk.abiFilters حذف شد: با --split-per-abi (APKِ جدا برایِ هر
+        // پردازنده، برایِ سقفِ ۲۵ مگِ بازار) تداخل دارد و بیلد را می‌شکند؛
+        // انتخابِ پردازنده‌ها حالا با --target-platform در خودِ بیلد است
     }
 
     signingConfigs {
