@@ -92,6 +92,8 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     super.initState();
     _currentUserId = ApiClient.currentUserId; // ← از منبع سراسری مطمئن
     _loadDetail();
+    // ستاره‌یِ همین کار ممکن است تازه در وب زده شده باشد (منتخبِ مشترک)
+    StarredTasksPreference.sync();
   }
 
   // 🔧 حالا فقط پوششی رویِ ApiClient.errorMessage (منطقِ مشترک، چون همین

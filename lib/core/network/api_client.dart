@@ -3,6 +3,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'dart:convert';
 import '../notifications/metrix_service.dart';
 import '../plan/plan_access.dart';
+import '../theme/starred_tasks_preference.dart';
 
 class ApiClient {
   static const String baseUrl = 'https://bpm.itmalek.com';
@@ -284,6 +285,8 @@ class ApiClient {
     currentUserId = null; // شناسه کاربر هم پاک شود
     currentUser = null;
     PlanAccess.reset();
+    // منتخبِ کاربرِ قبلی رویِ صفحه نماند (فهرستِ هر کاربر رویِ سرور است)
+    StarredTasksPreference.clearSession();
     // 🔧 با خروج، شناساییِ متریکس هم باید پاک شود تا کاربرِ بعدی که با
     // همین گوشی لاگین می‌کند، اشتباهاً پیامِ کاربرِ قبلی را نگیرد
     MetrixService.clearIdentity();

@@ -195,6 +195,8 @@ class DashboardPageState extends State<DashboardPage> {
 
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
+    // منتخب مشترک با وب — هم‌زمان با کارها، بدونِ معطل کردنِ صفحه
+    StarredTasksPreference.sync();
     try {
       final res = await ApiClient.dio.get('/api/tasks/my-tasks.php');
       final data = ApiClient.parseResponse(res.data);
