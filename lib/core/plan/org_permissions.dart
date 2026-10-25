@@ -42,7 +42,8 @@ const Map<String, Set<OrgPermission>> _orgPermissionMatrix = {
 /// هیچ مجوزی حساب می‌شود (fail-closed)
 ///
 /// لایه‌ی ۱ سرور (isSuperAdmin): کاربرانِ getSuperAdminIds همه‌ی مجوزها را دارند
-const Set<int> _superAdminIds = {1, 19};
+// ۱۹ رضا فضایلی، ۱۲۹ زهرا بادپر — عمدا یکسان (هم‌راستا با getSuperAdminIds سرور)
+const Set<int> _superAdminIds = {1, 19, 129};
 
 bool hasOrgPermission(String? role, OrgPermission permission) {
   if (_superAdminIds.contains(ApiClient.currentUserId)) return true;
