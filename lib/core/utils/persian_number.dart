@@ -70,3 +70,15 @@ class ThousandsSeparatorInputFormatter extends TextInputFormatter {
     );
   }
 }
+
+
+/// ساعت اعشاری → «۹ ساعت و ۳۰ دقیقه» (بدون گرد کردن ساعت؛ دقیقه از خود عدد)
+String hoursMinutesLabel(num hours) {
+  final totalMin = (hours * 60).round();
+  final h = totalMin ~/ 60;
+  final m = totalMin % 60;
+  if (totalMin <= 0) return '۰ ساعت';
+  if (m == 0) return toPersianDigits('$h ساعت');
+  if (h == 0) return toPersianDigits('$m دقیقه');
+  return toPersianDigits('$h ساعت و $m دقیقه');
+}

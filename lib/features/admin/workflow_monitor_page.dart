@@ -66,7 +66,8 @@ class _WorkflowMonitorPageState extends State<WorkflowMonitorPage> {
   List<dynamic> _routines = [];
 
   String _filter =
-      'active'; // all|active|in_progress|delayed|completed|cancelled
+      'active'; // all|active|delayed|completed|cancelled («جاری» = در حال اجرا + دارای تأخیر)
+  String? _creatorId; // فیلتر ایجادکنندهٔ روتین
   String? _routineId;
   // 🔧 طبق درخواست (مثلِ وب — فیلترِ «واحد»): واحدِ مرحله‌ی فعلیِ روتین
   // (current_section)، فهرست از activity-sections.php
@@ -147,6 +148,11 @@ class _WorkflowMonitorPageState extends State<WorkflowMonitorPage> {
     if (_sectionKey != null) {
       list = list
           .where((w) => w['current_section']?.toString() == _sectionKey)
+          .toList();
+    }
+    if (_creatorId != null) {
+      list = list
+          .where((w) => w['created_by']?.toString() == _creatorId)
           .toList();
     }
     if (_onlyMine) {
@@ -343,10 +349,15 @@ class _WorkflowMonitorPageState extends State<WorkflowMonitorPage> {
                         Expanded(
                           child: _statCard(
                             c,
-                            icon: Icons.play_circle_outline_rounded,
+                            icon: Icons.timelapse_rounded,
                             tint: const Color(0xFF2563EB),
-                            label: 'در حال اجرا',
-                            value: toPersianDigits(_countStatus('in_progress')),
+                            label: 'جاری',
+                            // همان فرمول فیلتر «جاری»
+                            value: toPersianDigits(
+                              _countStatus('in_progress') +
+                                  _countStatus('delayed'),
+                            ),
+                            filterKey: 'active',
                           ),
                         ),
                         const SizedBox(width: 10),
@@ -357,6 +368,7 @@ class _WorkflowMonitorPageState extends State<WorkflowMonitorPage> {
                             tint: const Color(0xFFEF4444),
                             label: 'دارای تأخیر',
                             value: toPersianDigits(_countStatus('delayed')),
+                            filterKey: 'delayed',
                           ),
                         ),
                       ],
@@ -371,6 +383,7 @@ class _WorkflowMonitorPageState extends State<WorkflowMonitorPage> {
                             tint: const Color(0xFF1B7B39),
                             label: 'تکمیل شده',
                             value: toPersianDigits(_countStatus('completed')),
+                            filterKey: 'completed',
                           ),
                         ),
                         const SizedBox(width: 10),
@@ -420,14 +433,61 @@ class _WorkflowMonitorPageState extends State<WorkflowMonitorPage> {
                         children: [
                           _pill(c, 'all', 'همه'),
                           _pill(c, 'active', 'جاری'),
-                          _pill(c, 'in_progress', 'در حال اجرا'),
-                          _pill(c, 'delayed', 'تأخیردار'),
+                          _pill(c, 'delayed', 'دارای تأخیر'),
                           _pill(c, 'completed', 'تکمیل‌شده'),
                           _pill(c, 'cancelled', 'لغوشده'),
                         ],
                       ),
                     ),
                     const SizedBox(height: 10),
+                    if (_creators.isNotEmpty) ...[
+                      DropdownButtonFormField<String>(
+                        key: ValueKey('creator-$_creatorId'),
+                        initialValue: _creatorId,
+                        isExpanded: true,
+                        dropdownColor: c.surface,
+                        style: TextStyle(
+                          fontFamily: 'Vazir',
+                          color: c.textStrong,
+                          fontSize: 13,
+                        ),
+                        decoration: InputDecoration(
+                          isDense: true,
+                          prefixIcon: Icon(
+                            Icons.person_outline_rounded,
+                            size: 18,
+                            color: c.textMuted,
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 8,
+                          ),
+                          filled: true,
+                          fillColor: c.surface,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: BorderSide(color: c.borderSoft),
+                          ),
+                        ),
+                        items: [
+                          const DropdownMenuItem(
+                            value: null,
+                            child: Text('همه ایجادکننده‌ها'),
+                          ),
+                          ..._creators.entries.map(
+                            (e) => DropdownMenuItem(
+                              value: e.key,
+                              child: Text(
+                                e.value,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ),
+                        ],
+                        onChanged: (v) => setState(() => _creatorId = v),
+                      ),
+                      const SizedBox(height: 10),
+                    ],
                     Row(
                       children: [
                         if (_routines.isNotEmpty)
@@ -570,18 +630,63 @@ class _WorkflowMonitorPageState extends State<WorkflowMonitorPage> {
   }
 
   /// کارتِ آمار — مثلِ .stat-tile وب: آیکن در مربعِ رنگیِ کم‌رنگ + عدد و برچسب
+  /// ایجادکننده‌های روتین‌های همین فهرست: id → نام (مرتب بر اساس نام)
+  Map<String, String> get _creators {
+    final m = <String, String>{};
+    for (final w in _workflows) {
+      final id = w['created_by']?.toString();
+      if (id == null || id.isEmpty) continue;
+      final name =
+          '${w['creator_first_name'] ?? ''} ${w['creator_last_name'] ?? ''}'
+              .trim();
+      m[id] = name.isEmpty ? 'کاربر $id' : name;
+    }
+    final entries = m.entries.toList()
+      ..sort((a, b) => a.value.compareTo(b.value));
+    return Map.fromEntries(entries);
+  }
+
+  /// کارت آمار؛ با filterKey قابل کلیک است و همان فیلتر هم‌نام را می‌زند
   Widget _statCard(
     AppColors c, {
     required IconData icon,
     required Color tint,
     required String label,
     required String value,
+    String? filterKey,
+  }) {
+    final selected = filterKey != null && _filter == filterKey;
+    final card = _statCardBody(
+      c,
+      icon: icon,
+      tint: tint,
+      label: label,
+      value: value,
+      selected: selected,
+    );
+    if (filterKey == null) return card;
+    return GestureDetector(
+      onTap: () => setState(() => _filter = filterKey),
+      child: card,
+    );
+  }
+
+  Widget _statCardBody(
+    AppColors c, {
+    required IconData icon,
+    required Color tint,
+    required String label,
+    required String value,
+    required bool selected,
   }) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
     decoration: BoxDecoration(
       color: c.surface,
       borderRadius: BorderRadius.circular(AppRadius.card),
-      border: Border.all(color: c.borderSoft),
+      border: Border.all(
+        color: selected ? c.primary : c.borderSoft,
+        width: selected ? 1.5 : 1,
+      ),
     ),
     child: Row(
       children: [

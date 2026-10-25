@@ -414,8 +414,11 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
                           'ساعت کاری روزانه',
                           u['daily_work_hours'] == null
                               ? '—'
-                              : toPersianDigits(
-                                  '${u['daily_work_hours']} ساعت',
+                              : hoursMinutesLabel(
+                                  double.tryParse(
+                                        u['daily_work_hours'].toString(),
+                                      ) ??
+                                      0,
                                 ),
                         ),
                         _infoRow(
@@ -958,7 +961,8 @@ class _UserFormSheetState extends State<_UserFormSheet> {
     return buf.toString();
   }
 
-  int _dailyWorkHours() {
+  /// مجموع دقیقهٔ شیفت‌ها (شیفت دوم فقط برای «دو شیفت»)
+  int _dailyWorkMinutes() {
     int mins(TimeOfDay? s, TimeOfDay? e) {
       if (s == null || e == null) return 0;
       final diff = (e.hour * 60 + e.minute) - (s.hour * 60 + s.minute);
@@ -967,8 +971,12 @@ class _UserFormSheetState extends State<_UserFormSheet> {
 
     var total = mins(_shift1Start, _shift1End);
     if (_shiftType == 'double') total += mins(_shift2Start, _shift2End);
-    return total > 0 ? (total / 60).round() : 0;
+    return total;
   }
+
+  /// ساعت کاری روزانه بدون گرد کردن به عدد صحیح (۹:۳۰ = ۹.۵، نه ۱۰) — دو رقم اعشار،
+  /// هم‌خوان با calcDailyHours در pages/users.php و ستون DECIMAL(4,2)
+  double _dailyWorkHours() => (_dailyWorkMinutes() / 60 * 100).round() / 100;
 
   @override
   void dispose() {
@@ -1474,7 +1482,7 @@ class _UserFormSheetState extends State<_UserFormSheet> {
               ),
               const Spacer(),
               Text(
-                toPersianDigits('${_dailyWorkHours()} ساعت'),
+                hoursMinutesLabel(_dailyWorkMinutes() / 60),
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
