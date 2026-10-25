@@ -1,3 +1,4 @@
+import 'persian_number.dart';
 import '../theme/theme_controller.dart';
 import 'package:flutter/material.dart';
 
@@ -352,10 +353,20 @@ class TaskLabels {
     'daily': 'روزانه',
     'weekly': 'هفتگی',
     'monthly': 'ماهانه',
+    'weekdays': 'روزهای خاص هفته',
+    'interval': 'هر چند روز یک‌بار',
   };
 
   static String periodLabel(String? period) {
     if (period == null || period.isEmpty) return '—';
     return _periodLabels[period] ?? period;
+  }
+
+  /// برچسب کامل الگو از سرور (period_label در api/tasks/detail.php):
+  /// «یکشنبه، دوشنبه و پنجشنبه» / «هر ۹ روز». اگر نبود، برچسب نوع.
+  static String periodLabelOf(Map<dynamic, dynamic> task) {
+    final l = task['period_label']?.toString() ?? '';
+    if (l.isNotEmpty) return toPersianDigits(l);
+    return periodLabel(task['period_type']?.toString());
   }
 }

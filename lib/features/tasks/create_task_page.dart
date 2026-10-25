@@ -48,6 +48,9 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
   String _taskType = 'periodic'; // periodic | continuous
   String _priority = 'medium';
   String _periodType = 'daily';
+  // روزهای خاص هفته (DateTime.weekday نیست — شمارهٔ PHP date('w'): ۰=یکشنبه … ۶=شنبه؛ جمعه ندارد)
+  final Set<int> _periodWeekdays = {};
+  final _intervalController = TextEditingController();
 
   DateTime? _dueDate;
   DateTime? _startDate;
@@ -217,6 +220,19 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       AppSnack.error('خطا', 'تاریخ شروع الزامی است');
       return;
     }
+    // الگوی تکرار — همان قواعد سرور (pe_normalizePeriodInput)
+    int? intervalDays;
+    if (_taskType == 'continuous' && _periodType == 'weekdays' && _periodWeekdays.isEmpty) {
+      AppSnack.error('خطا', 'دست‌کم یک روز از هفته را برای تکرار انتخاب کنید');
+      return;
+    }
+    if (_taskType == 'continuous' && _periodType == 'interval') {
+      intervalDays = int.tryParse(toEnglishDigits(_intervalController.text.trim()));
+      if (intervalDays == null || intervalDays < 2 || intervalDays > 365) {
+        AppSnack.error('خطا', 'فاصلهٔ تکرار باید عددی بین ۲ تا ۳۶۵ روز باشد');
+        return;
+      }
+    }
 
     _isLoading = true;
     setState(() {});
@@ -244,6 +260,10 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       if (_startDate != null) body['start_date'] = _toApiDate(_startDate!);
       if (_endDate != null) body['end_date'] = _toApiDate(_endDate!);
       body['period_type'] = _periodType;
+      if (_periodType == 'weekdays') {
+        body['period_weekdays'] = (_periodWeekdays.toList()..sort()).join(',');
+      }
+      if (_periodType == 'interval') body['period_interval_days'] = intervalDays;
     }
     final redefineAttachmentIds = _redefineConsumed
         ? null
@@ -296,6 +316,8 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       _taskType = 'periodic';
       _priority = 'medium';
       _periodType = 'daily';
+      _periodWeekdays.clear();
+      _intervalController.clear();
       _dueDate = null;
       _startDate = null;
       _endDate = null;
@@ -1047,15 +1069,94 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     );
   }
 
-  Widget _periodSelector(AppColors c) => Row(
+  Widget _periodSelector(AppColors c) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      _periodBtn(c, 'روزانه', 'daily'),
-      const SizedBox(width: 8),
-      _periodBtn(c, 'هفتگی', 'weekly'),
-      const SizedBox(width: 8),
-      _periodBtn(c, 'ماهانه', 'monthly'),
+      Row(
+        children: [
+          _periodBtn(c, 'روزانه', 'daily'),
+          const SizedBox(width: 8),
+          _periodBtn(c, 'هفتگی', 'weekly'),
+          const SizedBox(width: 8),
+          _periodBtn(c, 'ماهانه', 'monthly'),
+        ],
+      ),
+      const SizedBox(height: 8),
+      Row(
+        children: [
+          _periodBtn(c, 'روزهای خاص هفته', 'weekdays'),
+          const SizedBox(width: 8),
+          _periodBtn(c, 'هر چند روز', 'interval'),
+        ],
+      ),
+      if (_periodType == 'weekdays') ...[
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: const [
+            [6, 'شنبه'],
+            [0, 'یکشنبه'],
+            [1, 'دوشنبه'],
+            [2, 'سه‌شنبه'],
+            [3, 'چهارشنبه'],
+            [4, 'پنجشنبه'],
+          ].map((d) => _weekdayChip(c, d[0] as int, d[1] as String)).toList(),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'اگر یکی از این روزها تعطیل رسمی باشد، آن روز دوره ندارد.',
+          style: TextStyle(fontSize: 11, color: c.textMuted),
+        ),
+      ],
+      if (_periodType == 'interval') ...[
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Text('هر', style: TextStyle(fontSize: 13, color: c.textMuted)),
+            const SizedBox(width: 8),
+            SizedBox(
+              width: 80,
+              child: TextField(
+                controller: _intervalController,
+                keyboardType: TextInputType.number,
+                textAlign: TextAlign.center,
+                decoration: const InputDecoration(isDense: true, hintText: '۹'),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text('روز یک‌بار (از تاریخ شروع)', style: TextStyle(fontSize: 13, color: c.textMuted)),
+          ],
+        ),
+      ],
     ],
   );
+
+  Widget _weekdayChip(AppColors c, int dow, String label) {
+    final selected = _periodWeekdays.contains(dow);
+    return GestureDetector(
+      onTap: () => setState(() {
+        if (!_periodWeekdays.remove(dow)) _periodWeekdays.add(dow);
+      }),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: selected ? c.primary : c.surface,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: selected ? c.primary : c.borderSoft),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: selected ? Colors.white : c.textMuted,
+          ),
+        ),
+      ),
+    );
+  }
 
   Widget _periodBtn(AppColors c, String label, String val) {
     final selected = _periodType == val;

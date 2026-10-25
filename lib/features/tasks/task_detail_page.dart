@@ -2737,7 +2737,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                   _infoRow(
                     Icons.repeat_rounded,
                     'دوره تکرار',
-                    TaskLabels.periodLabel(t['period_type']),
+                    TaskLabels.periodLabelOf(t),
                   ),
                 ] else ...[
                   const Divider(height: 26),
