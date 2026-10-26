@@ -95,6 +95,14 @@ android {
     }
 }
 
+// 🔧 بیلدِ لوکال (میرورِ aliyun): میرور فایلِ متادیتایِ گونه‌ها (.module) را
+// ندارد، پس کنارِ نسخه‌ی اندرویدیِ androidx.compose.runtime:runtime-annotation
+// نسخه‌ی JVMِ آن هم دانلود می‌شد و خطایِ «Duplicate class» می‌داد. نسخه‌ی
+// JVM در اندروید هیچ‌وقت لازم نیست — رویِ گیت‌هاب هم بی‌اثر است
+configurations.all {
+    exclude(group = "androidx.compose.runtime", module = "runtime-annotation-jvm")
+}
+
 kotlin {
     compilerOptions {
         jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17

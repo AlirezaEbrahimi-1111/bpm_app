@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import '../../../core/utils/persian_number.dart';
 import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
@@ -14,7 +15,64 @@ import '../../../core/navigation/app_nav.dart';
 /// گرفتنِ عکسِ مستقیم با دوربین، هم ضبطِ صدای مستقیم با میکروفون؛ هر
 /// سه مسیر یک خروجیِ یکسان (PlatformFile یا null اگر لغو شود) برمی‌گردانند
 /// تا تماس‌گیرنده با یک مسیرِ آپلودِ واحد کار کند.
+/// مدت‌زمانِ صدایِ ضبط‌شده با همین اپ — به خودِ PlatformFile چسبانده
+/// می‌شود (Expando) تا لیستِ پیوست‌ها بتواند «زمان + حجم» را نشان دهد
+final Expando<Duration> recordedDuration = Expando<Duration>('voiceDuration');
+
+const _audioExts = {'mp3', 'm4a', 'ogg', 'aac', 'wav'};
+
+bool isAudioAttachment(PlatformFile f) =>
+    _audioExts.contains((f.extension ?? f.name.split('.').last).toLowerCase());
+
+/// حجم به‌صورتِ خوانا: «۸۵۰ KB» / «۲٫۴ MB»
+///
+/// 🔧 طبق درخواست: واحد بعد از عدد (در خواندنِ راست‌به‌چپ). بدونِ نشانه‌ی
+/// RLM، الگوریتمِ bidi عددِ فارسی و «KB» را در یک بلوکِ چپ‌به‌راست کنارِ هم
+/// می‌گذاشت و واحد قبل از عدد خوانده می‌شد
+const _rlm = '\u200F';
+String formatFileSize(int bytes) {
+  String withUnit(String n, String unit) => '${toPersianDigits(n)}$_rlm $unit';
+  if (bytes < 1024) return withUnit('$bytes', 'B');
+  final kb = bytes / 1024;
+  if (kb < 1024) return withUnit('${kb.round()}', 'KB');
+  final mb = kb / 1024;
+  return withUnit(mb.toStringAsFixed(mb < 10 ? 1 : 0), 'MB');
+}
+
+/// «حجم» برایِ همه؛ برایِ صدایِ ضبط‌شده «۰۱:۲۳ · ۲۵۰ KB»
+String attachmentMeta(PlatformFile f) {
+  final size = formatFileSize(f.size);
+  final d = recordedDuration[f];
+  if (d == null) return size;
+  final m = d.inMinutes.toString().padLeft(2, '0');
+  final sec = (d.inSeconds % 60).toString().padLeft(2, '0');
+  return '${toPersianDigits('$m:$sec')}$_rlm · $size';
+}
+
+/// 🔧 رفعِ باگ: بعد از ضبطِ صدا/انتخابِ فایل، فوکوس به فیلدِ قبلی (مثلاً
+/// «عنوان کار») برمی‌گشت و صفحه‌کلید باز می‌شد — چون فلاتر بعد از بسته‌شدنِ
+/// هر شیت، فوکوسِ قبلی را بازمی‌گرداند. حالا قبل از باز کردن و بعد از پایانِ
+/// کار، فوکوس کاملاً برداشته می‌شود و هیچ فیلدی فوکوس نمی‌گیرد
 Future<PlatformFile?> showAttachmentSourceSheet(
+  BuildContext context, {
+  List<String>? allowedExtensions,
+}) async {
+  FocusManager.instance.primaryFocus?.unfocus();
+  try {
+    return await _showAttachmentSourceSheet(
+      context,
+      allowedExtensions: allowedExtensions,
+    );
+  } finally {
+    // بعد از بسته‌شدنِ آخرین شیت (ضبط/دوربین/فایل‌پیکر) هم دوباره
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => FocusManager.instance.primaryFocus?.unfocus(),
+    );
+    FocusManager.instance.primaryFocus?.unfocus();
+  }
+}
+
+Future<PlatformFile?> _showAttachmentSourceSheet(
   BuildContext context, {
   List<String>? allowedExtensions,
 }) async {
@@ -152,15 +210,15 @@ class _AudioRecorderSheetState extends State<_AudioRecorderSheet> {
   Duration _elapsed = Duration.zero;
   bool _isRecording = false;
   bool _isStopped = false;
+  bool _isStarting = false;
   String? _path;
 
-  @override
-  void initState() {
-    super.initState();
-    _start();
-  }
+  // 🔧 طبق درخواست: ضبط دیگر با بازشدنِ شیت خودکار شروع نمی‌شود — اول
+  // «شروع / لغو»، بعد از شروع «توقف / لغو»، بعد از توقف «ارسال / لغو»
 
   Future<void> _start() async {
+    if (_isStarting || _isRecording) return;
+    setState(() => _isStarting = true);
     try {
       if (!await _recorder.hasPermission()) {
         AppSnack.error('خطا', 'دسترسی میکروفون داده نشد');
@@ -176,6 +234,7 @@ class _AudioRecorderSheetState extends State<_AudioRecorderSheet> {
       );
       setState(() {
         _isRecording = true;
+        _isStarting = false;
         _path = path;
       });
       _timer = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -184,6 +243,8 @@ class _AudioRecorderSheetState extends State<_AudioRecorderSheet> {
     } catch (_) {
       AppSnack.error('خطا', 'خطا در شروع ضبط صدا');
       if (mounted) AppNav.back();
+    } finally {
+      if (mounted && _isStarting) setState(() => _isStarting = false);
     }
   }
 
@@ -216,13 +277,16 @@ class _AudioRecorderSheetState extends State<_AudioRecorderSheet> {
     final file = File(path);
     final bytes = await file.readAsBytes();
     if (mounted) {
-      AppNav.back(
-        result: PlatformFile(
-          name: 'voice_${DateTime.now().millisecondsSinceEpoch}.m4a',
-          size: bytes.length,
-          bytes: bytes,
-        ),
+      // 🔧 طبق درخواست: نامِ کوتاه‌تر — «voice-143052.m4a» (ساعت، دقیقه، ثانیه)
+      final now = DateTime.now();
+      String two(int v) => v.toString().padLeft(2, '0');
+      final picked = PlatformFile(
+        name: 'voice-${two(now.hour)}${two(now.minute)}${two(now.second)}.m4a',
+        size: bytes.length,
+        bytes: bytes,
       );
+      recordedDuration[picked] = _elapsed;
+      AppNav.back(result: picked);
     }
   }
 
@@ -282,7 +346,11 @@ class _AudioRecorderSheetState extends State<_AudioRecorderSheet> {
           ),
           const SizedBox(height: 4),
           Text(
-            _isRecording ? 'در حال ضبط...' : 'ضبط متوقف شد',
+            _isRecording
+                ? 'در حال ضبط...'
+                : _isStopped
+                ? 'ضبط متوقف شد'
+                : 'برای شروع ضبط، «شروع» را بزنید',
             style: TextStyle(fontSize: 12.5, color: c.textMuted),
           ),
           const SizedBox(height: 20),
@@ -304,7 +372,11 @@ class _AudioRecorderSheetState extends State<_AudioRecorderSheet> {
               const SizedBox(width: 10),
               Expanded(
                 child: ElevatedButton(
-                  onPressed: _isRecording ? _stop : (_isStopped ? _send : null),
+                  onPressed: _isStarting
+                      ? null
+                      : _isRecording
+                      ? _stop
+                      : (_isStopped ? _send : _start),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: c.primary,
                     foregroundColor: Colors.white,
@@ -315,7 +387,11 @@ class _AudioRecorderSheetState extends State<_AudioRecorderSheet> {
                     ),
                   ),
                   child: Text(
-                    _isRecording ? 'توقف' : 'ارسال',
+                    _isRecording
+                        ? 'توقف'
+                        : _isStopped
+                        ? 'ارسال'
+                        : 'شروع',
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
                 ),

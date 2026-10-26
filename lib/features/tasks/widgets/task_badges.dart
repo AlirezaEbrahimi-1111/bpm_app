@@ -33,6 +33,17 @@ String _todayStr() {
 bool _same(dynamic a, int? b) =>
     b != null && a != null && a.toString() == b.toString();
 
+/// تعدادِ دوره‌هایِ انجام‌نشده‌ی موعدگذشته‌ی کارِ دوره‌ای — معادلِ
+/// TF.continuousLateCount: معوقه‌هایِ سرور (دوره‌هایِ قبل از دوره‌ی جاری) +
+/// خودِ دوره‌ی جاری اگر موعدش (next_due_date) گذشته باشد
+int taskContinuousLateCount(dynamic t) {
+  final op = t['overdue_periods'];
+  final n = op is int ? op : int.tryParse(op?.toString() ?? '') ?? 0;
+  final next = _dateOnly(t['next_due_date']);
+  final curLate = next != null && next.compareTo(_todayStr()) < 0;
+  return n + (curLate ? 1 : 0);
+}
+
 /// «تاریخ سررسیدِ مؤثر» — معادلِ TF.effectiveDue
 String? taskEffectiveDue(dynamic t) {
   if (t['task_type'] == 'continuous') {
@@ -60,6 +71,12 @@ DateTime? _effectiveDueTime(dynamic t) {
   }
   return latest;
 }
+
+/// کار «در انتظار تأیید» است یا درخواستِ تمدیدِ موعدِ بازی دارد — برایِ
+/// بالاتر آمدن در داشبورد
+bool taskAwaitsDecision(dynamic t) =>
+    t['status'] == 'pending_approval' ||
+    _truthy(t['has_pending_deadline_request']);
 
 bool _isWaitingMyApproval(dynamic t, int? userId) {
   if (userId == null || !_truthy(t['is_pending_approval'])) return false;
@@ -106,9 +123,9 @@ bool taskIsOverdue(dynamic t, [int? userId]) {
   if (t['task_type'] == 'continuous') {
     final end = _dateOnly(t['end_date']);
     if (end != null && end.compareTo(today) < 0) return false; // بازه تمام شده
-    final op = t['overdue_periods'];
-    final n = op is int ? op : int.tryParse(op?.toString() ?? '') ?? 0;
-    return n > 0;
+    // 🔧 مطابقِ تغییرِ وب (TF.continuousLateCount، کامیتِ bdd6816): همان
+    // قانونِ بجِ تأخیر — معوقه‌هایِ سرور + خودِ دوره‌ی جاری اگر موعدش گذشته
+    return taskContinuousLateCount(t) > 0;
   }
 
   if (t['task_type'] == 'periodic') {

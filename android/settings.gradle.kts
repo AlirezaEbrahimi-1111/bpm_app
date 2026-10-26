@@ -13,6 +13,17 @@ pluginManagement {
         mavenCentral()
         gradlePluginPortal()
     }
+    // 🔧 بیلدِ لوکال: میرورِ aliyun «نشانگرِ پلاگین»
+    // (com.google.gms.google-services.gradle.plugin) را ندارد ولی خودِ ماژول
+    // (com.google.gms:google-services) را دارد — پس شناسه‌ی پلاگین مستقیم به
+    // همان ماژول نگاشت می‌شود. رویِ گیت‌هاب هم بی‌اثر و سالم است.
+    resolutionStrategy {
+        eachPlugin {
+            if (requested.id.id == "com.google.gms.google-services") {
+                useModule("com.google.gms:google-services:${requested.version}")
+            }
+        }
+    }
 }
 
 plugins {

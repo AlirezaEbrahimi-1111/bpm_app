@@ -247,23 +247,106 @@ class _QuickActionsSheet extends StatelessWidget {
 
   int get _taskId => int.tryParse(task['id'].toString()) ?? 0;
 
+  /// 🔧 رفعِ باگ (گزارشِ کاربر): قبلاً «تأیید» از منویِ لیست بدونِ هیچ
+  /// پنجره‌ای مستقیم ثبت می‌شد. حالا مثلِ وب، اول «توضیحات تأیید (اختیاری)»
   Future<void> _approve(BuildContext context) async {
     Navigator.of(context).pop();
-    try {
-      final res = await ApiClient.dio.post(
-        '/api/tasks/approve.php',
-        data: {'task_id': _taskId, 'approve': true},
-      );
-      final data = ApiClient.parseResponse(res.data);
-      if (data['success'] == true) {
-        onChanged();
-        AppSnack.success('✅ تأیید شد', data['message'] ?? '');
-      } else {
-        AppSnack.error('خطا', data['message'] ?? 'خطا در تأیید');
-      }
-    } catch (e) {
-      AppSnack.error('خطا', ApiClient.errorMessage(e, 'خطا در اتصال به سرور'));
-    }
+    final controller = TextEditingController();
+    var busy = false;
+    Get.dialog(
+      StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          backgroundColor: c.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Text(
+            'تأیید کار',
+            style: TextStyle(fontSize: 16, color: c.textStrong),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'با تأیید این کار، به مرحله بعد یا تأیید نهایی ارسال می‌شود.',
+                style: TextStyle(fontSize: 12.5, color: c.textMuted),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                minLines: 2,
+                maxLines: 4,
+                keyboardType: TextInputType.multiline,
+                style: TextStyle(color: c.textStrong),
+                decoration: InputDecoration(
+                  hintText: 'توضیحات تأیید (اختیاری)...',
+                  hintStyle: TextStyle(color: c.textMuted, fontSize: 13),
+                  filled: true,
+                  fillColor: c.surfaceContainerLow,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: busy ? null : () => AppNav.back(),
+              child: Text('انصراف', style: TextStyle(color: c.textMuted)),
+            ),
+            TextButton(
+              onPressed: busy
+                  ? null
+                  : () async {
+                      setDialogState(() => busy = true);
+                      final notes = controller.text.trim();
+                      try {
+                        final res = await ApiClient.dio.post(
+                          '/api/tasks/approve.php',
+                          data: {
+                            'task_id': _taskId,
+                            'approve': true,
+                            if (notes.isNotEmpty) 'notes': notes,
+                          },
+                        );
+                        final data = ApiClient.parseResponse(res.data);
+                        AppNav.back();
+                        if (data['success'] == true) {
+                          onChanged();
+                          ApiClient.markTaskNotificationsRead(_taskId);
+                          AppSnack.success('✅ تأیید شد', data['message'] ?? '');
+                        } else {
+                          AppSnack.error(
+                            'خطا',
+                            data['message'] ?? 'خطا در تأیید',
+                          );
+                        }
+                      } catch (e) {
+                        AppNav.back();
+                        AppSnack.error(
+                          'خطا',
+                          ApiClient.errorMessage(e, 'خطا در اتصال به سرور'),
+                        );
+                      }
+                    },
+              child: busy
+                  ? SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: c.success,
+                      ),
+                    )
+                  : Text('تأیید', style: TextStyle(color: c.success)),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   void _showReject(BuildContext context) {
@@ -303,6 +386,7 @@ class _QuickActionsSheet extends StatelessWidget {
                 final data = ApiClient.parseResponse(res.data);
                 if (data['success'] == true) {
                   onChanged();
+                  ApiClient.markTaskNotificationsRead(_taskId);
                   AppSnack.warning('رد شد', data['message'] ?? '');
                 } else {
                   AppSnack.error('خطا', data['message'] ?? 'خطا در رد کار');
@@ -357,6 +441,7 @@ class _QuickActionsSheet extends StatelessWidget {
     if (req == null) {
       AppSnack.warning('توجه', 'درخواست منتظر بررسی شما پیدا نشد');
       onChanged();
+      ApiClient.markTaskNotificationsRead(_taskId);
       return;
     }
     final request = req;
@@ -404,6 +489,7 @@ class _QuickActionsSheet extends StatelessWidget {
         AppNav.back();
         if (data['success'] == true) {
           onChanged();
+          ApiClient.markTaskNotificationsRead(_taskId);
           AppSnack.success(
             approve ? '✅ تأیید شد' : 'رد شد',
             data['message'] ??
@@ -473,16 +559,7 @@ class _QuickActionsSheet extends StatelessWidget {
               onPressed: busy ? null : () => AppNav.back(),
               child: Text('انصراف', style: TextStyle(color: c.textMuted)),
             ),
-            TextButton(
-              onPressed: busy
-                  ? null
-                  : () async {
-                      setDialogState(() => busy = true);
-                      await send(false);
-                      if (ctx.mounted) setDialogState(() => busy = false);
-                    },
-              child: Text('رد', style: TextStyle(color: c.danger)),
-            ),
+            // 🔧 طبق درخواست: جایِ «تأیید» و «رد» جابه‌جا شد
             TextButton(
               onPressed: busy
                   ? null
@@ -501,6 +578,16 @@ class _QuickActionsSheet extends StatelessWidget {
                       ),
                     )
                   : Text('تأیید', style: TextStyle(color: c.success)),
+            ),
+            TextButton(
+              onPressed: busy
+                  ? null
+                  : () async {
+                      setDialogState(() => busy = true);
+                      await send(false);
+                      if (ctx.mounted) setDialogState(() => busy = false);
+                    },
+              child: Text('رد', style: TextStyle(color: c.danger)),
             ),
           ],
         ),
@@ -1151,7 +1238,7 @@ class _ExtendSheetState extends State<_ExtendSheet> {
             ),
             const SizedBox(height: 16),
             Text(
-              'تمدید موعد',
+              'درخواست تمدید موعد انجام',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontWeight: FontWeight.bold,

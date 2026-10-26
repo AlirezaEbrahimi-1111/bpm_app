@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'dart:async';
 import '../../core/network/api_client.dart';
+import '../../core/notifications/deep_link_service.dart';
 import '../dashboard/dashboard_page.dart';
 import '../tasks/my_tasks_page.dart';
 import '../notifications/notifications_page.dart';
@@ -90,6 +91,8 @@ class _MainShellState extends State<MainShell>
     ApiClient.refreshCurrentUser().then((ok) {
       if (ok && mounted) setState(() {});
     });
+    // 🔧 لمسِ نوتیفیکیشنِ یک کار → باز شدنِ همان کار
+    DeepLinkService.start();
     _pages = [
       DashboardPage(
         key: _dashboardKey,
@@ -317,7 +320,8 @@ class _MainShellState extends State<MainShell>
       ),
       // 🔧 اصلاح: کمی پایین‌تر از حالت استاندارد centerDocked — تا با
       // دکمه‌ی فلشِ بالای نوار برخورد نکند
-      floatingActionButtonLocation: const _LoweredDockedFabLocation(),
+      floatingActionButtonLocation: // همان محاسبه‌ی مشترکِ app_bottom_nav (شاملِ جبرانِ لبه‌ی نرمِ لایه‌ی تار)
+          const LoweredDockedFabLocation(),
       // 🔧 طبق درخواست: ساختِ خودِ نوار به ویجتِ مشترکِ AppBottomNav
       // منتقل شد (widgets/app_bottom_nav.dart) تا صفحاتِ دیگری که
       // Scaffoldِ خودشان را دارند (پس نوارِ این پوسته را نمی‌بینند) هم
@@ -333,17 +337,3 @@ class _MainShellState extends State<MainShell>
 /// همان مکان استانداردِ centerDocked، فقط کمی پایین‌تر — تا دکمه‌ی «+»
 /// کمتر از لبه‌ی بالای نوار پایین بیرون بزند و با دکمه‌ی فلشِ بالای
 /// نوار تداخل نداشته باشد.
-class _LoweredDockedFabLocation extends FloatingActionButtonLocation {
-  const _LoweredDockedFabLocation();
-
-  @override
-  Offset getOffset(ScaffoldPrelayoutGeometry scaffoldGeometry) {
-    final standard = FloatingActionButtonLocation.centerDocked.getOffset(
-      scaffoldGeometry,
-    );
-    // مرکزِ دکمه ۲۰ پیکسل زیرِ لبه‌ی بالای نوار (نوار ۶۲ پیکسل ارتفاع
-    // دارد و مرکزِ گزینه‌هایش ۳۱ پیکسل پایین‌تر است، پس دکمه کمی بالاتر
-    // از بقیه می‌نشیند). عدد را کمتر کنید تا بالاتر برود.
-    return Offset(standard.dx, standard.dy + 12);
-  }
-}

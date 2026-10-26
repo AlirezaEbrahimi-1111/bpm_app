@@ -490,90 +490,76 @@ class _WorkflowMonitorPageState extends State<WorkflowMonitorPage> {
                     ],
                     Row(
                       children: [
+                        // 🔧 طبق درخواست: به‌جایِ لیستِ کشویی، با لمس یک
+                        // bottom sheet باز می‌شود
                         if (_routines.isNotEmpty)
                           Expanded(
-                            child: DropdownButtonFormField<String>(
-                              initialValue: _routineId,
-                              isExpanded: true,
-                              dropdownColor: c.surface,
-                              style: TextStyle(
-                                fontFamily: 'Vazir',
-                                color: c.textStrong,
-                                fontSize: 13,
-                              ),
-                              decoration: InputDecoration(
-                                isDense: true,
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 8,
-                                ),
-                                filled: true,
-                                fillColor: c.surface,
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(10),
-                                  borderSide: BorderSide(color: c.borderSoft),
-                                ),
-                              ),
-                              items: [
-                                const DropdownMenuItem(
-                                  value: null,
-                                  child: Text('همه روتین‌ها'),
-                                ),
-                                ..._routines.map(
-                                  (r) => DropdownMenuItem(
-                                    value: r['id'].toString(),
-                                    child: Text(
-                                      r['name']?.toString() ?? '',
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                              onChanged: (v) => setState(() => _routineId = v),
+                            child: _sheetField(
+                              c,
+                              label: _routineId == null
+                                  ? 'همه روتین‌ها'
+                                  : (_routines.firstWhere(
+                                              (r) =>
+                                                  r['id'].toString() ==
+                                                  _routineId,
+                                              orElse: () => null,
+                                            )?['name'] ??
+                                            'همه روتین‌ها')
+                                        .toString(),
+                              active: _routineId != null,
+                              onTap: () async {
+                                final v = await _pickFromSheet(
+                                  c,
+                                  title: 'انتخاب روتین',
+                                  allLabel: 'همه روتین‌ها',
+                                  current: _routineId,
+                                  options: [
+                                    for (final r in _routines)
+                                      (
+                                        r['id'].toString(),
+                                        r['name']?.toString() ?? '',
+                                      ),
+                                  ],
+                                );
+                                if (v != _unset) setState(() => _routineId = v);
+                              },
                             ),
                           ),
                         if (_sections.isNotEmpty) ...[
                           const SizedBox(width: 8),
                           Expanded(
-                            child: DropdownButtonFormField<String>(
-                              initialValue: _sectionKey,
-                              isExpanded: true,
-                              dropdownColor: c.surface,
-                              style: TextStyle(
-                                fontFamily: 'Vazir',
-                                color: c.textStrong,
-                                fontSize: 13,
-                              ),
-                              decoration: InputDecoration(
-                                isDense: true,
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 8,
-                                ),
-                                filled: true,
-                                fillColor: c.surface,
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(10),
-                                  borderSide: BorderSide(color: c.borderSoft),
-                                ),
-                              ),
-                              items: [
-                                const DropdownMenuItem(
-                                  value: null,
-                                  child: Text('همه واحدها'),
-                                ),
-                                ..._sections.map(
-                                  (s) => DropdownMenuItem(
-                                    value: s['section_key'].toString(),
-                                    child: Text(
-                                      s['section_label']?.toString() ??
-                                          s['section_key'].toString(),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                              onChanged: (v) => setState(() => _sectionKey = v),
+                            child: _sheetField(
+                              c,
+                              label: _sectionKey == null
+                                  ? 'همه واحدها'
+                                  : (_sections.firstWhere(
+                                              (x) =>
+                                                  x['section_key'].toString() ==
+                                                  _sectionKey,
+                                              orElse: () => null,
+                                            )?['section_label'] ??
+                                            _sectionKey)
+                                        .toString(),
+                              active: _sectionKey != null,
+                              onTap: () async {
+                                final v = await _pickFromSheet(
+                                  c,
+                                  title: 'انتخاب واحد',
+                                  allLabel: 'همه واحدها',
+                                  current: _sectionKey,
+                                  options: [
+                                    for (final x in _sections)
+                                      (
+                                        x['section_key'].toString(),
+                                        x['section_label']?.toString() ??
+                                            x['section_key'].toString(),
+                                      ),
+                                  ],
+                                );
+                                if (v != _unset) {
+                                  setState(() => _sectionKey = v);
+                                }
+                              },
                             ),
                           ),
                         ],
@@ -724,6 +710,129 @@ class _WorkflowMonitorPageState extends State<WorkflowMonitorPage> {
       ],
     ),
   );
+
+  static const _unset = '__unset__';
+
+  /// شبیهِ ظاهرِ فیلدِ قبلی (کادرِ گردگوشه با فلشِ پایین)، ولی با لمس شیت باز می‌کند
+  Widget _sheetField(
+    AppColors c, {
+    required String label,
+    required bool active,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        decoration: BoxDecoration(
+          color: c.surface,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: active ? c.primary : c.borderSoft),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: active ? c.primary : c.textStrong,
+                ),
+              ),
+            ),
+            Icon(
+              Icons.keyboard_arrow_down_rounded,
+              size: 18,
+              color: c.textMuted,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// فهرستِ انتخاب به‌صورتِ bottom sheet — «همه» برابرِ null؛ بستن بدونِ
+  /// انتخاب = [_unset] (هیچ تغییری)
+  Future<String?> _pickFromSheet(
+    AppColors c, {
+    required String title,
+    required String allLabel,
+    required String? current,
+    required List<(String, String)> options,
+  }) async {
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(ctx).size.height * 0.7,
+        ),
+        child: Container(
+          decoration: BoxDecoration(
+            color: c.surfaceContainerLow,
+            borderRadius: const BorderRadius.vertical(
+              top: Radius.circular(AppRadius.sheet),
+            ),
+          ),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(height: 10),
+                Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: c.borderSoft,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
+                  child: Text(
+                    title,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                      color: c.textStrong,
+                    ),
+                  ),
+                ),
+                Flexible(
+                  child: ListView(
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
+                    children: [
+                      for (final o in [('', allLabel), ...options])
+                        ListTile(
+                          title: Text(
+                            o.$2,
+                            style: TextStyle(
+                              fontSize: 13.5,
+                              color: c.textStrong,
+                            ),
+                          ),
+                          trailing: (current ?? '') == o.$1
+                              ? Icon(Icons.check_rounded, color: c.primary)
+                              : null,
+                          onTap: () => Navigator.of(ctx).pop(o.$1),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    if (picked == null) return _unset;
+    return picked.isEmpty ? null : picked;
+  }
 
   Widget _pill(AppColors c, String key, String label) {
     final selected = _filter == key;

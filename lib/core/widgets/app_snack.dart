@@ -17,7 +17,14 @@ class AppSnack {
     String message, {
     TextButton? mainButton,
     Duration? duration,
-  }) => _show(title, message, _green, mainButton, duration);
+  }) => _show(
+    title,
+    message,
+    _green,
+    mainButton,
+    // 🔧 طبق درخواست: پیام‌هایِ سبزِ موفقیت ۱ ثانیه (بقیه ۲ ثانیه)
+    duration ?? const Duration(seconds: 1),
+  );
 
   static void error(
     String title,

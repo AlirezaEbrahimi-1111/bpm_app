@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_colors.dart';
-import '../../core/utils/task_labels.dart';
+import '../../core/utils/task_status_filters.dart';
 import '../../core/utils/task_search.dart';
 import '../tasks/task_detail_page.dart';
 import '../tasks/widgets/task_list_card.dart';
@@ -104,7 +104,11 @@ class _TasksOverviewPageState extends State<TasksOverviewPage> {
           .toList();
     }
     if (_filterStatus != null) {
-      list = list.where((t) => t['status'] == _filterStatus).toList();
+      // 🔧 فیلترِ وضعیت عیناً مثلِ وب (TF.matchesStatusFilter)
+      final uid = ApiClient.currentUserId;
+      list = list
+          .where((t) => taskMatchesStatusFilter(t, _filterStatus, uid))
+          .toList();
     } else {
       // 🔧 طبق درخواست: پیش‌فرض، کارهایِ تکمیل‌شده/لغوشده/متوقف‌شده نمایش
       // داده نشوند؛ فقط با انتخابِ دستیِ وضعیت (فیلتر بالا) دیده شوند
@@ -427,16 +431,17 @@ class _TasksOverviewPageState extends State<TasksOverviewPage> {
                             c: c,
                             icon: Icons.flag_outlined,
                             label: status != null
-                                ? TaskLabels.statusLabel(status)
+                                ? taskStatusFilterLabel(status!)
                                 : 'همه وضعیت‌ها',
                             active: status != null,
                             onTap: () async {
                               final picked = await _pickFromList(
                                 c,
                                 title: 'وضعیت',
-                                options: TaskLabels.allStatuses,
+                                options: taskStatusFilterKeys,
                                 current: status,
-                                labelBuilder: TaskLabels.statusLabel,
+                                labelBuilder: taskStatusFilterLabel,
+                                groupOf: taskStatusFilterGroup,
                               );
                               if (picked != _sentinel)
                                 setSheetState(() => status = picked);
@@ -564,6 +569,7 @@ class _TasksOverviewPageState extends State<TasksOverviewPage> {
     required List<String> options,
     required String? current,
     String Function(String)? labelBuilder,
+    String Function(String)? groupOf,
   }) async {
     final result = await showModalBottomSheet<String>(
       context: context,
@@ -618,21 +624,51 @@ class _TasksOverviewPageState extends State<TasksOverviewPage> {
                             : null,
                         onTap: () => Navigator.of(ctx).pop(''),
                       ),
-                      ...options.map(
-                        (o) => ListTile(
-                          title: Text(
-                            labelBuilder?.call(o) ?? o,
-                            style: TextStyle(
-                              fontSize: 13.5,
-                              color: c.textStrong,
+                      ...() {
+                        // 🔧 مثلِ optgroupهایِ وب: عنوانِ گروه (عمومی/کار عادی/روتین)
+                        final rows = <Widget>[];
+                        String? prev;
+                        for (final o in options) {
+                          final g = groupOf?.call(o);
+                          if (g != null && g.isNotEmpty && g != prev) {
+                            rows.add(
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  12,
+                                  16,
+                                  4,
+                                ),
+                                child: Text(
+                                  g,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: c.primary,
+                                  ),
+                                ),
+                              ),
+                            );
+                            prev = g;
+                          }
+                          rows.add(
+                            ListTile(
+                              title: Text(
+                                labelBuilder?.call(o) ?? o,
+                                style: TextStyle(
+                                  fontSize: 13.5,
+                                  color: c.textStrong,
+                                ),
+                              ),
+                              trailing: current == o
+                                  ? Icon(Icons.check_rounded, color: c.primary)
+                                  : null,
+                              onTap: () => Navigator.of(ctx).pop(o),
                             ),
-                          ),
-                          trailing: current == o
-                              ? Icon(Icons.check_rounded, color: c.primary)
-                              : null,
-                          onTap: () => Navigator.of(ctx).pop(o),
-                        ),
-                      ),
+                          );
+                        }
+                        return rows;
+                      }(),
                     ],
                   ),
                 ),

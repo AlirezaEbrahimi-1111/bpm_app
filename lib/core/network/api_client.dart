@@ -186,6 +186,20 @@ class ApiClient {
     return false;
   }
 
+  /// 🔧 طبق درخواست: بعد از تصمیم رویِ یک کار (تأیید/رد/بررسیِ تمدیدِ موعد)،
+  /// اعلان‌هایِ خوانده‌نشده‌ی همان کار برایِ کاربرِ جاری «خوانده» می‌شوند —
+  /// api/notifications/mark-read.php با task_id (حالتِ ۲). بی‌صدا؛ شکستش
+  /// روی عملیاتِ اصلی اثری ندارد
+  static Future<void> markTaskNotificationsRead(dynamic taskId) async {
+    if (taskId == null) return;
+    try {
+      await dio.post(
+        '/api/notifications/mark-read.php',
+        data: {'task_id': int.tryParse(taskId.toString()) ?? taskId},
+      );
+    } catch (_) {}
+  }
+
   static Future<void> saveCachedUser(Map<String, dynamic> user) async {
     PlanAccess.setFromUser(user);
     currentUser = user;

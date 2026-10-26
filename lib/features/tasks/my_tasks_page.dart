@@ -8,6 +8,7 @@ import '../../core/utils/task_search.dart';
 import '../../core/utils/task_preload.dart';
 import '../../core/utils/task_labels.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/utils/task_status_filters.dart';
 import '../../core/widgets/app_switch.dart';
 import '../../core/plan/plan_access.dart';
 import '../../core/plan/org_permissions.dart';
@@ -186,21 +187,16 @@ class MyTasksPageState extends State<MyTasksPage> {
   // فقط ته‌لیست می‌رفتند (مرتب‌سازیِ _isDone)، ولی هنوز نمایش داده می‌شدند
   bool _isClosed(dynamic t) =>
       _isDone(t) || t['status'] == 'rejected' || t['status'] == 'stopped';
-  static const _closedStatuses = {
-    'completed',
-    'approved',
-    'period_done',
-    'rejected',
-    'stopped',
-  };
 
   List<dynamic> get _filteredTasks {
     List<dynamic> list = List.from(_myTasks);
 
     // کارهایِ بسته‌شده فقط وقتی دیده می‌شوند که کاربر صریحاً بخواهدشان:
     // فیلترِ سریعِ «تکمیل‌شده» یا انتخابِ همان وضعیت از فیلترِ پیشرفته
-    final wantsClosed =
-        _quickFilter == 'done' || _closedStatuses.contains(_filterStatus);
+    // 🔧 فیلترِ وضعیت عیناً مثلِ وب (TF.matchesStatusFilter)
+    // وقتی وضعیتی صریحاً انتخاب شده، مثلِ وب خودِ همان فیلتر روی کلِ فهرست
+    // اعمال می‌شود (پنهان‌سازیِ پیش‌فرضِ کارهایِ بسته فقط برایِ حالتِ «همه»)
+    final wantsClosed = _quickFilter == 'done' || _filterStatus != null;
     if (!wantsClosed) {
       list = list.where((t) => !_isClosed(t)).toList();
     }
@@ -221,7 +217,10 @@ class MyTasksPageState extends State<MyTasksPage> {
           .toList();
     }
     if (_filterStatus != null) {
-      list = list.where((t) => t['status'] == _filterStatus).toList();
+      final uid = ApiClient.currentUserId;
+      list = list
+          .where((t) => taskMatchesStatusFilter(t, _filterStatus, uid))
+          .toList();
     }
     if (_filterPriority != null) {
       list = list.where((t) => t['priority'] == _filterPriority).toList();
@@ -730,9 +729,8 @@ class MyTasksPageState extends State<MyTasksPage> {
       return u == null ? id : _userLabel(u);
     }
 
-    // 🔧 اصلاح: فهرستِ کاملِ وضعیت‌های مشترک (نه فقط آن‌هایی که در
-    // لیستِ فعلاً بارگذاری‌شده دیده می‌شوند)
-    final statuses = TaskLabels.allStatuses;
+    // 🔧 طبق درخواست: همان گزینه‌هایِ گروه‌بندی‌شده‌ی وب (STATUS_FILTERS)
+    final statuses = taskStatusFilterKeys;
 
     showModalBottomSheet(
       context: context,
@@ -812,7 +810,7 @@ class MyTasksPageState extends State<MyTasksPage> {
                             c: c,
                             icon: Icons.flag_outlined,
                             label: status != null
-                                ? TaskLabels.statusLabel(status)
+                                ? taskStatusFilterLabel(status!)
                                 : 'همه وضعیت‌ها',
                             active: status != null,
                             onTap: () async {
@@ -821,7 +819,8 @@ class MyTasksPageState extends State<MyTasksPage> {
                                 title: 'انتخاب وضعیت',
                                 options: statuses,
                                 current: status,
-                                labelBuilder: TaskLabels.statusLabel,
+                                labelBuilder: taskStatusFilterLabel,
+                                groupOf: taskStatusFilterGroup,
                               );
                               if (picked != _sentinel)
                                 setSheetState(() => status = picked);
@@ -1025,6 +1024,7 @@ class MyTasksPageState extends State<MyTasksPage> {
     required List<String> options,
     required String? current,
     String Function(String)? labelBuilder,
+    String Function(String)? groupOf,
   }) async {
     // 🔧 طبق درخواست: به‌جای دیالوگِ وسطِ صفحه، شیتِ پایین‌رونده
     // (Bottom Sheet) — با سقفِ ارتفاع و لیستِ اسکرول‌شونده، پس با لیستِ
@@ -1089,21 +1089,54 @@ class MyTasksPageState extends State<MyTasksPage> {
                                 : null,
                             onTap: () => Navigator.of(ctx).pop(''),
                           ),
-                          ...options.map(
-                            (o) => ListTile(
-                              title: Text(
-                                labelBuilder?.call(o) ?? o,
-                                style: TextStyle(
-                                  fontSize: 13.5,
-                                  color: c.textStrong,
+                          ...() {
+                            // 🔧 مثلِ optgroupهایِ وب: عنوانِ گروه (عمومی/کار عادی/روتین)
+                            final rows = <Widget>[];
+                            String? prev;
+                            for (final o in options) {
+                              final g = groupOf?.call(o);
+                              if (g != null && g.isNotEmpty && g != prev) {
+                                rows.add(
+                                  Padding(
+                                    padding: const EdgeInsets.fromLTRB(
+                                      16,
+                                      12,
+                                      16,
+                                      4,
+                                    ),
+                                    child: Text(
+                                      g,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                        color: c.primary,
+                                      ),
+                                    ),
+                                  ),
+                                );
+                                prev = g;
+                              }
+                              rows.add(
+                                ListTile(
+                                  title: Text(
+                                    labelBuilder?.call(o) ?? o,
+                                    style: TextStyle(
+                                      fontSize: 13.5,
+                                      color: c.textStrong,
+                                    ),
+                                  ),
+                                  trailing: current == o
+                                      ? Icon(
+                                          Icons.check_rounded,
+                                          color: c.primary,
+                                        )
+                                      : null,
+                                  onTap: () => Navigator.of(ctx).pop(o),
                                 ),
-                              ),
-                              trailing: current == o
-                                  ? Icon(Icons.check_rounded, color: c.primary)
-                                  : null,
-                              onTap: () => Navigator.of(ctx).pop(o),
-                            ),
-                          ),
+                              );
+                            }
+                            return rows;
+                          }(),
                         ],
                       ),
                     ),

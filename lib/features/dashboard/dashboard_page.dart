@@ -317,6 +317,11 @@ class DashboardPageState extends State<DashboardPage> {
     final list = _unsortedFilteredTasks;
     final indexed = List.generate(list.length, (i) => (i, list[i]));
     indexed.sort((a, b) {
+      // 🔧 طبق درخواست: اول کارهایِ «در انتظار تأیید» یا «درخواست تمدید
+      // موعد»، بعد بقیه — هر گروه به ترتیبِ تاریخ
+      final wa = taskAwaitsDecision(a.$2) ? 0 : 1;
+      final wb = taskAwaitsDecision(b.$2) ? 0 : 1;
+      if (wa != wb) return wa.compareTo(wb);
       final da = taskEffectiveDue(a.$2) ?? '9999-99-99';
       final db = taskEffectiveDue(b.$2) ?? '9999-99-99';
       final cmp = da.compareTo(db);
@@ -745,29 +750,35 @@ class DashboardPageState extends State<DashboardPage> {
         _selectedDay = null;
         _filter ??= 'همه';
       }),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 17,
-              fontWeight: FontWeight.bold,
-              color: selected ? c.textStrong : c.textMuted,
+      // 🔧 طبق درخواست: اندازه‌ی فونت مثلِ عنوانِ «برنامه کاری» (۱۶) و خطِ
+      // بنفشِ زیرِ تبِ فعال دقیقاً هم‌عرضِ خودِ متن
+      child: IntrinsicWidth(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: selected ? c.textStrong : c.textMuted,
+              ),
             ),
-          ),
-          const SizedBox(height: 4),
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 150),
-            height: 3,
-            width: selected ? 28 : 0,
-            decoration: BoxDecoration(
-              color: c.primary,
-              borderRadius: BorderRadius.circular(2),
+            const SizedBox(height: 4),
+            AnimatedOpacity(
+              duration: const Duration(milliseconds: 150),
+              opacity: selected ? 1 : 0,
+              child: Container(
+                height: 3,
+                decoration: BoxDecoration(
+                  color: c.primary,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

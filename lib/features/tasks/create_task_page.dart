@@ -64,8 +64,6 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
   // پرچم می‌گوید در این نوبت دست‌کم یک کار ساخته شده، تا موقعِ برگشتن
   // صفحه‌ی قبلی (داشبورد/کارها) لیستش را تازه کند
   bool _createdAny = false;
-  // پیوست‌هایِ «بازتعریف» فقط یک بار (برایِ اولین کارِ ساخته‌شده) کپی شوند
-  bool _redefineConsumed = false;
   // چک‌لیست
   // 🔧 طبق درخواست: هر آیتم علاوه‌بر عنوان، توضیحِ اختیاری هم دارد —
   // دقیقاً مثلِ نسخه‌ی وب که با آیکنِ گفتگو کنارِ هر آیتم اضافه می‌شود
@@ -195,6 +193,8 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       // غیرقابل‌انتخاب می‌شوند
       firstDate: Jalali.now(),
       lastDate: Jalali(1410, 12, 29),
+      // 🔧 طبق درخواست: یک لمس روی روز = انتخاب (بدونِ دکمه‌ی «تأیید»)
+      pickOnTap: true,
     );
   }
 
@@ -222,12 +222,16 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     }
     // الگوی تکرار — همان قواعد سرور (pe_normalizePeriodInput)
     int? intervalDays;
-    if (_taskType == 'continuous' && _periodType == 'weekdays' && _periodWeekdays.isEmpty) {
+    if (_taskType == 'continuous' &&
+        _periodType == 'weekdays' &&
+        _periodWeekdays.isEmpty) {
       AppSnack.error('خطا', 'دست‌کم یک روز از هفته را برای تکرار انتخاب کنید');
       return;
     }
     if (_taskType == 'continuous' && _periodType == 'interval') {
-      intervalDays = int.tryParse(toEnglishDigits(_intervalController.text.trim()));
+      intervalDays = int.tryParse(
+        toEnglishDigits(_intervalController.text.trim()),
+      );
       if (intervalDays == null || intervalDays < 2 || intervalDays > 365) {
         AppSnack.error('خطا', 'فاصلهٔ تکرار باید عددی بین ۲ تا ۳۶۵ روز باشد');
         return;
@@ -263,11 +267,11 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
       if (_periodType == 'weekdays') {
         body['period_weekdays'] = (_periodWeekdays.toList()..sort()).join(',');
       }
-      if (_periodType == 'interval') body['period_interval_days'] = intervalDays;
+      if (_periodType == 'interval')
+        body['period_interval_days'] = intervalDays;
     }
-    final redefineAttachmentIds = _redefineConsumed
-        ? null
-        : widget.redefineFrom?['attachment_ids'] as List?;
+    final redefineAttachmentIds =
+        widget.redefineFrom?['attachment_ids'] as List?;
     if (redefineAttachmentIds != null && redefineAttachmentIds.isNotEmpty) {
       body['copy_attachment_ids'] = redefineAttachmentIds;
     }
@@ -287,9 +291,11 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
           await _uploadFiles(newTaskId);
         }
         if (!mounted) return;
-        final wasRedefine = widget.redefineFrom != null && !_redefineConsumed;
+        final wasRedefine = widget.redefineFrom != null;
         _createdAny = true;
-        _resetForm();
+        // 🔧 طبق درخواست: بعد از ذخیره به صفحه‌ی قبلی برمی‌گردد (با نتیجه‌ی
+        // true تا داشبورد/کارها لیستشان را تازه کنند)
+        _close();
         AppSnack.success(
           '✅ موفق',
           wasRedefine ? 'کار بازتعریف شد' : 'کار با موفقیت ایجاد شد',
@@ -302,35 +308,6 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
-  }
-
-  /// 🔧 طبق درخواست: بعد از ذخیره، فرم به حالتِ اولیه برمی‌گردد (همه‌ی
-  /// فیلدها خالی) تا کارِ بعدی تعریف شود. داده‌هایِ پایه (کاربران،
-  /// واحدها، گروه‌ها) دوباره بارگذاری نمی‌شوند، چون تغییری نکرده‌اند
-  void _resetForm() {
-    FocusScope.of(context).unfocus();
-    setState(() {
-      _titleController.clear();
-      _descController.clear();
-      _checklistController.clear();
-      _taskType = 'periodic';
-      _priority = 'medium';
-      _periodType = 'daily';
-      _periodWeekdays.clear();
-      _intervalController.clear();
-      _dueDate = null;
-      _startDate = null;
-      _endDate = null;
-      _selectedGroupId = null;
-      _groupLabel = 'بدون گروه';
-      _checklistItems.clear();
-      _pickedFiles.clear();
-      _assigneeType = 'self';
-      _assigneeValue = null;
-      _assigneeLabel = 'خودم';
-      _shareHistory = true;
-      _redefineConsumed = true;
-    });
   }
 
   void _close() => Navigator.of(context).pop(_createdAny ? true : null);
@@ -1125,7 +1102,10 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
               ),
             ),
             const SizedBox(width: 8),
-            Text('روز یک‌بار (از تاریخ شروع)', style: TextStyle(fontSize: 13, color: c.textMuted)),
+            Text(
+              'روز یک‌بار (از تاریخ شروع)',
+              style: TextStyle(fontSize: 13, color: c.textMuted),
+            ),
           ],
         ),
       ],
@@ -1575,9 +1555,17 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
+              // 🔧 طبق درخواست: صدا = زمان + حجم، بقیه (عکس/ویدیو/سند) = حجم
+              const SizedBox(width: 8),
+              Text(
+                attachmentMeta(file),
+                style: TextStyle(fontSize: 11.5, color: c.textMuted),
+              ),
               const SizedBox(width: 10),
               Icon(
-                Icons.insert_drive_file_outlined,
+                isAudioAttachment(file)
+                    ? Icons.mic_none_rounded
+                    : Icons.insert_drive_file_outlined,
                 size: 18,
                 color: c.textMuted,
               ),

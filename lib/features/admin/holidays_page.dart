@@ -272,14 +272,16 @@ class _HolidaysPageState extends State<HolidaysPage> {
                     : const Color(0xFFF8F9FC);
                 Color? border;
                 Color textColor = c.textStrong;
+                // 🔧 طبق درخواست: هم‌خوان با راهنمایِ رنگ — جمعه با قابِ قرمز،
+                // تعطیلِ رسمی بدونِ قاب ولی با زمینه‌ی قرمزِ پررنگ‌تر
                 if (holiday != null) {
-                  bg = _red.withValues(alpha: dark ? 0.22 : 0.15);
-                  border = _red.withValues(alpha: 0.3);
+                  bg = _red.withValues(alpha: 0.3);
                   textColor = dark
                       ? const Color(0xFFF87171)
                       : const Color(0xFFDC2626);
                 } else if (isFriday) {
-                  bg = _red.withValues(alpha: dark ? 0.14 : 0.08);
+                  bg = _red.withValues(alpha: 0.15);
+                  border = _red.withValues(alpha: 0.45);
                 }
                 if (isToday) {
                   border = _purple;
