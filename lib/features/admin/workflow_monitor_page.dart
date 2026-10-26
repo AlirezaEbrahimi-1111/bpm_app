@@ -4,10 +4,10 @@ import 'package:get/get.dart';
 import 'package:shamsi_date/shamsi_date.dart';
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/widgets/app_switch.dart';
 import '../../core/theme/app_radius.dart';
 import '../../core/utils/persian_number.dart';
 import '../../core/widgets/app_snack.dart';
-import '../../core/widgets/scrollable_chip_row.dart';
 import '../shell/widgets/app_bottom_nav.dart';
 import '../../core/navigation/app_nav.dart';
 
@@ -60,6 +60,10 @@ Color _statusColor(AppColors c, String s) {
 }
 
 class _WorkflowMonitorPageState extends State<WorkflowMonitorPage> {
+  /// 🔧 ارتفاعِ دکمه‌هایِ «فیلتر»، «پاک‌سازی» و «اعمال فیلتر» (پیکسل) —
+  /// برایِ بلندتر/کوتاه‌تر کردنِ هر سه، فقط همین عدد را عوض کنید
+  static const double _buttonHeight = 52;
+
   bool _isLoading = true;
   String? _error;
   List<dynamic> _workflows = [];
@@ -427,168 +431,35 @@ class _WorkflowMonitorPageState extends State<WorkflowMonitorPage> {
                       ),
                     ),
                     const SizedBox(height: 10),
+                    // 🔧 طبق درخواست (مثلِ صفحه‌ی «کارها»): همه‌ی فیلترها داخلِ
+                    // یک bottom sheet — وضعیت، روتین، واحد، ایجادکننده، روتین‌های من
                     SizedBox(
-                      height: 36,
-                      child: ScrollableChipRow(
-                        children: [
-                          _pill(c, 'all', 'همه'),
-                          _pill(c, 'active', 'جاری'),
-                          _pill(c, 'delayed', 'دارای تأخیر'),
-                          _pill(c, 'completed', 'تکمیل‌شده'),
-                          _pill(c, 'cancelled', 'لغوشده'),
-                        ],
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: () => _showFilterSheet(c),
+                        icon: Icon(
+                          Icons.tune_rounded,
+                          size: 18,
+                          color: c.primary,
+                        ),
+                        label: Text(
+                          _hasActiveFilters ? 'فیلتر (فعال)' : 'فیلتر',
+                          style: TextStyle(
+                            color: c.primary,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13.5,
+                          ),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          side: BorderSide(
+                            color: c.primary.withValues(alpha: 0.5),
+                          ),
+                          minimumSize: const Size.fromHeight(_buttonHeight),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 10),
-                    if (_creators.isNotEmpty) ...[
-                      DropdownButtonFormField<String>(
-                        key: ValueKey('creator-$_creatorId'),
-                        initialValue: _creatorId,
-                        isExpanded: true,
-                        dropdownColor: c.surface,
-                        style: TextStyle(
-                          fontFamily: 'Vazir',
-                          color: c.textStrong,
-                          fontSize: 13,
-                        ),
-                        decoration: InputDecoration(
-                          isDense: true,
-                          prefixIcon: Icon(
-                            Icons.person_outline_rounded,
-                            size: 18,
-                            color: c.textMuted,
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 8,
-                          ),
-                          filled: true,
-                          fillColor: c.surface,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                            borderSide: BorderSide(color: c.borderSoft),
-                          ),
-                        ),
-                        items: [
-                          const DropdownMenuItem(
-                            value: null,
-                            child: Text('همه ایجادکننده‌ها'),
-                          ),
-                          ..._creators.entries.map(
-                            (e) => DropdownMenuItem(
-                              value: e.key,
-                              child: Text(
-                                e.value,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ),
-                        ],
-                        onChanged: (v) => setState(() => _creatorId = v),
-                      ),
-                      const SizedBox(height: 10),
-                    ],
-                    Row(
-                      children: [
-                        // 🔧 طبق درخواست: به‌جایِ لیستِ کشویی، با لمس یک
-                        // bottom sheet باز می‌شود
-                        if (_routines.isNotEmpty)
-                          Expanded(
-                            child: _sheetField(
-                              c,
-                              label: _routineId == null
-                                  ? 'همه روتین‌ها'
-                                  : (_routines.firstWhere(
-                                              (r) =>
-                                                  r['id'].toString() ==
-                                                  _routineId,
-                                              orElse: () => null,
-                                            )?['name'] ??
-                                            'همه روتین‌ها')
-                                        .toString(),
-                              active: _routineId != null,
-                              onTap: () async {
-                                final v = await _pickFromSheet(
-                                  c,
-                                  title: 'انتخاب روتین',
-                                  allLabel: 'همه روتین‌ها',
-                                  current: _routineId,
-                                  options: [
-                                    for (final r in _routines)
-                                      (
-                                        r['id'].toString(),
-                                        r['name']?.toString() ?? '',
-                                      ),
-                                  ],
-                                );
-                                if (v != _unset) setState(() => _routineId = v);
-                              },
-                            ),
-                          ),
-                        if (_sections.isNotEmpty) ...[
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: _sheetField(
-                              c,
-                              label: _sectionKey == null
-                                  ? 'همه واحدها'
-                                  : (_sections.firstWhere(
-                                              (x) =>
-                                                  x['section_key'].toString() ==
-                                                  _sectionKey,
-                                              orElse: () => null,
-                                            )?['section_label'] ??
-                                            _sectionKey)
-                                        .toString(),
-                              active: _sectionKey != null,
-                              onTap: () async {
-                                final v = await _pickFromSheet(
-                                  c,
-                                  title: 'انتخاب واحد',
-                                  allLabel: 'همه واحدها',
-                                  current: _sectionKey,
-                                  options: [
-                                    for (final x in _sections)
-                                      (
-                                        x['section_key'].toString(),
-                                        x['section_label']?.toString() ??
-                                            x['section_key'].toString(),
-                                      ),
-                                  ],
-                                );
-                                if (v != _unset) {
-                                  setState(() => _sectionKey = v);
-                                }
-                              },
-                            ),
-                          ),
-                        ],
-                        const SizedBox(width: 8),
-                        GestureDetector(
-                          onTap: () => setState(() => _onlyMine = !_onlyMine),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 10,
-                            ),
-                            decoration: BoxDecoration(
-                              color: _onlyMine ? c.primary : c.surface,
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(
-                                color: _onlyMine ? c.primary : c.borderSoft,
-                              ),
-                            ),
-                            child: Text(
-                              'روتین‌های من',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: _onlyMine ? Colors.white : c.textMuted,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
                     ),
                     const SizedBox(height: 14),
                     if (_filtered.isEmpty)
@@ -616,6 +487,376 @@ class _WorkflowMonitorPageState extends State<WorkflowMonitorPage> {
   }
 
   /// کارتِ آمار — مثلِ .stat-tile وب: آیکن در مربعِ رنگیِ کم‌رنگ + عدد و برچسب
+  static const _statusOptions = [
+    ('all', 'همه'),
+    ('active', 'جاری'),
+    ('delayed', 'دارای تأخیر'),
+    ('completed', 'تکمیل‌شده'),
+    ('cancelled', 'لغوشده'),
+  ];
+
+  bool get _hasActiveFilters =>
+      _filter != 'active' ||
+      _routineId != null ||
+      _sectionKey != null ||
+      _creatorId != null ||
+      _onlyMine;
+
+  Widget _filterRow(
+    AppColors c, {
+    required IconData icon,
+    required String label,
+    required bool active,
+    required VoidCallback onTap,
+    Widget? trailing,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+        decoration: BoxDecoration(
+          color: c.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: active ? c.primary.withValues(alpha: 0.5) : c.borderSoft,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 18, color: c.textMuted),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 13.5,
+                  color: active ? c.primary : c.textStrong,
+                  fontWeight: active ? FontWeight.w600 : FontWeight.normal,
+                ),
+              ),
+            ),
+            trailing ??
+                Icon(Icons.expand_more_rounded, size: 18, color: c.textMuted),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showFilterSheet(AppColors c) {
+    var status = _filter;
+    String? routineId = _routineId;
+    String? sectionKey = _sectionKey;
+    String? creatorId = _creatorId;
+    var onlyMine = _onlyMine;
+    final creators = _creators;
+
+    String routineLabel(String? id) => id == null
+        ? 'همه روتین‌ها'
+        : (_routines.firstWhere(
+                    (r) => r['id'].toString() == id,
+                    orElse: () => null,
+                  )?['name'] ??
+                  'همه روتین‌ها')
+              .toString();
+    String sectionLabel(String? key) => key == null
+        ? 'همه واحدها'
+        : (_sections.firstWhere(
+                    (x) => x['section_key'].toString() == key,
+                    orElse: () => null,
+                  )?['section_label'] ??
+                  key)
+              .toString();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) => ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(ctx).size.height * 0.85,
+          ),
+          child: Container(
+            decoration: BoxDecoration(
+              color: c.surfaceContainerLow,
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(AppRadius.sheet),
+              ),
+            ),
+            child: SafeArea(
+              top: false,
+              // 🔧 فاصله‌ی استاندارد از پایین: ارتفاعِ دکمه‌هایِ گوشی + ۱۲
+              minimum: EdgeInsets.only(
+                bottom: MediaQuery.viewPaddingOf(context).bottom + 12,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(height: 10),
+                  Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: c.borderSoft,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    'فیلترها',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      color: c.textStrong,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Flexible(
+                    child: ListView(
+                      shrinkWrap: true,
+                      padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+                      children: [
+                        // 🔧 طبق درخواست: وضعیت در یک فهرستِ کشوییِ مجزا
+                        _filterRow(
+                          c,
+                          icon: Icons.flag_outlined,
+                          label: _statusOptions
+                              .firstWhere(
+                                (o) => o.$1 == status,
+                                orElse: () => _statusOptions.first,
+                              )
+                              .$2,
+                          active: status != 'active',
+                          onTap: () async {
+                            final picked = await showModalBottomSheet<String>(
+                              context: ctx,
+                              backgroundColor: Colors.transparent,
+                              builder: (pc) => Container(
+                                decoration: BoxDecoration(
+                                  color: c.surfaceContainerLow,
+                                  borderRadius: const BorderRadius.vertical(
+                                    top: Radius.circular(AppRadius.sheet),
+                                  ),
+                                ),
+                                child: SafeArea(
+                                  top: false,
+                                  // 🔧 فاصله‌ی استاندارد از پایین: ارتفاعِ دکمه‌هایِ گوشی + ۱۲
+                                  minimum: EdgeInsets.only(
+                                    bottom:
+                                        MediaQuery.viewPaddingOf(
+                                          context,
+                                        ).bottom +
+                                        12,
+                                  ),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Padding(
+                                        padding: const EdgeInsets.fromLTRB(
+                                          16,
+                                          16,
+                                          16,
+                                          6,
+                                        ),
+                                        child: Text(
+                                          'انتخاب وضعیت',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 15,
+                                            color: c.textStrong,
+                                          ),
+                                        ),
+                                      ),
+                                      for (final o in _statusOptions)
+                                        ListTile(
+                                          title: Text(
+                                            o.$2,
+                                            style: TextStyle(
+                                              fontSize: 13.5,
+                                              color: c.textStrong,
+                                            ),
+                                          ),
+                                          trailing: status == o.$1
+                                              ? Icon(
+                                                  Icons.check_rounded,
+                                                  color: c.primary,
+                                                )
+                                              : null,
+                                          onTap: () =>
+                                              Navigator.of(pc).pop(o.$1),
+                                        ),
+                                      const SizedBox(height: 8),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            );
+                            if (picked != null) setSheet(() => status = picked);
+                          },
+                        ),
+                        if (_routines.isNotEmpty)
+                          _filterRow(
+                            c,
+                            icon: Icons.account_tree_outlined,
+                            label: routineLabel(routineId),
+                            active: routineId != null,
+                            onTap: () async {
+                              final v = await _pickFromSheet(
+                                c,
+                                title: 'انتخاب روتین',
+                                allLabel: 'همه روتین‌ها',
+                                current: routineId,
+                                options: [
+                                  for (final r in _routines)
+                                    (
+                                      r['id'].toString(),
+                                      r['name']?.toString() ?? '',
+                                    ),
+                                ],
+                              );
+                              if (v != _unset) setSheet(() => routineId = v);
+                            },
+                          ),
+                        if (_sections.isNotEmpty)
+                          _filterRow(
+                            c,
+                            icon: Icons.apartment_rounded,
+                            label: sectionLabel(sectionKey),
+                            active: sectionKey != null,
+                            onTap: () async {
+                              final v = await _pickFromSheet(
+                                c,
+                                title: 'انتخاب واحد',
+                                allLabel: 'همه واحدها',
+                                current: sectionKey,
+                                options: [
+                                  for (final x in _sections)
+                                    (
+                                      x['section_key'].toString(),
+                                      x['section_label']?.toString() ??
+                                          x['section_key'].toString(),
+                                    ),
+                                ],
+                              );
+                              if (v != _unset) setSheet(() => sectionKey = v);
+                            },
+                          ),
+                        if (creators.isNotEmpty)
+                          _filterRow(
+                            c,
+                            icon: Icons.person_outline_rounded,
+                            label: creatorId == null
+                                ? 'همه ایجادکننده‌ها'
+                                : (creators[creatorId] ?? 'همه ایجادکننده‌ها'),
+                            active: creatorId != null,
+                            onTap: () async {
+                              final v = await _pickFromSheet(
+                                c,
+                                title: 'انتخاب ایجادکننده',
+                                allLabel: 'همه ایجادکننده‌ها',
+                                current: creatorId,
+                                options: [
+                                  for (final e in creators.entries)
+                                    (e.key, e.value),
+                                ],
+                              );
+                              if (v != _unset) setSheet(() => creatorId = v);
+                            },
+                          ),
+                        _filterRow(
+                          c,
+                          icon: Icons.person_pin_outlined,
+                          label: 'روتین‌های من',
+                          active: onlyMine,
+                          onTap: () => setSheet(() => onlyMine = !onlyMine),
+                          trailing: AppSwitch(
+                            value: onlyMine,
+                            activeColor: c.primary,
+                            onChanged: (v) => setSheet(() => onlyMine = v),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // 🔧 طبق درخواست: «پاک‌سازی» و «اعمال فیلتر» کنارِ هم و
+                  // عریض؛ «اعمال فیلتر» سمتِ چپ
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => setSheet(() {
+                              status = 'active';
+                              routineId = null;
+                              sectionKey = null;
+                              creatorId = null;
+                              onlyMine = false;
+                            }),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: c.primary,
+                              side: BorderSide(color: c.primary),
+                              minimumSize: const Size.fromHeight(_buttonHeight),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                            ),
+                            child: const Text(
+                              'پاک‌سازی',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13.5,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () {
+                              Navigator.of(ctx).pop();
+                              setState(() {
+                                _filter = status;
+                                _routineId = routineId;
+                                _sectionKey = sectionKey;
+                                _creatorId = creatorId;
+                                _onlyMine = onlyMine;
+                              });
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: c.primary,
+                              foregroundColor: Colors.white,
+                              elevation: 0,
+                              minimumSize: const Size.fromHeight(_buttonHeight),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                            ),
+                            child: const Text(
+                              'اعمال فیلتر',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13.5,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   /// ایجادکننده‌های روتین‌های همین فهرست: id → نام (مرتب بر اساس نام)
   Map<String, String> get _creators {
     final m = <String, String>{};
@@ -713,46 +954,6 @@ class _WorkflowMonitorPageState extends State<WorkflowMonitorPage> {
 
   static const _unset = '__unset__';
 
-  /// شبیهِ ظاهرِ فیلدِ قبلی (کادرِ گردگوشه با فلشِ پایین)، ولی با لمس شیت باز می‌کند
-  Widget _sheetField(
-    AppColors c, {
-    required String label,
-    required bool active,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-        decoration: BoxDecoration(
-          color: c.surface,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: active ? c.primary : c.borderSoft),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: active ? c.primary : c.textStrong,
-                ),
-              ),
-            ),
-            Icon(
-              Icons.keyboard_arrow_down_rounded,
-              size: 18,
-              color: c.textMuted,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   /// فهرستِ انتخاب به‌صورتِ bottom sheet — «همه» برابرِ null؛ بستن بدونِ
   /// انتخاب = [_unset] (هیچ تغییری)
   Future<String?> _pickFromSheet(
@@ -779,6 +980,10 @@ class _WorkflowMonitorPageState extends State<WorkflowMonitorPage> {
           ),
           child: SafeArea(
             top: false,
+            // 🔧 فاصله‌ی استاندارد از پایین: ارتفاعِ دکمه‌هایِ گوشی + ۱۲
+            minimum: EdgeInsets.only(
+              bottom: MediaQuery.viewPaddingOf(context).bottom + 12,
+            ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -832,30 +1037,6 @@ class _WorkflowMonitorPageState extends State<WorkflowMonitorPage> {
     );
     if (picked == null) return _unset;
     return picked.isEmpty ? null : picked;
-  }
-
-  Widget _pill(AppColors c, String key, String label) {
-    final selected = _filter == key;
-    return GestureDetector(
-      onTap: () => setState(() => _filter = key),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: BoxDecoration(
-          color: selected ? c.primary : c.surface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: selected ? c.primary : c.borderSoft),
-        ),
-        alignment: Alignment.center,
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 12.5,
-            fontWeight: FontWeight.w600,
-            color: selected ? Colors.white : c.textMuted,
-          ),
-        ),
-      ),
-    );
   }
 
   Widget _workflowCard(AppColors c, dynamic w) {
@@ -1077,6 +1258,10 @@ class _WorkflowDetailSheetState extends State<_WorkflowDetailSheet> {
         ),
         child: SafeArea(
           top: false,
+          // 🔧 فاصله‌ی استاندارد از پایین: ارتفاعِ دکمه‌هایِ گوشی + ۱۲
+          minimum: EdgeInsets.only(
+            bottom: MediaQuery.viewPaddingOf(context).bottom + 12,
+          ),
           child: _isLoading
               ? SizedBox(
                   height: 200,

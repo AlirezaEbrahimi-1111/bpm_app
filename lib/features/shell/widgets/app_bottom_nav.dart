@@ -38,109 +38,115 @@ class AppBottomNav extends StatelessWidget {
     // کاملاً مات) و ناحیه‌ی دورِ آن تار است — با لبه‌ی نرم: در [_fade] پیکسلِ
     // بالایی، تاری و تیرگی پله‌پله از صفر بیشتر می‌شود (نه یک‌باره)
     final veil = c.bgPage.withValues(alpha: 0.7);
-    return Stack(
-      children: [
-        // تاری: چند نوارِ نازک با تاریِ رو‌به‌افزایش، بعد تاریِ کامل
-        Positioned.fill(
-          child: Column(
-            children: [
-              for (var i = 1; i <= _fadeSteps; i++)
-                ClipRect(
-                  child: BackdropFilter(
-                    // تاری با منحنیِ نرم (توانِ ۱.۵) از نزدیکِ صفر تا ۱۴
-                    filter: ImageFilter.blur(
-                      sigmaX: 14 * math.pow(i / _fadeSteps, 1.5).toDouble(),
-                      sigmaY: 14 * math.pow(i / _fadeSteps, 1.5).toDouble(),
-                    ),
-                    child: const SizedBox(
-                      height: _fade / _fadeSteps,
-                      width: double.infinity,
-                    ),
-                  ),
-                ),
-              Expanded(
-                child: ClipRect(
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-                    child: const SizedBox.expand(),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        // تیرگی: گرادیانِ نرم از شفاف به رنگِ صفحه، بعد یکدست
-        Positioned.fill(
-          child: IgnorePointer(
+    // 🔧 رفعِ باگ: بدونِ alignment، Stack فرزندش را به ابتدایِ سطر (در RTL
+    // سمتِ راست) می‌چسباند و نوار از وسط جابه‌جا می‌شد
+    return SizedBox(
+      width: double.infinity,
+      child: Stack(
+        alignment: Alignment.bottomCenter,
+        children: [
+          // تاری: چند نوارِ نازک با تاریِ رو‌به‌افزایش، بعد تاریِ کامل
+          Positioned.fill(
             child: Column(
               children: [
-                Container(
-                  height: _fade,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [veil.withValues(alpha: 0), veil],
+                for (var i = 1; i <= _fadeSteps; i++)
+                  ClipRect(
+                    child: BackdropFilter(
+                      // تاری با منحنیِ نرم (توانِ ۱.۵) از نزدیکِ صفر تا ۱۴
+                      filter: ImageFilter.blur(
+                        sigmaX: 14 * math.pow(i / _fadeSteps, 1.5).toDouble(),
+                        sigmaY: 14 * math.pow(i / _fadeSteps, 1.5).toDouble(),
+                      ),
+                      child: const SizedBox(
+                        height: _fade / _fadeSteps,
+                        width: double.infinity,
+                      ),
+                    ),
+                  ),
+                Expanded(
+                  child: ClipRect(
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                      child: const SizedBox.expand(),
                     ),
                   ),
                 ),
-                Expanded(child: ColoredBox(color: veil)),
               ],
             ),
           ),
-        ),
-        Padding(
-          padding: const EdgeInsets.only(top: _fade, bottom: 4),
-          child: SafeArea(
-            top: false,
-            child: FractionallySizedBox(
-              widthFactor: 0.9,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(30),
-                child: ColoredBox(
-                  color: c.navBarBg,
-                  child: SizedBox(
-                    height: 70,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: [
-                          _navItem(
-                            c: c,
-                            icon: Icons.grid_view_rounded,
-                            label: 'داشبورد',
-                            selected: selectedIndex == 0,
-                            onTap: () => navigateToShellTab(0),
-                          ),
-                          _navItem(
-                            c: c,
-                            icon: Icons.settings_outlined,
-                            label: 'تنظیمات',
-                            selected: selectedIndex == 1,
-                            onTap: () => navigateToShellTab(1),
-                          ),
-                          const SizedBox(width: 64),
-                          _navItem(
-                            c: c,
-                            icon: Icons.notifications_rounded,
-                            label: 'اعلان‌ها',
-                            selected: selectedIndex == 2,
-                            locked: !PlanAccess.allows(
-                              PlanFeature.notifications,
+          // تیرگی: گرادیانِ نرم از شفاف به رنگِ صفحه، بعد یکدست
+          Positioned.fill(
+            child: IgnorePointer(
+              child: Column(
+                children: [
+                  Container(
+                    height: _fade,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [veil.withValues(alpha: 0), veil],
+                      ),
+                    ),
+                  ),
+                  Expanded(child: ColoredBox(color: veil)),
+                ],
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(top: _fade, bottom: 4),
+            child: SafeArea(
+              top: false,
+              child: FractionallySizedBox(
+                widthFactor: 0.9,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(30),
+                  child: ColoredBox(
+                    color: c.navBarBg,
+                    child: SizedBox(
+                      height: 70,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          children: [
+                            _navItem(
+                              c: c,
+                              icon: Icons.grid_view_rounded,
+                              label: 'داشبورد',
+                              selected: selectedIndex == 0,
+                              onTap: () => navigateToShellTab(0),
                             ),
-                            feature: PlanFeature.notifications,
-                            showBadge: unreadCount > 0,
-                            onTap: () => navigateToShellTab(2),
-                          ),
-                          _navItem(
-                            c: c,
-                            icon: Icons.task_alt_rounded,
-                            label: 'کارها',
-                            selected: selectedIndex == 3,
-                            onTap: () => navigateToShellTab(3),
-                          ),
-                        ],
+                            _navItem(
+                              c: c,
+                              icon: Icons.settings_outlined,
+                              label: 'تنظیمات',
+                              selected: selectedIndex == 1,
+                              onTap: () => navigateToShellTab(1),
+                            ),
+                            const SizedBox(width: 64),
+                            _navItem(
+                              c: c,
+                              icon: Icons.notifications_rounded,
+                              label: 'اعلان‌ها',
+                              selected: selectedIndex == 2,
+                              locked: !PlanAccess.allows(
+                                PlanFeature.notifications,
+                              ),
+                              feature: PlanFeature.notifications,
+                              showBadge: unreadCount > 0,
+                              onTap: () => navigateToShellTab(2),
+                            ),
+                            _navItem(
+                              c: c,
+                              icon: Icons.task_alt_rounded,
+                              label: 'کارها',
+                              selected: selectedIndex == 3,
+                              onTap: () => navigateToShellTab(3),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -148,8 +154,8 @@ class AppBottomNav extends StatelessWidget {
               ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
