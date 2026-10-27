@@ -5525,7 +5525,41 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     final pendings = _history
         .where((h) => h['action'] == 'pending_approval')
         .toList();
-    return _history.where((h) {
+
+    String toNameOf(dynamic h) =>
+        '${h['to_user_first_name'] ?? ''} ${h['to_user_last_name'] ?? ''}'
+            .trim();
+    bool sameMoment(dynamic a, dynamic b) {
+      if (a['from_user_id']?.toString() != b['from_user_id']?.toString()) {
+        return false;
+      }
+      final ta = parseTime(a), tb = parseTime(b);
+      return ta != null &&
+          tb != null &&
+          ta.difference(tb).inMilliseconds.abs() <= 2000;
+    }
+
+    // 🔧 تأییدِ وسطِ زنجیره (مطابقِ وب، ۱۴۰۵/۰۸/۰۵): سرور هم‌زمان 'approved' و
+    // 'pending_approval' (به نفرِ بالاتر) ثبت می‌کند — یک رویدادند. ردیفِ «در انتظارِ
+    // تأیید» پنهان و نامِ نفرِ بالاتر روی ردیفِ «تأیید» می‌نشیند (_forwarded_to).
+    final merged = <dynamic>{};
+    final withForward = _history.map((h) {
+      if (h['action'] != 'approved') return h;
+      final p = pendings.cast<dynamic>().firstWhere(
+        (x) => !merged.contains(x) && sameMoment(x, h) && toNameOf(x).isNotEmpty,
+        orElse: () => null,
+      );
+      if (p == null) return h;
+      merged.add(p);
+      return <String, dynamic>{
+        ...(h as Map).cast<String, dynamic>(),
+        '_forwarded_to': toNameOf(p),
+        // «…تأیید خودکار برای نفرات قبلی…»: نفراتِ میانی خودکار تأیید شده‌اند
+        '_forward_auto': (p['notes'] ?? '').toString().contains('تأیید خودکار'),
+      };
+    }).where((h) => !merged.contains(h)).toList();
+
+    return withForward.where((h) {
       final action = h['action'];
       if (action != 'completed' && action != 'completed_rejected') {
         return true;
@@ -5752,9 +5786,46 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
       return widgets;
     }
 
+    // متن‌هایِ پیش‌فرضِ سرور (بدونِ توضیحِ کاربر) — پیشوند حذف، فقط توضیحِ خودِ کاربر می‌ماند
+    String stripPrefix(String txt, List<String> prefixes) {
+      var t = txt.trim();
+      for (final px in prefixes) {
+        if (t.startsWith(px)) t = t.substring(px.length);
+      }
+      return t.replaceFirst(RegExp(r'^[:：\s]+'), '').trim();
+    }
+
+    // ── تأییدِ وسطِ زنجیره (ادغام‌شده در _visibleHistory) ──
+    final forwardedTo = (h['_forwarded_to'] ?? '').toString();
+    if (action == 'approved' && forwardedTo.isNotEmpty) {
+      final extra = stripPrefix(notes, [
+        'تأیید شد و ارسال برای تأیید نفر بالاتر',
+        'تأیید شد',
+      ]);
+      return [
+        note('تأیید کرد و برای تأیید $forwardedTo ارسال شد'),
+        if (h['_forward_auto'] == true)
+          note('تأیید نفرات میانی زنجیره خودکار انجام شد', small: true),
+        if (extra.isNotEmpty) note('توضیح: $extra', small: true),
+      ];
+    }
+
+    // ── ارسالِ کارِ تکمیل‌شده برایِ تأیید ──
+    if (action == 'pending_approval' &&
+        toName.isNotEmpty &&
+        notes.trim().startsWith('کار تکمیل شد')) {
+      final extra = stripPrefix(notes, ['کار تکمیل شد']);
+      return [
+        note('کار را تکمیل کرد و برای تأیید $toName ارسال شد'),
+        if (extra.isNotEmpty) note('توضیح: $extra', small: true),
+      ];
+    }
+
     // ── بقیه‌ی اکشن‌ها: یادداشتِ خام (اگر بود) + متنِ اختصاصیِ هر نوع ──
+    // «تأیید شد:» بدونِ توضیح → «تأیید شد» (دو نقطه‌یِ آویزان حذف)
     final widgets = <Widget>[];
-    if (notes.isNotEmpty) widgets.add(note(notes));
+    final cleanNotes = notes.replaceFirst(RegExp(r'[:：\s]+$'), '');
+    if (cleanNotes.trim().isNotEmpty) widgets.add(note(cleanNotes));
 
     switch (action) {
       case 'created':
