@@ -149,6 +149,9 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         _loadOverdueClearRequests();
         _loadRenewalRequest();
         _loadTerminationRequest();
+        // با بازشدن کار، همهٔ اعلان‌های مربوط به آن (کار، چک‌لیست، مرحلهٔ روتین)
+        // خوانده‌شده شوند — مثل وب (قبلا فقط بعد از تصمیم روی تمدید موعد)
+        ApiClient.markTaskNotificationsRead(widget.taskId);
         // 🔧 آفلاین سبک: کش جزئیات همین کار، فقط برای مشاهده وقتی بعداً
         // اینترنت نبود
         ApiClient.saveOfflineCache(_offlineCacheKey, {
