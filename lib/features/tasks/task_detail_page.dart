@@ -2615,20 +2615,29 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                       bg: (_webPriorityColors[priority] ?? _webBadgeDefault).$1,
                       fg: (_webPriorityColors[priority] ?? _webBadgeDefault).$2,
                     ),
-                    (status == 'completed' || status == 'approved')
-                        ? _headerBadge(
-                            statusLbl,
-                            bg: const Color(0xFF15803D),
-                            fg: Colors.white,
-                            border: const Color(0xFF166534),
-                          )
-                        : _headerBadge(
-                            statusLbl,
-                            bg: (_webStatusColors[status] ?? _webBadgeDefault)
-                                .$1,
-                            fg: (_webStatusColors[status] ?? _webBadgeDefault)
-                                .$2,
-                          ),
+                    // حذف نرم وضعیت کار را عوض نمی‌کند؛ بدون این شرط کار حذف‌شده «در حال انجام» دیده می‌شد
+                    if (_isDeleted)
+                      _headerBadge(
+                        'حذف شده',
+                        bg: const Color(0xFFB91C1C),
+                        fg: Colors.white,
+                        border: const Color(0xFF991B1B),
+                      )
+                    else
+                      (status == 'completed' || status == 'approved')
+                          ? _headerBadge(
+                              statusLbl,
+                              bg: const Color(0xFF15803D),
+                              fg: Colors.white,
+                              border: const Color(0xFF166534),
+                            )
+                          : _headerBadge(
+                              statusLbl,
+                              bg: (_webStatusColors[status] ?? _webBadgeDefault)
+                                  .$1,
+                              fg: (_webStatusColors[status] ?? _webBadgeDefault)
+                                  .$2,
+                            ),
                   ],
                 ),
               ],
@@ -5543,21 +5552,29 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     // 'pending_approval' (به نفرِ بالاتر) ثبت می‌کند — یک رویدادند. ردیفِ «در انتظارِ
     // تأیید» پنهان و نامِ نفرِ بالاتر روی ردیفِ «تأیید» می‌نشیند (_forwarded_to).
     final merged = <dynamic>{};
-    final withForward = _history.map((h) {
-      if (h['action'] != 'approved') return h;
-      final p = pendings.cast<dynamic>().firstWhere(
-        (x) => !merged.contains(x) && sameMoment(x, h) && toNameOf(x).isNotEmpty,
-        orElse: () => null,
-      );
-      if (p == null) return h;
-      merged.add(p);
-      return <String, dynamic>{
-        ...(h as Map).cast<String, dynamic>(),
-        '_forwarded_to': toNameOf(p),
-        // «…تأیید خودکار برای نفرات قبلی…»: نفراتِ میانی خودکار تأیید شده‌اند
-        '_forward_auto': (p['notes'] ?? '').toString().contains('تأیید خودکار'),
-      };
-    }).where((h) => !merged.contains(h)).toList();
+    final withForward = _history
+        .map((h) {
+          if (h['action'] != 'approved') return h;
+          final p = pendings.cast<dynamic>().firstWhere(
+            (x) =>
+                !merged.contains(x) &&
+                sameMoment(x, h) &&
+                toNameOf(x).isNotEmpty,
+            orElse: () => null,
+          );
+          if (p == null) return h;
+          merged.add(p);
+          return <String, dynamic>{
+            ...(h as Map).cast<String, dynamic>(),
+            '_forwarded_to': toNameOf(p),
+            // «…تأیید خودکار برای نفرات قبلی…»: نفراتِ میانی خودکار تأیید شده‌اند
+            '_forward_auto': (p['notes'] ?? '').toString().contains(
+              'تأیید خودکار',
+            ),
+          };
+        })
+        .where((h) => !merged.contains(h))
+        .toList();
 
     return withForward.where((h) {
       final action = h['action'];
@@ -5578,7 +5595,14 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
   }
 
   Widget _historyItem(Map<String, dynamic> h, {required bool isLast}) {
-    final action = h['action'] as String? ?? '';
+    // 🔧 ستون action در task_history مقدار 'deleted' را ندارد و سرور خالی ذخیره می‌کند؛
+    // از روی متن ثابت همان ردیف تشخیص داده می‌شود تا «نامشخص» نشان داده نشود
+    final rawAction = h['action'] as String? ?? '';
+    final action =
+        rawAction.isEmpty &&
+            (h['notes'] ?? '').toString().trim() == 'کار حذف شد'
+        ? 'deleted'
+        : rawAction;
     final actionLbl = TaskLabels.actionLabel(action);
     final badgeBg = TaskLabels.historyBadgeBg(action);
     final badgeFg = TaskLabels.historyBadgeFg(action);
