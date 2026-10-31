@@ -120,7 +120,10 @@ class _TasksOverviewPageState extends State<TasksOverviewPage> {
       list = list.where((t) => t['task_type'] == _filterType).toList();
     }
     if (_query.trim().isNotEmpty) {
-      list = list.where((t) => taskMatchesQuery(t, _query)).toList();
+      list = rankTasksBySearch(
+        list.where((t) => taskMatchesQuery(t, _query)),
+        _query,
+      );
     }
     return list;
   }
@@ -200,7 +203,7 @@ class _TasksOverviewPageState extends State<TasksOverviewPage> {
                     16,
                     12,
                     16,
-                    24 + MediaQuery.of(context).padding.bottom,
+                    24 + navBarFootprint(context),
                   ),
                   children: [
                     if (_userRole == 'manager')
@@ -329,6 +332,8 @@ class _TasksOverviewPageState extends State<TasksOverviewPage> {
         // صفحه با Get.to باز می‌شود، Scaffoldِ پوسته‌ی اصلی را نمی‌بیند
         floatingActionButton: const AppCreateTaskFab(),
         floatingActionButtonLocation: const LoweredDockedFabLocation(),
+        // محتوا زیرِ نوار هم ادامه دارد تا محوشدنِ دورِ نوار دیده شود
+        extendBody: true,
         bottomNavigationBar: const AppBottomNav(),
       ),
     );

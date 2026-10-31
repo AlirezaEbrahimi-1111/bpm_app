@@ -150,6 +150,8 @@ class _PlanDetailPageState extends State<PlanDetailPage> {
         // 🔧 طبق درخواست: دکمهِ شناورِ افزودنِ کار هم مثلِ پوستهِ اصلی
         floatingActionButton: const AppCreateTaskFab(),
         floatingActionButtonLocation: const LoweredDockedFabLocation(),
+        // محتوا زیرِ نوار هم ادامه دارد تا محوشدنِ دورِ نوار دیده شود
+        extendBody: true,
         bottomNavigationBar: const AppBottomNav(),
       ),
     );
@@ -592,12 +594,7 @@ class _PlanDetailPageState extends State<PlanDetailPage> {
     bool hasDiscount,
   ) {
     return Container(
-      padding: EdgeInsets.fromLTRB(
-        16,
-        12,
-        16,
-        12 + MediaQuery.of(context).padding.bottom,
-      ),
+      padding: EdgeInsets.fromLTRB(16, 12, 16, 12 + navBarFootprint(context)),
       decoration: BoxDecoration(
         color: c.surface,
         border: Border(top: BorderSide(color: c.borderSoft)),

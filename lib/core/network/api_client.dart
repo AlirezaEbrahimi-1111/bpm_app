@@ -1,7 +1,11 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'dart:convert';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart';
 import '../notifications/metrix_service.dart';
+import '../notifications/notification_tray.dart';
 import '../plan/plan_access.dart';
 import '../theme/starred_tasks_preference.dart';
 
@@ -198,6 +202,30 @@ class ApiClient {
         data: {'task_id': int.tryParse(taskId.toString()) ?? taskId},
       );
     } catch (_) {}
+    await _clearTaskPushes(taskId);
+  }
+
+  /// پوش‌های همین کار را از نوارِ اعلانِ گوشی برمی‌دارد؛ اگر نوار خالی باشد
+  /// درخواستی به سرور نمی‌رود
+  static Future<void> _clearTaskPushes(dynamic taskId) async {
+    if (!await NotificationTray.hasActive()) return;
+    try {
+      final res = await dio.get(
+        '/api/notifications/list.php',
+        queryParameters: {'limit': 50},
+      );
+      final data = parseResponse(res.data);
+      final id = int.tryParse(taskId.toString());
+      final items = <Map<String, String>>[
+        for (final n in (data['notifications'] as List? ?? []))
+          if (n is Map && taskIdOfNotification(n) == id)
+            {
+              'title': n['title']?.toString() ?? '',
+              'message': n['message']?.toString() ?? '',
+            },
+      ];
+      await NotificationTray.cancelMatching(items);
+    } catch (_) {}
   }
 
   static Future<void> saveCachedUser(Map<String, dynamic> user) async {
@@ -260,15 +288,35 @@ class ApiClient {
   // اینترنت نیست. هیچ نوشتنی (تکمیل کار، ارجاع و...) آفلاین ذخیره
   // نمی‌شود؛ این فقط حالت مشاهده‌ی آخرین اطلاعات است.
   // ════════════════════════════════════════════════════════
+  // 🔧 کارایی: کشِ آفلاین از حافظه‌ی رمزگذاری‌شده به فایل در پوشه‌ی خصوصیِ اپ
+  // منتقل شد. flutter_secure_storage برایِ متنِ بزرگ و نوشتنِ پشتِ‌سرهم ساخته
+  // نشده و هر کار (با تاریخچه‌اش) این‌جا نوشته می‌شد. توکن و اطلاعاتِ ورود
+  // همچنان در حافظه‌ی رمزگذاری‌شده می‌مانند. وب پوشه‌ی فایل ندارد.
+  static Directory? _cacheDir;
+
+  static Future<File> _cacheFile(String key) async {
+    final dir = _cacheDir ??= Directory(
+      '${(await getApplicationSupportDirectory()).path}/offline_cache',
+    );
+    if (!await dir.exists()) await dir.create(recursive: true);
+    return File('${dir.path}/${key.replaceAll(RegExp(r'[^\w]'), '_')}.json');
+  }
+
   static Future<void> saveOfflineCache(String key, dynamic data) async {
     try {
-      await _storage.write(
-        key: 'offline_cache_$key',
-        value: jsonEncode({
-          'data': data,
-          'cached_at': DateTime.now().toIso8601String(),
-        }),
-      );
+      final value = jsonEncode({
+        'data': data,
+        'cached_at': DateTime.now().toIso8601String(),
+      });
+      if (kIsWeb) {
+        await _storage.write(key: 'offline_cache_$key', value: value);
+        return;
+      }
+      // نوشتن در فایلِ موقت و جایگزینی، تا فایلِ نصفه‌نیمه هرگز خوانده نشود
+      final file = await _cacheFile(key);
+      final tmp = File('${file.path}.tmp');
+      await tmp.writeAsString(value, flush: false);
+      await tmp.rename(file.path);
     } catch (_) {
       // خطای کش نباید کل اپ را مختل کند
     }
@@ -278,7 +326,13 @@ class ApiClient {
   /// برمی‌گرداند؛ وگرنه null.
   static Future<Map<String, dynamic>?> readOfflineCache(String key) async {
     try {
-      final raw = await _storage.read(key: 'offline_cache_$key');
+      String? raw;
+      if (kIsWeb) {
+        raw = await _storage.read(key: 'offline_cache_$key');
+      } else {
+        final file = await _cacheFile(key);
+        if (await file.exists()) raw = await file.readAsString();
+      }
       if (raw == null) return null;
       final decoded = jsonDecode(raw);
       if (decoded is Map) {
@@ -318,5 +372,30 @@ class ApiClient {
     ]) {
       await _storage.delete(key: 'offline_cache_$key');
     }
+    // 🔧 رفعِ باگ: کشِ جزئیاتِ هر کار و «مدیریت کارها» قبلاً با خروج پاک نمی‌شد
+    // و کاربرِ بعدی رویِ همان گوشی می‌توانست آفلاین آن‌ها را ببیند
+    if (!kIsWeb) {
+      try {
+        final file = await _cacheFile('x');
+        await file.parent.delete(recursive: true);
+      } catch (_) {}
+    }
+    await purgeLegacyOfflineCache(force: true);
+  }
+
+  /// پاک‌کردنِ کش‌هایِ قدیمی از حافظه‌ی رمزگذاری‌شده (یک‌بار بعد از به‌روزرسانی)
+  static Future<void> purgeLegacyOfflineCache({bool force = false}) async {
+    if (kIsWeb) return;
+    try {
+      const flag = 'offline_cache_moved_to_files';
+      if (!force && await _storage.read(key: flag) == 'yes') return;
+      final all = await _storage.readAll();
+      for (final k in all.keys) {
+        if (k.startsWith('offline_cache_') && k != flag) {
+          await _storage.delete(key: k);
+        }
+      }
+      await _storage.write(key: flag, value: 'yes');
+    } catch (_) {}
   }
 }

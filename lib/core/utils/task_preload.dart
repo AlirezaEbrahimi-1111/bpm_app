@@ -8,10 +8,23 @@ import '../network/api_client.dart';
 /// عمداً یکی‌یکی (نه هم‌زمان) اجرا می‌شود تا فشار ناگهانی روی سرور
 /// نیاورد — چون این کار در پس‌زمینه انجام می‌شود، سرعتش برای کاربر مهم
 /// نیست. این تابع را بدون await صدا بزنید (fire-and-forget).
+///
+/// 🔧 کارایی: قبلاً با هر بازشدن یا تازه‌شدنِ لیست، برایِ همه‌ی کارها دوباره
+/// درخواست می‌رفت. حالا هر کار در هر اجرایِ اپ یک‌بار، حداکثر [_maxPerRun] کار
+/// در هر نوبت، با مکث بینِ درخواست‌ها تا اپ و شبکه درگیر نمانند.
+const _maxPerRun = 15;
+final Set<String> _preloaded = {};
+
 Future<void> preloadTaskDetails(List<dynamic> tasks) async {
+  var count = 0;
   for (final task in tasks) {
     final id = task['id'];
-    if (id == null) continue;
+    if (id == null || !_preloaded.add(id.toString())) continue;
+    if (++count > _maxPerRun) {
+      _preloaded.remove(id.toString());
+      break;
+    }
+    await Future.delayed(const Duration(milliseconds: 400));
     try {
       final res = await ApiClient.dio.get(
         '/api/tasks/detail.php',

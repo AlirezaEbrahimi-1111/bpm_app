@@ -44,6 +44,8 @@ class ManageTasksPage extends StatelessWidget {
         // 🔧 طبق درخواست: دکمهِ شناورِ افزودنِ کار هم مثلِ پوستهِ اصلی
         floatingActionButton: const AppCreateTaskFab(),
         floatingActionButtonLocation: const LoweredDockedFabLocation(),
+        // محتوا زیرِ نوار هم ادامه دارد تا محوشدنِ دورِ نوار دیده شود
+        extendBody: true,
         bottomNavigationBar: const AppBottomNav(),
       ),
     );

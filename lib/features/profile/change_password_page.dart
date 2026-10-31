@@ -129,7 +129,12 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
           ),
         ),
         body: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+          padding: EdgeInsets.fromLTRB(
+            16,
+            8,
+            16,
+            32 + navBarFootprint(context),
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -294,6 +299,8 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
         // 🔧 طبق درخواست: دکمهِ شناورِ افزودنِ کار هم مثلِ پوستهِ اصلی
         floatingActionButton: const AppCreateTaskFab(),
         floatingActionButtonLocation: const LoweredDockedFabLocation(),
+        // محتوا زیرِ نوار هم ادامه دارد تا محوشدنِ دورِ نوار دیده شود
+        extendBody: true,
         bottomNavigationBar: const AppBottomNav(),
       ),
     );

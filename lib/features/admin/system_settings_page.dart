@@ -194,7 +194,7 @@ class _SystemSettingsPageState extends State<SystemSettingsPage> {
           _settingsScaffold(c),
           Positioned(
             left: 16,
-            bottom: MediaQuery.of(context).padding.bottom + 70,
+            bottom: navBarFootprint(context) + 12,
             child: _saveActionButton(c),
           ),
         ],
@@ -256,7 +256,12 @@ class _SystemSettingsPageState extends State<SystemSettingsPage> {
               ),
             )
           : ListView(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+              padding: EdgeInsets.fromLTRB(
+                16,
+                12,
+                16,
+                88 + navBarFootprint(context),
+              ),
               children: _groups.entries
                   .map((e) => _groupCard(c, e.key, e.value))
                   .toList(),
@@ -265,6 +270,8 @@ class _SystemSettingsPageState extends State<SystemSettingsPage> {
       // صفحه با Get.to باز می‌شود، Scaffoldِ پوسته‌ی اصلی را نمی‌بیند.
       floatingActionButton: const AppCreateTaskFab(),
       floatingActionButtonLocation: const LoweredDockedFabLocation(),
+      // محتوا زیرِ نوار هم ادامه دارد تا محوشدنِ دورِ نوار دیده شود
+      extendBody: true,
       bottomNavigationBar: const AppBottomNav(),
     );
   }

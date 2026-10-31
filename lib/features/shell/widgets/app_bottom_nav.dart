@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../../core/theme/app_colors.dart';
@@ -10,6 +8,19 @@ import '../../subscription/plan_gate.dart';
 import '../../tasks/create_task_page.dart';
 import 'global_search_sheet.dart';
 import '../main_shell.dart';
+
+/// 🔧 تنظیمِ محوشدنِ دورِ نوارِ پایین — برایِ تغییر فقط این دو عدد را عوض کنید:
+/// چند پیکسل بالاتر از لبه‌ی نوار شروع شود (۰ = دقیقاً از لبه‌ی نوار)
+const double navFadeAbove = 30;
+
+/// میزانِ پوشانندگی، از ۰ (بدونِ محوشدن) تا ۱ (محوِ کامل در رنگِ صفحه)
+const double navFadeStrength = 1;
+
+/// ارتفاعِ کلِ ناحیه‌ی نوار از پایینِ صفحه — برایِ فاصله‌ی پایینِ صفحه‌هایی که
+/// با extendBody زیرِ نوار ادامه دارند. از viewPadding است تا چه context بالایِ
+/// Scaffold باشد چه داخلش، عدد یکسان باشد
+double navBarFootprint(BuildContext context) =>
+    70 + 4 + navFadeAbove + MediaQuery.viewPaddingOf(context).bottom;
 
 /// نوارِ ناوبریِ پایین — همان طراحیِ پوسته‌ی اصلی (MainShell)، ولی
 /// به‌صورتِ یک ویجتِ مستقل تا هر صفحه‌ی دیگری (که با Get.to باز می‌شود و
@@ -35,9 +46,10 @@ class AppBottomNav extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
     // 🔧 طبق درخواست: پشتِ خودِ نوار هیچ چیز دیده نمی‌شود (پس‌زمینه‌ی نوار
-    // کاملاً مات) و ناحیه‌ی دورِ آن تار است — با لبه‌ی نرم: در [_fade] پیکسلِ
-    // بالایی، تاری و تیرگی پله‌پله از صفر بیشتر می‌شود (نه یک‌باره)
-    final veil = c.bgPage.withValues(alpha: 0.7);
+    // کاملاً مات). دورِ نوار فقط یک گرادیانِ پیوسته است که دقیقاً از لبه‌ی بالایِ
+    // نوار شروع می‌شود و تا پایینِ صفحه به رنگِ صفحه می‌رسد — بدونِ پله و بدونِ
+    // مرز. تاریِ واقعی (BackdropFilter) عمداً حذف شد: فلاتر تاریِ تدریجی ندارد و
+    // هر لایه‌ی تار لبه‌ی تیز می‌سازد
     // 🔧 رفعِ باگ: بدونِ alignment، Stack فرزندش را به ابتدایِ سطر (در RTL
     // سمتِ راست) می‌چسباند و نوار از وسط جابه‌جا می‌شد
     return SizedBox(
@@ -45,57 +57,25 @@ class AppBottomNav extends StatelessWidget {
       child: Stack(
         alignment: Alignment.bottomCenter,
         children: [
-          // تاری: چند نوارِ نازک با تاریِ رو‌به‌افزایش، بعد تاریِ کامل
-          Positioned.fill(
-            child: Column(
-              children: [
-                for (var i = 1; i <= _fadeSteps; i++)
-                  ClipRect(
-                    child: BackdropFilter(
-                      // تاری با منحنیِ نرم (توانِ ۱.۵) از نزدیکِ صفر تا ۱۴
-                      filter: ImageFilter.blur(
-                        sigmaX: 14 * math.pow(i / _fadeSteps, 1.5).toDouble(),
-                        sigmaY: 14 * math.pow(i / _fadeSteps, 1.5).toDouble(),
-                      ),
-                      child: const SizedBox(
-                        height: _fade / _fadeSteps,
-                        width: double.infinity,
-                      ),
-                    ),
-                  ),
-                Expanded(
-                  child: ClipRect(
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-                      child: const SizedBox.expand(),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          // تیرگی: گرادیانِ نرم از شفاف به رنگِ صفحه، بعد یکدست
           Positioned.fill(
             child: IgnorePointer(
-              child: Column(
-                children: [
-                  Container(
-                    height: _fade,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [veil.withValues(alpha: 0), veil],
-                      ),
-                    ),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      c.bgPage.withValues(alpha: 0),
+                      c.bgPage.withValues(alpha: navFadeStrength),
+                    ],
+                    stops: const [0, 0.6],
                   ),
-                  Expanded(child: ColoredBox(color: veil)),
-                ],
+                ),
               ),
             ),
           ),
           Padding(
-            padding: const EdgeInsets.only(top: _fade, bottom: 4),
+            padding: const EdgeInsets.only(top: navFadeAbove, bottom: 4),
             child: SafeArea(
               top: false,
               child: FractionallySizedBox(
@@ -158,12 +138,6 @@ class AppBottomNav extends StatelessWidget {
       ),
     );
   }
-
-  /// ارتفاعِ لبه‌ی نرمِ بالایِ لایه‌ی تار (تاری/تیرگی در این فاصله کم‌کم زیاد می‌شود)
-  static const double _fade = 60;
-
-  /// تعدادِ پله‌هایِ تاری در لبه‌ی نرم — بیشتر = گذارِ نرم‌تر
-  static const int _fadeSteps = 12;
 
   Widget _navItem({
     required AppColors c,
@@ -292,8 +266,8 @@ class LoweredDockedFabLocation extends FloatingActionButtonLocation {
     final standard = FloatingActionButtonLocation.centerDocked.getOffset(
       scaffoldGeometry,
     );
-    // +_fade برایِ جبرانِ لبه‌ی نرمِ بالایِ لایه‌ی تارِ دورِ نوار
-    return Offset(standard.dx, standard.dy + 12 + AppBottomNav._fade);
+    // navFadeAbove: جبرانِ ناحیه‌ی محوشدنِ بالایِ نوار، تا دکمه سرِ جایش بماند
+    return Offset(standard.dx, standard.dy + 12 + navFadeAbove);
   }
 }
 

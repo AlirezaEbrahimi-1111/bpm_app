@@ -70,7 +70,7 @@ class ProfilePage extends StatelessWidget {
             16,
             8,
             16,
-            32 + MediaQuery.of(context).padding.bottom,
+            32 + navBarFootprint(context),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -312,6 +312,8 @@ class ProfilePage extends StatelessWidget {
         // 🔧 طبق درخواست: دکمهِ شناورِ افزودنِ کار هم مثلِ پوستهِ اصلی
         floatingActionButton: const AppCreateTaskFab(),
         floatingActionButtonLocation: const LoweredDockedFabLocation(),
+        // محتوا زیرِ نوار هم ادامه دارد تا محوشدنِ دورِ نوار دیده شود
+        extendBody: true,
         bottomNavigationBar: const AppBottomNav(),
       ),
     );

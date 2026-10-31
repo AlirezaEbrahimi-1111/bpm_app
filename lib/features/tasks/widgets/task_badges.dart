@@ -108,6 +108,8 @@ bool taskIsOverdue(dynamic t, [int? userId]) {
       reqDate.compareTo(today) < 0) {
     return true;
   }
+  // 🔧 طبق درخواست: تا تصمیمِ تأییدکننده، کار عقب‌افتاده حساب نمی‌شود
+  if (_truthy(t['has_pending_deadline_request'])) return false;
 
   final status = t['status'];
   if (_truthy(t['is_workflow_task'])) {
@@ -195,6 +197,15 @@ List<(IconData, String, Color)> badgesForTask(dynamic task) {
       (
         Icons.hourglass_top_rounded,
         'درخواست تمدید موعد',
+        TaskLabels.statusColor('pending_approval'),
+      ),
+    ];
+  }
+  if (_truthy(task['has_pending_deadline_request'])) {
+    return [
+      (
+        Icons.hourglass_top_rounded,
+        'در انتظار تأیید تمدید موعد',
         TaskLabels.statusColor('pending_approval'),
       ),
     ];

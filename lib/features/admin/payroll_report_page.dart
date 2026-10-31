@@ -291,7 +291,7 @@ class _PayrollReportPageState extends State<PayrollReportPage> {
                     16,
                     12,
                     16,
-                    24 + MediaQuery.of(context).padding.bottom,
+                    24 + navBarFootprint(context),
                   ),
                   children: [
                     // ── انتخابگرِ ماه ──
@@ -389,6 +389,8 @@ class _PayrollReportPageState extends State<PayrollReportPage> {
         // 🔧 طبق درخواست: دکمهِ شناورِ افزودنِ کار هم مثلِ پوستهِ اصلی
         floatingActionButton: const AppCreateTaskFab(),
         floatingActionButtonLocation: const LoweredDockedFabLocation(),
+        // محتوا زیرِ نوار هم ادامه دارد تا محوشدنِ دورِ نوار دیده شود
+        extendBody: true,
         bottomNavigationBar: const AppBottomNav(),
       ),
     );

@@ -7,6 +7,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/widgets/app_switch.dart';
 import '../../core/theme/app_radius.dart';
 import '../../core/utils/persian_number.dart';
+import '../../core/utils/task_search.dart';
 import '../../core/widgets/app_snack.dart';
 import '../shell/widgets/app_bottom_nav.dart';
 import '../../core/navigation/app_nav.dart';
@@ -24,6 +25,20 @@ import '../../core/navigation/app_nav.dart';
 /// دسکتاپی که معادلِ موبایلی معنادار ندارد. به‌جایش این‌جا همان اطلاعات
 /// (وضعیتِ هر مرحله، مسئول، مدت، تأخیر) به‌صورتِ یک تایم‌لاینِ عمودی
 /// نشان داده می‌شود — از نظرِ محتوا کامل، فقط شکلِ نمایش ساده‌تر است.
+/// جزئیاتِ یک روتین از بیرونِ صفحه‌ی نظارت (مثلاً اعلانِ «روتین تکمیل شد»).
+/// دکمه‌ی حذف فقط در خودِ صفحه‌ی نظارت است.
+void showWorkflowDetailSheet(dynamic instanceId) {
+  Get.bottomSheet(
+    _WorkflowDetailSheet(
+      instanceId: instanceId,
+      onDeleted: () {},
+      allowDelete: false,
+    ),
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+  );
+}
+
 class WorkflowMonitorPage extends StatefulWidget {
   const WorkflowMonitorPage({super.key});
 
@@ -32,7 +47,7 @@ class WorkflowMonitorPage extends StatefulWidget {
 }
 
 const _statusLabels = {
-  'in_progress': 'در حال اجرا',
+  'in_progress': 'جاری',
   'delayed': 'دارای تأخیر',
   'completed': 'تکمیل شده',
   'cancelled': 'لغو شده',
@@ -165,15 +180,18 @@ class _WorkflowMonitorPageState extends State<WorkflowMonitorPage> {
           .where((w) => w['created_by']?.toString() == myId?.toString())
           .toList();
     }
-    final q = _query.trim().toLowerCase();
-    if (q.isNotEmpty) {
-      list = list
-          .where(
-            (w) =>
-                (w['title'] ?? '').toString().toLowerCase().contains(q) ||
-                w['id'].toString() == q,
-          )
-          .toList();
+    if (_query.trim().isNotEmpty) {
+      final q = normalizeSearchText(_query);
+      list = rankBySearch<dynamic>(
+        list.where(
+          (w) =>
+              searchMatches(_query, [(w['title'] ?? '').toString()]) ||
+              w['id'].toString() == q,
+        ),
+        _query,
+        (w) => [(w['title'] ?? '').toString()],
+        exactKey: (w) => w['id'].toString(),
+      );
     }
     return list;
   }
@@ -343,7 +361,7 @@ class _WorkflowMonitorPageState extends State<WorkflowMonitorPage> {
                     16,
                     12,
                     16,
-                    24 + MediaQuery.of(context).padding.bottom,
+                    24 + navBarFootprint(context),
                   ),
                   children: [
                     // 🔧 طبق درخواست (مثلِ وب — stats-grid): چهار کارت، آمار از
@@ -481,6 +499,8 @@ class _WorkflowMonitorPageState extends State<WorkflowMonitorPage> {
         // 🔧 طبق درخواست: دکمهِ شناورِ افزودنِ کار هم مثلِ پوستهِ اصلی
         floatingActionButton: const AppCreateTaskFab(),
         floatingActionButtonLocation: const LoweredDockedFabLocation(),
+        // محتوا زیرِ نوار هم ادامه دارد تا محوشدنِ دورِ نوار دیده شود
+        extendBody: true,
         bottomNavigationBar: const AppBottomNav(),
       ),
     );
@@ -1155,9 +1175,11 @@ class _WorkflowMonitorPageState extends State<WorkflowMonitorPage> {
 class _WorkflowDetailSheet extends StatefulWidget {
   final dynamic instanceId;
   final VoidCallback onDeleted;
+  final bool allowDelete;
   const _WorkflowDetailSheet({
     required this.instanceId,
     required this.onDeleted,
+    this.allowDelete = true,
   });
 
   @override
@@ -1229,6 +1251,10 @@ class _WorkflowDetailSheetState extends State<_WorkflowDetailSheet> {
       return '—';
     }
   }
+
+  String get _creatorName =>
+      '${_workflow?['creator_first_name'] ?? ''} ${_workflow?['creator_last_name'] ?? ''}'
+          .trim();
 
   String _duration(dynamic mins) {
     final m = mins is num ? mins.round() : 0;
@@ -1310,6 +1336,18 @@ class _WorkflowDetailSheetState extends State<_WorkflowDetailSheet> {
                         fontWeight: FontWeight.w600,
                       ),
                     ),
+                    // 🔧 طبق درخواست: نامِ ایجادکننده در جزئیاتِ روتین
+                    if (_creatorName.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: Text(
+                          'ایجادکننده: $_creatorName',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 12.5, color: c.textMuted),
+                        ),
+                      ),
+                    ],
                     Flexible(
                       child: SingleChildScrollView(
                         padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
@@ -1326,38 +1364,43 @@ class _WorkflowDetailSheetState extends State<_WorkflowDetailSheet> {
                         ),
                       ),
                     ),
-                    Padding(
-                      padding: EdgeInsets.fromLTRB(
-                        20,
-                        0,
-                        20,
-                        12 + MediaQuery.of(context).padding.bottom,
-                      ),
-                      child: OutlinedButton.icon(
-                        onPressed: () {
-                          AppNav.back();
-                          _confirmDeleteFromSheet(context);
-                        },
-                        icon: Icon(
-                          Icons.delete_outline_rounded,
-                          size: 18,
-                          color: c.danger,
+                    if (!widget.allowDelete)
+                      SizedBox(
+                        height: 12 + MediaQuery.of(context).padding.bottom,
+                      )
+                    else
+                      Padding(
+                        padding: EdgeInsets.fromLTRB(
+                          20,
+                          0,
+                          20,
+                          12 + MediaQuery.of(context).padding.bottom,
                         ),
-                        label: Text(
-                          'حذف این روتین',
-                          style: TextStyle(color: c.danger),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          side: BorderSide(
-                            color: c.danger.withValues(alpha: 0.4),
+                        child: OutlinedButton.icon(
+                          onPressed: () {
+                            AppNav.back();
+                            _confirmDeleteFromSheet(context);
+                          },
+                          icon: Icon(
+                            Icons.delete_outline_rounded,
+                            size: 18,
+                            color: c.danger,
                           ),
-                          minimumSize: const Size(double.infinity, 46),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
+                          label: Text(
+                            'حذف این روتین',
+                            style: TextStyle(color: c.danger),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            side: BorderSide(
+                              color: c.danger.withValues(alpha: 0.4),
+                            ),
+                            minimumSize: const Size(double.infinity, 46),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                           ),
                         ),
                       ),
-                    ),
                   ],
                 ),
         ),

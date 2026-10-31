@@ -68,6 +68,58 @@ class _GlobalSearchSheetState extends State<_GlobalSearchSheet> {
   List<dynamic>? _serverTaskResults;
   bool _serverSearching = false;
 
+  // 🔧 طبق درخواست: کشیدنِ نوارِ بالا به بالا، کادر را تمام‌صفحه می‌کند و
+  // فیلدِ متن فوکوس نمی‌گیرد تا صفحه‌کلید باز نشود
+  bool _expanded = false;
+  bool _settling = false;
+  double? _dragHeight;
+  double _dragDelta = 0;
+
+  void _onHandleDragUpdate(
+    DragUpdateDetails d, {
+    required double half,
+    required double full,
+    required bool keyboardOpen,
+  }) {
+    _dragDelta += d.delta.dy;
+    if (keyboardOpen) return;
+    setState(() {
+      _settling = false;
+      final current = _dragHeight ?? (_expanded ? full : half);
+      _dragHeight = (current - d.delta.dy).clamp(half, full);
+    });
+  }
+
+  void _onHandleDragEnd(
+    DragEndDetails d, {
+    required double half,
+    required double full,
+    required bool keyboardOpen,
+  }) {
+    final velocity = d.primaryVelocity ?? 0;
+    final delta = _dragDelta;
+    final height = _dragHeight ?? (_expanded ? full : half);
+    _dragDelta = 0;
+    final pulledDown = delta > 40 || velocity > 300;
+    // از حالتِ عادی یا با صفحه‌کلیدِ باز، کشیدن به پایین مثلِ قبل می‌بندد
+    if (pulledDown && (!_expanded || keyboardOpen)) {
+      Navigator.of(context).pop();
+      return;
+    }
+    if (keyboardOpen) return;
+    setState(() {
+      if (velocity < -300) {
+        _expanded = true;
+      } else if (velocity > 300) {
+        _expanded = false;
+      } else {
+        _expanded = height > (half + full) / 2;
+      }
+      _dragHeight = null;
+      _settling = true;
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -129,7 +181,7 @@ class _GlobalSearchSheetState extends State<_GlobalSearchSheet> {
     try {
       final res = await ApiClient.dio.get(
         '/api/search/global.php',
-        queryParameters: {'q': query, 'types': 'task'},
+        queryParameters: {'q': query, 'types': 'task', 'rank': 1},
       );
       final data = ApiClient.parseResponse(res.data);
       if (!mounted || _query.trim() != query) return; // کوئری عوض شده
@@ -165,11 +217,10 @@ class _GlobalSearchSheetState extends State<_GlobalSearchSheet> {
     return [];
   }
 
-  bool _notifMatches(dynamic n, String q) {
-    final title = (n['title'] ?? '').toString().toLowerCase();
-    final message = (n['message'] ?? '').toString().toLowerCase();
-    return title.contains(q.toLowerCase()) || message.contains(q.toLowerCase());
-  }
+  List<String> _notifFields(dynamic n) => [
+    (n['title'] ?? '').toString(),
+    (n['message'] ?? '').toString(),
+  ];
 
   List<dynamic> get _results {
     if (_filter == 'کارها') {
@@ -177,11 +228,20 @@ class _GlobalSearchSheetState extends State<_GlobalSearchSheet> {
       // 🔧 اگر نتیجه‌ی سرور (کلِ کارهایِ قابل‌دسترسِ کاربر، طبقِ نقش) آماده
       // باشد، همان استفاده می‌شود؛ وگرنه (هنوز درحالِ بارگذاری یا خطا)
       // فیلترِ محلیِ قبلی روی کارهایِ خودم به‌عنوانِ fallback باقی می‌ماند
-      if (_serverTaskResults != null) return _serverTaskResults!;
-      return _tasks.where((t) => taskMatchesQuery(t, _query)).toList();
+      if (_serverTaskResults != null) {
+        return rankTasksBySearch(_serverTaskResults!, _query);
+      }
+      return rankTasksBySearch(
+        _tasks.where((t) => taskMatchesQuery(t, _query)),
+        _query,
+      );
     }
     if (_query.trim().isEmpty) return _notifications.take(5).toList();
-    return _notifications.where((n) => _notifMatches(n, _query)).toList();
+    return rankBySearch<dynamic>(
+      _notifications.where((n) => searchMatches(_query, _notifFields(n))),
+      _query,
+      _notifFields,
+    );
   }
 
   @override
@@ -208,13 +268,22 @@ class _GlobalSearchSheetState extends State<_GlobalSearchSheet> {
     // هر بار ساخته و فوکوس گم می‌شد و کیبورد بلافاصله بسته می‌شد. حالا
     // درخت ثابت است و فقط ارتفاعِ کادر عوض می‌شود.
     final availableHeight = mq.size.height - keyboard - lift - statusBar - 8;
-    final sheetHeight = keyboardOpen ? availableHeight : mq.size.height * 0.5;
+    final halfHeight = mq.size.height * 0.5;
+    final fullHeight = mq.size.height - statusBar - 8;
+    final sheetHeight = keyboardOpen
+        ? availableHeight
+        : _dragHeight ?? (_expanded ? fullHeight : halfHeight);
     return Align(
       alignment: Alignment.bottomCenter,
       child: Padding(
         padding: EdgeInsets.only(bottom: keyboard + lift),
-        child: SizedBox(
+        child: AnimatedContainer(
           height: sheetHeight,
+          duration: _settling
+              ? const Duration(milliseconds: 220)
+              : Duration.zero,
+          curve: Curves.easeOut,
+          onEnd: () => _settling = false,
           child: Builder(
             builder: (ctx) => Container(
               decoration: BoxDecoration(
@@ -226,35 +295,59 @@ class _GlobalSearchSheetState extends State<_GlobalSearchSheet> {
               ),
               child: Column(
                 children: [
-                  const SizedBox(height: 10),
-                  Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: c.borderSoft,
-                      borderRadius: BorderRadius.circular(2),
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onVerticalDragUpdate: (d) => _onHandleDragUpdate(
+                      d,
+                      half: halfHeight,
+                      full: fullHeight,
+                      keyboardOpen: keyboardOpen,
                     ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-                    child: Row(
+                    onVerticalDragEnd: (d) => _onHandleDragEnd(
+                      d,
+                      half: halfHeight,
+                      full: fullHeight,
+                      keyboardOpen: keyboardOpen,
+                    ),
+                    child: Column(
                       children: [
-                        GestureDetector(
-                          onTap: () => Navigator.of(context).pop(),
-                          child: Icon(Icons.close_rounded, color: c.textMuted),
-                        ),
-                        Expanded(
-                          child: Text(
-                            'جستجو',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: c.textStrong,
-                            ),
+                        const SizedBox(height: 10),
+                        Container(
+                          width: 40,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: c.borderSoft,
+                            borderRadius: BorderRadius.circular(2),
                           ),
                         ),
-                        const SizedBox(width: 24), // موازنه با دکمه‌ی بستن
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+                          child: Row(
+                            children: [
+                              GestureDetector(
+                                onTap: () => Navigator.of(context).pop(),
+                                child: Icon(
+                                  Icons.close_rounded,
+                                  color: c.textMuted,
+                                ),
+                              ),
+                              Expanded(
+                                child: Text(
+                                  'جستجو',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: c.textStrong,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(
+                                width: 24,
+                              ), // موازنه با دکمه‌ی بستن
+                            ],
+                          ),
+                        ),
                       ],
                     ),
                   ),

@@ -65,6 +65,9 @@ class _PersianDatePickerSheet extends StatefulWidget {
 class _PersianDatePickerSheetState extends State<_PersianDatePickerSheet> {
   late Jalali _viewMonth; // اولین روز ماهی که در حال نمایش است
   late Jalali _selected;
+  // روزی لمس شده (برایِ نمایشِ حلقه‌ی انتخاب)، و قفلِ لمسِ دوباره تا بسته‌شدن
+  bool _tapped = false;
+  bool _isClosing = false;
 
   static const _weekDays = ['ش', 'ی', 'د', 'س', 'چ', 'پ', 'ج'];
   static const _months = [
@@ -234,19 +237,39 @@ class _PersianDatePickerSheetState extends State<_PersianDatePickerSheet> {
 
                   return GestureDetector(
                     onTap: inRange
-                        ? () {
-                            if (widget.pickOnTap) {
+                        ? () async {
+                            if (_isClosing) return;
+                            // 🔧 طبق درخواست: با لمسِ روز، حلقه‌ی دایره‌ای دورش
+                            // ظاهر می‌شود؛ در حالتِ pickOnTap کمی مکث تا پیش از
+                            // بسته‌شدنِ تقویم دیده شود
+                            setState(() {
+                              _selected = date;
+                              _tapped = true;
+                              _isClosing = widget.pickOnTap;
+                            });
+                            if (!widget.pickOnTap) return;
+                            await Future.delayed(
+                              const Duration(milliseconds: 220),
+                            );
+                            if (context.mounted) {
                               Navigator.of(context).pop(date.toDateTime());
-                              return;
                             }
-                            setState(() => _selected = date);
                           }
                         : null,
-                    child: Container(
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 120),
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
                         color: isSelected ? c.primary : Colors.transparent,
                         shape: BoxShape.circle,
+                        boxShadow: (isSelected && _tapped)
+                            ? [
+                                BoxShadow(
+                                  color: c.primary.withValues(alpha: 0.35),
+                                  spreadRadius: 3,
+                                ),
+                              ]
+                            : null,
                         border: (isToday && !isSelected)
                             ? Border.all(color: c.primary, width: 1)
                             : null,

@@ -250,6 +250,10 @@ class MyTasksPageState extends State<MyTasksPage> {
       return aDays.compareTo(bDays);
     });
 
+    // 🔧 طبق درخواست: موقعِ جستجو، نزدیک‌ترین نتیجه اول
+    if (_searchQuery.trim().isNotEmpty) {
+      return rankTasksBySearch(list, _searchQuery);
+    }
     return list;
   }
 

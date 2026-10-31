@@ -9,6 +9,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/plan/plan_access.dart';
 import '../../core/theme/starred_tasks_preference.dart';
 import '../../core/theme/dashboard_filter_pin_preference.dart';
+import '../../core/widgets/app_snack.dart';
 import '../subscription/plan_gate.dart';
 import '../tasks/widgets/task_badges.dart';
 import '../tasks/widgets/task_quick_actions_sheet.dart';
@@ -33,6 +34,8 @@ class DashboardPageState extends State<DashboardPage> {
   // 🔧 طبق درخواست: دو تب «همه کارها» (۰) و «منتخب» (۱)؛ هر تب فیلترِ
   // جدایِ خودش (همه/امروز/عقب افتاده) و پینِ جدایِ خودش را دارد
   int _tab = 0;
+  // اگر کاربر خودش تب را عوض کرده، پینِ سرور او را جابه‌جا نکند
+  bool _tabTouched = false;
   String? _filterAll = 'همه';
   String? _filterStarred = 'همه';
   String? get _filter => _tab == 0 ? _filterAll : _filterStarred;
@@ -127,6 +130,15 @@ class DashboardPageState extends State<DashboardPage> {
       initialPage: _dayWindowRadius,
     );
     _dayPageController.addListener(_onDayPageScroll);
+    _applyPinnedTab();
+  }
+
+  Future<void> _applyPinnedTab() async {
+    await DashboardTabPin.load();
+    if (!mounted || _tabTouched || _selectedDay != null) return;
+    if (DashboardTabPin.notifier.value == DashboardTabPin.starred) {
+      setState(() => _tab = 1);
+    }
   }
 
   @override
@@ -710,8 +722,12 @@ class DashboardPageState extends State<DashboardPage> {
         Row(
           children: [
             _tabLabel(c, 'همه کارها', 0),
+            const SizedBox(width: 4),
+            _tabPin(c, DashboardTabPin.mine),
             const SizedBox(width: 18),
             _tabLabel(c, 'منتخب', 1),
+            const SizedBox(width: 4),
+            _tabPin(c, DashboardTabPin.starred),
           ],
         ),
         const SizedBox(height: 10),
@@ -740,12 +756,38 @@ class DashboardPageState extends State<DashboardPage> {
     );
   }
 
+  // 🔧 طبق درخواست: پینِ تب، مشترک با وب (DashboardTabPin)
+  Widget _tabPin(AppColors c, String key) {
+    return ValueListenableBuilder<String>(
+      valueListenable: DashboardTabPin.notifier,
+      builder: (context, pinned, _) {
+        final isPinned = pinned == key;
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () async {
+            final saved = await DashboardTabPin.toggle(key);
+            if (!saved) AppSnack.error('خطا', 'پین ذخیره نشد');
+          },
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(4, 2, 4, 9),
+            child: Icon(
+              isPinned ? Icons.push_pin_rounded : Icons.push_pin_outlined,
+              size: 14,
+              color: isPinned ? const Color(0xFFF59E0B) : c.textMuted,
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _tabLabel(AppColors c, String label, int index) {
     final selected = _tab == index;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => setState(() {
         _tab = index;
+        _tabTouched = true;
         // جابه‌جاییِ تب، انتخابِ روزِ خاص را لغو می‌کند
         _selectedDay = null;
         _filter ??= 'همه';

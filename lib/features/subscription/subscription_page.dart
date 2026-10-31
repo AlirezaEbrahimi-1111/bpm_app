@@ -119,7 +119,7 @@ class SubscriptionPage extends StatelessWidget {
             16,
             10,
             16,
-            14 + MediaQuery.of(context).padding.bottom,
+            14 + navBarFootprint(context),
           ),
           children: [
             _PlanCard(
@@ -184,6 +184,8 @@ class SubscriptionPage extends StatelessWidget {
         // 🔧 طبق درخواست: دکمهِ شناورِ افزودنِ کار هم مثلِ پوستهِ اصلی
         floatingActionButton: const AppCreateTaskFab(),
         floatingActionButtonLocation: const LoweredDockedFabLocation(),
+        // محتوا زیرِ نوار هم ادامه دارد تا محوشدنِ دورِ نوار دیده شود
+        extendBody: true,
         bottomNavigationBar: const AppBottomNav(),
       ),
     );

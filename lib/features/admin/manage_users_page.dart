@@ -6,6 +6,7 @@ import '../../core/network/api_client.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/app_snack.dart';
 import '../../core/utils/persian_number.dart';
+import '../../core/utils/task_search.dart';
 import '../../core/widgets/app_switch.dart';
 import '../shell/widgets/app_bottom_nav.dart';
 import '../../core/navigation/app_nav.dart';
@@ -97,8 +98,7 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
         };
       }
     } catch (e) {
-      _error =
-          'خطا در اتصال به سرور — احتمالا دسترسی «مدیریت کاربران» ندارید';
+      _error = 'خطا در اتصال به سرور — احتمالا دسترسی «مدیریت کاربران» ندارید';
     }
     if (mounted) setState(() => _isLoading = false);
   }
@@ -123,15 +123,17 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
           .where((u) => u['is_active'] == 0 || u['is_active'] == false)
           .toList();
     }
-    final q = _query.trim().toLowerCase();
-    if (q.isNotEmpty) {
-      list = list.where((u) {
-        final name = '${u['first_name'] ?? ''} ${u['last_name'] ?? ''}'
-            .toLowerCase();
-        final phone = (u['phone'] ?? '').toString().toLowerCase();
-        final username = (u['username'] ?? '').toString().toLowerCase();
-        return name.contains(q) || phone.contains(q) || username.contains(q);
-      }).toList();
+    if (_query.trim().isNotEmpty) {
+      List<String> fields(dynamic u) => [
+        '${u['first_name'] ?? ''} ${u['last_name'] ?? ''}',
+        (u['username'] ?? '').toString(),
+        (u['phone'] ?? '').toString(),
+      ];
+      list = rankBySearch<dynamic>(
+        list.where((u) => searchMatches(_query, fields(u))),
+        _query,
+        fields,
+      );
     }
     return list;
   }
@@ -597,7 +599,7 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
                           16,
                           12,
                           16,
-                          24 + MediaQuery.of(context).padding.bottom,
+                          88 + navBarFootprint(context),
                         ),
                         children: [
                           TextField(
@@ -679,7 +681,7 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
             ),
             PositionedDirectional(
               end: 16,
-              bottom: 16,
+              bottom: 16 + navBarFootprint(context),
               child: FloatingActionButton(
                 heroTag: null,
                 onPressed: () => _openUserFormSheet(user: null),
@@ -694,6 +696,8 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
         ),
         // 🔧 طبق درخواست: نوارِ ناوبریِ پایین در همه‌ی صفحاتِ اپ — چون این
         // صفحه با Get.to باز می‌شود، Scaffoldِ پوسته‌ی اصلی را نمی‌بیند.
+        // محتوا زیرِ نوار هم ادامه دارد تا محوشدنِ دورِ نوار دیده شود
+        extendBody: true,
         bottomNavigationBar: const AppBottomNav(),
       ),
     );

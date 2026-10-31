@@ -567,7 +567,7 @@ class _HolidaysPageState extends State<HolidaysPage> {
                           16,
                           0,
                           16,
-                          24 + MediaQuery.of(context).padding.bottom,
+                          24 + navBarFootprint(context),
                         ),
                         sliver: SliverList.builder(
                           itemCount: _holidays.length,
@@ -669,6 +669,8 @@ class _HolidaysPageState extends State<HolidaysPage> {
                   ],
                 ),
               ),
+        // محتوا زیرِ نوار هم ادامه دارد تا محوشدنِ دورِ نوار دیده شود
+        extendBody: true,
         bottomNavigationBar: const AppBottomNav(),
       ),
     );

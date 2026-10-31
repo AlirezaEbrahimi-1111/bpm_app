@@ -4,8 +4,15 @@ import '../../core/widgets/app_snack.dart';
 import 'package:dio/dio.dart';
 import 'package:shamsi_date/shamsi_date.dart';
 import '../../core/network/api_client.dart';
+import '../../core/notifications/notification_tray.dart';
+import '../../core/plan/org_permissions.dart';
 import '../../core/utils/persian_number.dart';
+import '../../core/utils/task_search.dart';
 import '../../core/theme/app_colors.dart';
+import '../admin/attendance_devices_page.dart';
+import '../admin/holidays_page.dart';
+import '../admin/workflow_monitor_page.dart';
+import '../shell/widgets/app_bottom_nav.dart';
 import '../tasks/task_detail_page.dart';
 import '../shell/widgets/nav_bar_metrics.dart';
 
@@ -59,12 +66,15 @@ class _NotificationsPageState extends State<NotificationsPage> {
     }
 
     if (_searchQuery.trim().isNotEmpty) {
-      final q = _searchQuery.trim();
-      list = list.where((n) {
-        final title = (n['title'] ?? '').toString();
-        final message = (n['message'] ?? '').toString();
-        return title.contains(q) || message.contains(q);
-      }).toList();
+      List<String> fields(dynamic n) => [
+        (n['title'] ?? '').toString(),
+        (n['message'] ?? '').toString(),
+      ];
+      list = rankBySearch<dynamic>(
+        list.where((n) => searchMatches(_searchQuery, fields(n))),
+        _searchQuery,
+        fields,
+      );
     }
 
     return list;
@@ -73,6 +83,10 @@ class _NotificationsPageState extends State<NotificationsPage> {
   // 🔧 گروه‌بندی بر اساس روز — امروز/دیروز/تاریخ شمسی
   List<(String, List<dynamic>)> get _groupedNotifications {
     final list = _filteredNotifications;
+    // موقعِ جستجو ترتیب بر اساسِ نزدیکی است، نه روز
+    if (_searchQuery.trim().isNotEmpty) {
+      return list.isEmpty ? [] : [('نتایج جستجو', list)];
+    }
     final now = DateTime.now();
     final groups = <String, List<dynamic>>{};
 
@@ -204,15 +218,35 @@ class _NotificationsPageState extends State<NotificationsPage> {
       widget.onUnreadCountChanged?.call(_unreadCount);
     }
     final relatedType = notif['related_type']?.toString();
-    if (relatedType == 'task' && notif['related_id'] != null) {
-      final taskId = int.tryParse(notif['related_id'].toString());
-      if (taskId != null) {
-        await Get.to(() => TaskDetailPage(taskId: taskId));
-        _loadNotifications();
+    final link = notif['link']?.toString() ?? '';
+    final relatedId = int.tryParse(notif['related_id']?.toString() ?? '') ?? 0;
+    final role = (ApiClient.currentUser?['role'] ?? '').toString();
+
+    // 🔧 طبق درخواست: هر اعلانی که به یک کار مربوط است، همان کار را باز
+    // کند. لینک مقدم است چون در اعلانِ روتین related_id شماره‌ی روتین است
+    final taskId = taskIdOfNotification(notif);
+    if (taskId != null) {
+      await Get.to(() => TaskDetailPage(taskId: taskId));
+      _loadNotifications();
+    } else if (link.contains('my-tasks.php')) {
+      // خلاصه‌ی چند کارِ جدید: کارِ مشخصی ندارد
+      navigateToShellTab(3);
+    } else if ((relatedType == 'routine' || relatedType == 'workflow') &&
+        relatedId > 0) {
+      // «روتین تکمیل شد» به کارِ مشخصی وصل نیست، خودِ روتین را نشان می‌دهیم
+      showWorkflowDetailSheet(relatedId);
+    } else if (relatedType == 'holiday') {
+      // متنِ اعلان کامل است؛ صفحه‌ی تعطیلات فقط برای دارندگانِ مجوز است
+      if (hasOrgPermission(role, OrgPermission.viewOrgSettings)) {
+        Get.to(() => const HolidaysPage());
+      }
+    } else if (relatedType == 'attendance_device') {
+      if (hasOrgPermission(role, OrgPermission.viewOrgSettings)) {
+        Get.to(() => const AttendanceDevicesPage());
       }
     } else if (relatedType != null && relatedType.isNotEmpty) {
       // 🔧 طبق درخواست: اعلان‌هایی که به چیزی غیر از «کار» مرتبط‌اند
-      // (تیکت، فرآیند، درخواستِ مرخصی/مأموریت و...) چون صفحه‌ی
+      // (تیکت، گفتگو، مشتری، درخواستِ مرخصی/مأموریت و...) چون صفحه‌ی
       // جزئیاتشان هنوز در این اپ ساخته نشده، حداقل پیامِ واضح بدهیم
       // به‌جایِ اینکه با زدن روی اعلان هیچ‌چیز اتفاق نیفتد
       AppSnack.info(

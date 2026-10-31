@@ -7,6 +7,7 @@ import 'package:shamsi_date/shamsi_date.dart';
 import 'package:dio/dio.dart' as dio;
 import 'package:file_picker/file_picker.dart';
 import '../../core/utils/persian_number.dart';
+import '../../core/utils/task_search.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/plan/plan_access.dart';
 import '../../core/plan/org_permissions.dart';
@@ -1617,22 +1618,30 @@ class _AssigneeSelectSheetState extends State<_AssigneeSelectSheet> {
     final c = AppColors.of(context);
     final q = _query.trim().toLowerCase();
 
+    List<String> sectionFields(dynamic s) => [
+      (s['section_label'] ?? s['section_key'] ?? '').toString(),
+    ];
+    List<String> userFields(dynamic u) => [
+      _userLabel(u),
+      (u['phone'] ?? '').toString(),
+    ];
     final filteredSections = q.isEmpty
         ? widget.sections
-        : widget.sections.where((s) {
-            final label = (s['section_label'] ?? s['section_key'] ?? '')
-                .toString()
-                .toLowerCase();
-            return label.contains(q);
-          }).toList();
+        : rankBySearch<dynamic>(
+            widget.sections.where(
+              (s) => searchMatches(_query, sectionFields(s)),
+            ),
+            _query,
+            sectionFields,
+          );
 
     final filteredUsers = q.isEmpty
         ? widget.users
-        : widget.users.where((u) {
-            final label = _userLabel(u).toLowerCase();
-            final phone = (u['phone'] ?? '').toString().toLowerCase();
-            return label.contains(q) || phone.contains(q);
-          }).toList();
+        : rankBySearch<dynamic>(
+            widget.users.where((u) => searchMatches(_query, userFields(u))),
+            _query,
+            userFields,
+          );
 
     final showSelfOption = q.isEmpty || 'خودم'.contains(q);
     final showGroupOptions = q.isEmpty;

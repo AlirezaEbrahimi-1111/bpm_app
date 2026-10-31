@@ -23,6 +23,7 @@ void main() async {
   // می‌شود؛ خودِ دکمه‌ها/محتوایِ قابلِ‌لمس با SafeArea بالایِ آن می‌مانند
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   await ApiClient.init();
+  ApiClient.purgeLegacyOfflineCache();
   ApiClient.onSessionExpired = _handleSessionExpired;
   ConnectivityService.instance.start();
   // اگر «مرا به خاطر بسپار» فعال بوده، مستقیم کاربر را وارد می‌کنیم

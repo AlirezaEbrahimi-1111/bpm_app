@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import '../network/api_client.dart';
 
 /// فیلترِ پین‌شده‌یِ پیش‌فرضِ داشبورد («همه»/«امروز»/«عقب افتاده»).
 ///
@@ -55,5 +56,47 @@ class DashboardFilterPinPreference {
         await _storage.write(key: key, value: updated);
       }
     } catch (_) {}
+  }
+}
+
+/// 🔧 طبق درخواست: تبِ پین‌شده‌ی داشبورد، مشترک با وب — همان تنظیمِ سرور
+/// (`default_tab` در api/dashboard/prefs-get.php و prefs-set.php). «همه کارها»
+/// همان `mine`ِ وب است و «منتخب» همان `starred`. دائمی است تا کاربر لغوش کند.
+/// وب تب‌های `delegated` و `recent` را هم دارد که این‌جا نیستند.
+class DashboardTabPin {
+  DashboardTabPin._();
+
+  static const mine = 'mine';
+  static const starred = 'starred';
+
+  static final ValueNotifier<String> notifier = ValueNotifier<String>('');
+
+  static Future<void> load() async {
+    try {
+      final res = await ApiClient.dio.get('/api/dashboard/prefs-get.php');
+      final data = ApiClient.parseResponse(res.data);
+      final prefs = data['prefs'];
+      if (data['success'] == true && prefs is Map) {
+        notifier.value = prefs['default_tab']?.toString() ?? '';
+      }
+    } catch (_) {
+      // بی‌اینترنت: تبِ پیش‌فرض «همه کارها» می‌ماند
+    }
+  }
+
+  /// فوراً رویِ صفحه عوض می‌شود؛ اگر ذخیره نشد برمی‌گردد و false می‌دهد
+  static Future<bool> toggle(String tab) async {
+    final previous = notifier.value;
+    final updated = previous == tab ? '' : tab;
+    notifier.value = updated;
+    try {
+      final res = await ApiClient.dio.post(
+        '/api/dashboard/prefs-set.php',
+        data: {'pref_key': 'default_tab', 'pref_value': updated},
+      );
+      if (ApiClient.parseResponse(res.data)['success'] == true) return true;
+    } catch (_) {}
+    notifier.value = previous;
+    return false;
   }
 }

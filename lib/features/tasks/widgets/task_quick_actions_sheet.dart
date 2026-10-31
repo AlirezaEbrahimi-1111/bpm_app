@@ -5,7 +5,9 @@ import '../../../core/widgets/app_snack.dart';
 import 'package:shamsi_date/shamsi_date.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_radius.dart';
 import '../../../core/utils/persian_number.dart';
+import '../../../core/utils/task_search.dart';
 import '../../../core/plan/plan_access.dart';
 import '../../subscription/plan_gate.dart';
 import 'persian_date_picker_sheet.dart';
@@ -247,105 +249,216 @@ class _QuickActionsSheet extends StatelessWidget {
 
   int get _taskId => int.tryParse(task['id'].toString()) ?? 0;
 
-  /// 🔧 رفعِ باگ (گزارشِ کاربر): قبلاً «تأیید» از منویِ لیست بدونِ هیچ
-  /// پنجره‌ای مستقیم ثبت می‌شد. حالا مثلِ وب، اول «توضیحات تأیید (اختیاری)»
-  Future<void> _approve(BuildContext context) async {
+  /// 🔧 طبق درخواست: همان مودالِ تأییدِ وب (approveModal در task-detail.php):
+  /// توضیحات (اختیاری) + تأیید / تأیید و نگهداری / تأیید و ارجاع، با همان شرط‌ها.
+  void _approve(BuildContext context) {
+    final root = Get.context ?? context;
     Navigator.of(context).pop();
     final controller = TextEditingController();
-    var busy = false;
-    Get.dialog(
+    final isCreator =
+        task['creator_id']?.toString() == ApiClient.currentUserId?.toString();
+    final isWorkflow =
+        task['is_workflow_task'] == 1 || task['is_workflow_task'] == true;
+    // مثلِ وب و سرور: کارِ دوره‌ای و روتین «نگهداری» ندارند
+    final canKeep = !isWorkflow && task['task_type'] == 'periodic';
+    final canDelegate = !isCreator;
+    String? busyAction;
+
+    Get.bottomSheet(
       StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          backgroundColor: c.surface,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: Text(
-            'تأیید کار',
-            style: TextStyle(fontSize: 16, color: c.textStrong),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'با تأیید این کار، به مرحله بعد یا تأیید نهایی ارسال می‌شود.',
-                style: TextStyle(fontSize: 12.5, color: c.textMuted),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: controller,
-                minLines: 2,
-                maxLines: 4,
-                keyboardType: TextInputType.multiline,
-                style: TextStyle(color: c.textStrong),
-                decoration: InputDecoration(
-                  hintText: 'توضیحات تأیید (اختیاری)...',
-                  hintStyle: TextStyle(color: c.textMuted, fontSize: 13),
-                  filled: true,
-                  fillColor: c.surfaceContainerLow,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: busy ? null : () => AppNav.back(),
-              child: Text('انصراف', style: TextStyle(color: c.textMuted)),
-            ),
-            TextButton(
-              onPressed: busy
-                  ? null
-                  : () async {
-                      setDialogState(() => busy = true);
-                      final notes = controller.text.trim();
-                      try {
-                        final res = await ApiClient.dio.post(
-                          '/api/tasks/approve.php',
-                          data: {
-                            'task_id': _taskId,
-                            'approve': true,
-                            if (notes.isNotEmpty) 'notes': notes,
-                          },
-                        );
-                        final data = ApiClient.parseResponse(res.data);
-                        AppNav.back();
-                        if (data['success'] == true) {
-                          onChanged();
-                          ApiClient.markTaskNotificationsRead(_taskId);
-                          AppSnack.success('✅ تأیید شد', data['message'] ?? '');
-                        } else {
-                          AppSnack.error(
-                            'خطا',
-                            data['message'] ?? 'خطا در تأیید',
-                          );
-                        }
-                      } catch (e) {
-                        AppNav.back();
-                        AppSnack.error(
-                          'خطا',
-                          ApiClient.errorMessage(e, 'خطا در اتصال به سرور'),
-                        );
-                      }
-                    },
-              child: busy
-                  ? SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: c.success,
+        builder: (ctx, setDialogState) {
+          Future<void> send(
+            String key,
+            String path,
+            Map<String, dynamic> body,
+          ) async {
+            setDialogState(() => busyAction = key);
+            try {
+              final res = await ApiClient.dio.post(path, data: body);
+              final data = ApiClient.parseResponse(res.data);
+              AppNav.back();
+              if (data['success'] == true) {
+                onChanged();
+                ApiClient.markTaskNotificationsRead(_taskId);
+                AppSnack.success('✅ تأیید شد', data['message'] ?? '');
+              } else {
+                AppSnack.error('خطا', data['message'] ?? 'خطا در تأیید');
+              }
+            } catch (e) {
+              AppNav.back();
+              AppSnack.error(
+                'خطا',
+                ApiClient.errorMessage(e, 'خطا در اتصال به سرور'),
+              );
+            }
+          }
+
+          Widget button(
+            String key,
+            String label,
+            Color color,
+            VoidCallback onTap, {
+            bool filled = false,
+          }) {
+            final shape = RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppRadius.chip),
+            );
+            final child = busyAction == key
+                ? SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: filled ? Colors.white : color,
+                    ),
+                  )
+                : Text(label);
+            final onPressed = busyAction == null ? onTap : null;
+            return SizedBox(
+              width: double.infinity,
+              height: 46,
+              child: filled
+                  ? ElevatedButton(
+                      onPressed: onPressed,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: color,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shape: shape,
                       ),
+                      child: child,
                     )
-                  : Text('تأیید', style: TextStyle(color: c.success)),
+                  : OutlinedButton(
+                      onPressed: onPressed,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: color,
+                        side: BorderSide(color: color),
+                        shape: shape,
+                      ),
+                      child: child,
+                    ),
+            );
+          }
+
+          return Container(
+            decoration: BoxDecoration(
+              color: c.surface,
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(AppRadius.sheet),
+              ),
             ),
-          ],
-        ),
+            child: SingleChildScrollView(
+              padding: EdgeInsets.fromLTRB(
+                20,
+                12,
+                20,
+                12 + MediaQuery.viewPaddingOf(ctx).bottom,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: c.borderSoft,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    'تأیید کار',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: c.textStrong,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'با تأیید این کار، به مرحله بعد یا تأیید نهایی ارسال می‌شود.',
+                    style: TextStyle(fontSize: 12.5, color: c.textMuted),
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: controller,
+                    minLines: 2,
+                    maxLines: 4,
+                    keyboardType: TextInputType.multiline,
+                    style: TextStyle(color: c.textStrong),
+                    decoration: InputDecoration(
+                      hintText: 'توضیحات تأیید (اختیاری)...',
+                      hintStyle: TextStyle(color: c.textMuted, fontSize: 13),
+                      filled: true,
+                      fillColor: c.surfaceContainerLow,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  button('approve', 'تأیید', c.success, () {
+                    final notes = controller.text.trim();
+                    send('approve', '/api/tasks/approve.php', {
+                      'task_id': _taskId,
+                      'approve': true,
+                      if (notes.isNotEmpty) 'notes': notes,
+                    });
+                  }, filled: true),
+                  if (canKeep) ...[
+                    const SizedBox(height: 8),
+                    button('keep', 'تأیید و نگهداری', c.primary, () {
+                      final notes = controller.text.trim();
+                      send('keep', '/api/tasks/approve-and-keep.php', {
+                        'task_id': _taskId,
+                        if (notes.isNotEmpty) 'notes': notes,
+                      });
+                    }),
+                  ],
+                  if (canDelegate) ...[
+                    const SizedBox(height: 8),
+                    PlanGate(
+                      feature: PlanFeature.delegate,
+                      label: 'ارجاع کار',
+                      child: button('delegate', 'تأیید و ارجاع', c.warning, () {
+                        final notes = controller.text.trim();
+                        AppNav.back();
+                        showModalBottomSheet(
+                          context: root,
+                          isScrollControlled: true,
+                          backgroundColor: c.surfaceContainerLow,
+                          shape: const RoundedRectangleBorder(
+                            borderRadius: BorderRadius.vertical(
+                              top: Radius.circular(20),
+                            ),
+                          ),
+                          builder: (_) => _DelegateSheet(
+                            taskId: _taskId,
+                            c: c,
+                            onChanged: onChanged,
+                            approveNotes: notes,
+                          ),
+                        );
+                      }),
+                    ),
+                  ],
+                  const SizedBox(height: 4),
+                  TextButton(
+                    onPressed: busyAction == null ? () => AppNav.back() : null,
+                    child: Text('انصراف', style: TextStyle(color: c.textMuted)),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
       ),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
     );
   }
 
@@ -841,11 +954,16 @@ class _DelegateSheet extends StatefulWidget {
   final int taskId;
   final AppColors c;
   final VoidCallback onChanged;
+  // اگر مقدار داشته باشد، این ارجاع همان «تأیید و ارجاع» است
+  final String? approveNotes;
   const _DelegateSheet({
     required this.taskId,
     required this.c,
     required this.onChanged,
+    this.approveNotes,
   });
+
+  bool get _isApproval => approveNotes != null;
 
   @override
   State<_DelegateSheet> createState() => _DelegateSheetState();
@@ -862,6 +980,7 @@ class _DelegateSheetState extends State<_DelegateSheet> {
   @override
   void initState() {
     super.initState();
+    _notesController.text = widget.approveNotes ?? '';
     _load();
   }
 
@@ -893,18 +1012,30 @@ class _DelegateSheetState extends State<_DelegateSheet> {
     final notes = _notesController.text.trim();
     try {
       final res = await ApiClient.dio.post(
-        '/api/tasks/delegate.php',
-        data: {
-          'task_id': widget.taskId,
-          'to_user_id': user['id'],
-          if (notes.isNotEmpty) 'notes': notes,
-        },
+        widget._isApproval
+            ? '/api/tasks/approve-and-delegate.php'
+            : '/api/tasks/delegate.php',
+        data: widget._isApproval
+            ? {
+                'task_id': widget.taskId,
+                'to_user_id': user['id'],
+                'approve_notes': notes,
+                'delegate_notes': notes,
+              }
+            : {
+                'task_id': widget.taskId,
+                'to_user_id': user['id'],
+                if (notes.isNotEmpty) 'notes': notes,
+              },
       );
       final data = ApiClient.parseResponse(res.data);
       if (!mounted) return;
       Navigator.of(context).pop();
       if (data['success'] == true) {
         widget.onChanged();
+        if (widget._isApproval) {
+          ApiClient.markTaskNotificationsRead(widget.taskId);
+        }
         AppSnack.success('✅ موفق', data['message'] ?? 'کار ارجاع شد');
       } else if (!_handleOverdueDelegateBlock(
         data,
@@ -937,7 +1068,11 @@ class _DelegateSheetState extends State<_DelegateSheet> {
     final q = _query.trim().toLowerCase();
     final filtered = q.isEmpty
         ? _users
-        : _users.where((u) => _userLabel(u).toLowerCase().contains(q)).toList();
+        : rankBySearch<dynamic>(
+            _users.where((u) => searchMatches(_query, [_userLabel(u)])),
+            _query,
+            (u) => [_userLabel(u)],
+          );
 
     final mq = MediaQuery.of(context);
     final selectedLabel = _selectedUser == null
@@ -966,7 +1101,7 @@ class _DelegateSheetState extends State<_DelegateSheet> {
             ),
             const SizedBox(height: 16),
             Text(
-              'ارجاع کار به',
+              widget._isApproval ? 'تأیید و ارجاع به' : 'ارجاع کار به',
               style: TextStyle(
                 fontWeight: FontWeight.bold,
                 fontSize: 16,
@@ -1101,8 +1236,8 @@ class _DelegateSheetState extends State<_DelegateSheet> {
                         )
                       : Text(
                           selectedLabel == null
-                              ? 'ارجاع'
-                              : 'ارجاع به $selectedLabel',
+                              ? (widget._isApproval ? 'تأیید و ارجاع' : 'ارجاع')
+                              : '${widget._isApproval ? 'تأیید و ارجاع' : 'ارجاع'} به $selectedLabel',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(fontWeight: FontWeight.bold),

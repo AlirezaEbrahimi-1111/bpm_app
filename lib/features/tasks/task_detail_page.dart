@@ -8,6 +8,7 @@ import 'package:dio/dio.dart' as dio;
 import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/utils/persian_number.dart';
+import '../../core/utils/task_search.dart';
 import 'dart:convert';
 import '../../core/utils/task_labels.dart';
 import '../shell/widgets/offline_banner.dart';
@@ -26,6 +27,7 @@ import 'widgets/attachment_picker.dart';
 import 'create_task_page.dart';
 import '../../core/navigation/app_nav.dart';
 import '../shell/main_shell.dart';
+import '../shell/widgets/app_bottom_nav.dart';
 
 class TaskDetailPage extends StatefulWidget {
   final int taskId;
@@ -116,9 +118,14 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
 
   String get _offlineCacheKey => 'task_detail_${widget.taskId}';
 
+  bool _baseListsLoaded = false;
+
   Future<void> _loadDetail() async {
+    // 🔧 رفعِ باگ (گزارشِ کاربر): هر تازه‌سازی کلِ صفحه را با اسپینر عوض می‌کرد،
+    // پس بعد از تیکِ چک‌لیست و بقیه‌ی عملیات، اسکرول به بالایِ صفحه برمی‌گشت.
+    // حالا اسپینر فقط بارِ اول است؛ بعد از آن داده در پس‌زمینه تازه می‌شود
     setState(() {
-      _isLoading = true;
+      _isLoading = _task == null;
       _error = null;
     });
     try {
@@ -138,9 +145,14 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
           _isLoading = false;
         });
         _loadChecklist();
-        _loadGroups();
-        _loadUsers();
-        _loadSections();
+        // 🔧 کارایی: گروه‌ها، کاربران و واحدها با تازه‌سازی‌هایِ بعدیِ همین صفحه
+        // عوض نمی‌شوند؛ فقط بارِ اول
+        if (!_baseListsLoaded) {
+          _baseListsLoaded = true;
+          _loadGroups();
+          _loadUsers();
+          _loadSections();
+        }
         _loadAttachments();
         // اگر پلن «دسترسی به» را ندارد، سرور با PLAN_RESTRICTED رد می‌کند و
         // پیامِ ارتقایِ پلن بی‌جا روی هر بار بازکردنِ کار می‌پرید — پس صدا نزن
@@ -166,6 +178,11 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         });
       }
     } catch (e) {
+      // تازه‌سازیِ پس‌زمینه ناموفق بود: همان داده‌ی رویِ صفحه می‌ماند
+      if (_task != null) {
+        AppSnack.warning('توجه', _dioErrorMessage(e, 'تازه‌سازی انجام نشد'));
+        return;
+      }
       final cached = await ApiClient.readOfflineCache(_offlineCacheKey);
       if (cached != null && cached['data'] is Map) {
         final data = Map<String, dynamic>.from(cached['data']);
@@ -207,8 +224,6 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         '/api/tasks/update-group.php',
         data: {'task_id': widget.taskId, 'group_id': groupId},
       );
-      print('📥 Response type: ${res.data.runtimeType}');
-      print('📥 Response: ${res.data}');
       final data = ApiClient.parseResponse(res.data);
       if (data['success'] == true) {
         _hasChanges = true;
@@ -1046,7 +1061,6 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         '/api/checklist/get.php',
         queryParameters: {'task_id': widget.taskId},
       );
-      print('✅ Checklist response: ${res.data}');
       if (res.data['success'] == true) {
         setState(() {
           _checklist = res.data['items'] ?? [];
@@ -1065,7 +1079,20 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     }
   }
 
+  // آیتم‌هایی که درخواستِ تیکشان در جریان است — لمسِ دوباره نادیده گرفته می‌شود
+  // (دیگر اسپینرِ تمام‌صفحه جلویِ لمسِ دوباره را نمی‌گیرد)
+  final Set<dynamic> _togglingItems = {};
+
   Future<void> _toggleItem(Map<String, dynamic> item) async {
+    if (!_togglingItems.add(item['id'])) return;
+    try {
+      await _toggleItemNow(item);
+    } finally {
+      _togglingItems.remove(item['id']);
+    }
+  }
+
+  Future<void> _toggleItemNow(Map<String, dynamic> item) async {
     final isDone = item['is_done'] == 1 || item['is_done'] == true;
 
     // آیتم تیک‌خورده قفل است
@@ -1089,11 +1116,12 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         // (وگرنه وضعیتِ قدیمی/نادرست در لیست باقی می‌ماند).
         _hasChanges = true;
 
-        _loadChecklist();
         // 🔧 اصلاح: قبلاً فقط وقتی auto_completed بود جزئیات کار
         // تازه‌سازی می‌شد؛ برای همین با تیک زدن اولین آیتم، وضعیت بالای
         // صفحه («شروع نشده») به‌روز نمی‌شد. الان همیشه تازه‌سازی می‌کنیم.
-        _loadDetail();
+        // صبر تا پایانِ هر دو، تا تیکِ دوباره با داده‌ی کهنه نرود؛ چک‌لیست جدا
+        // خوانده می‌شود تا اگر جزئیات نیامد، تیکِ ثبت‌شده باز هم دیده شود
+        await Future.wait([_loadChecklist(), _loadDetail()]);
 
         if (res.data['auto_completed'] == true) {
           AppSnack.success(
@@ -1564,6 +1592,13 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     if (status == 'completed' || status == 'approved') {
       style = normal;
       text = 'تکمیل';
+    } else if (t['has_pending_deadline_request'] == 1 ||
+        t['has_pending_deadline_request'] == true ||
+        t['has_pending_deadline_request'] == '1') {
+      // 🔧 طبق درخواست: تا تصمیمِ تأییدکننده، تأخیر نشان داده نمی‌شود
+      style = today;
+      text = 'در انتظار تأیید تمدید موعد';
+      icon = Icons.hourglass_top_rounded;
     } else {
       final due = taskEffectiveDue(t);
       if (due != null && isWf) {
@@ -1721,10 +1756,51 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
             : Column(
                 children: [
                   if (_isOfflineData) const OfflineBanner(),
-                  Expanded(child: _buildContent()),
-                  // طبق درخواست این صفحه نوارِ ناوبریِ پایین ندارد، پس
-                  // فاصله‌ی امن (نوارِ دکمه‌هایِ گوشی) را خودِ این نوار می‌گیرد
-                  if (actionBar != null) SafeArea(top: false, child: actionBar),
+                  // 🔧 رفعِ باگ: نوارِ عملیات زیرِ محتوا بود، پس محتوا لبِ آن قطع
+                  // می‌شد. حالا محتوا زیرِ نوار هم ادامه دارد و همان محوشدنِ
+                  // نوارِ پایینِ بقیه‌ی صفحه‌ها (همان دو عددِ تنظیم) را می‌گیرد
+                  Expanded(
+                    child: Stack(
+                      children: [
+                        Positioned.fill(child: _buildContent()),
+                        if (actionBar != null)
+                          Positioned(
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            child: Stack(
+                              children: [
+                                Positioned.fill(
+                                  child: IgnorePointer(
+                                    child: DecoratedBox(
+                                      decoration: BoxDecoration(
+                                        gradient: LinearGradient(
+                                          begin: Alignment.topCenter,
+                                          end: Alignment.bottomCenter,
+                                          colors: [
+                                            c.bgPage.withValues(alpha: 0),
+                                            c.bgPage.withValues(
+                                              alpha: navFadeStrength,
+                                            ),
+                                          ],
+                                          stops: const [0, 0.6],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                Padding(
+                                  padding: const EdgeInsets.only(
+                                    top: navFadeAbove,
+                                  ),
+                                  child: actionBar,
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
       ),
@@ -2542,7 +2618,13 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         (t['is_pending_approval'] == 1 || t['is_pending_approval'] == true);
     final c = AppColors.of(context);
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+      // فاصله‌ی پایین: ارتفاعِ نوارِ عملیات، تا آخرین بخش زیرِ آن نماند
+      padding: EdgeInsets.fromLTRB(
+        16,
+        16,
+        16,
+        130 + math.max(18.0, MediaQuery.viewPaddingOf(context).bottom),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -3127,13 +3209,19 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
       StatefulBuilder(
         builder: (ctx, setSheetState) {
           final q = searchQuery.trim().toLowerCase();
+          List<String> userFields(dynamic u) => [
+            userDisplay(u),
+            (u['phone'] ?? '').toString(),
+          ];
           final filteredUsers = q.isEmpty
               ? _users
-              : _users.where((u) {
-                  final display = userDisplay(u).toLowerCase();
-                  final phone = (u['phone'] ?? '').toString().toLowerCase();
-                  return display.contains(q) || phone.contains(q);
-                }).toList();
+              : rankBySearch<dynamic>(
+                  _users.where(
+                    (u) => searchMatches(searchQuery, userFields(u)),
+                  ),
+                  searchQuery,
+                  userFields,
+                );
 
           // 🔧 رفعِ باگ: قبلاً این شیت با mainAxisSize.min + Flexible
           // بدونِ هیچ محدودیتِ ارتفاعی ساخته می‌شد — وقتی لیستِ کاربران
@@ -4318,13 +4406,18 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         builder: (ctx, setSheetState) {
           final viewerIds = _viewers.map((v) => v['id'].toString()).toSet();
           final q = searchQuery.trim().toLowerCase();
-          final candidates = _users.where((u) {
-            if (viewerIds.contains(u['id'].toString())) return false;
-            if (q.isEmpty) return true;
-            final display = userDisplay(u).toLowerCase();
-            final phone = (u['phone'] ?? '').toString().toLowerCase();
-            return display.contains(q) || phone.contains(q);
-          }).toList();
+          List<String> userFields(dynamic u) => [
+            userDisplay(u),
+            (u['phone'] ?? '').toString(),
+          ];
+          final candidates = rankBySearch<dynamic>(
+            _users.where((u) {
+              if (viewerIds.contains(u['id'].toString())) return false;
+              return q.isEmpty || searchMatches(searchQuery, userFields(u));
+            }),
+            searchQuery,
+            userFields,
+          );
 
           // 🔧 رفعِ باگِ «تا بالای صفحه می‌رود»: دیگر اینجا padding برایِ
           // صفحه‌کلید اضافه نمی‌شود — Get.bottomSheet خودش (مستقل از
@@ -4952,18 +5045,36 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
             ),
     );
 
-    Get.dialog(
-      Dialog(
-        backgroundColor: c.surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppRadius.dialog),
+    Get.bottomSheet(
+      Container(
+        decoration: BoxDecoration(
+          color: c.surface,
+          borderRadius: const BorderRadius.vertical(
+            top: Radius.circular(AppRadius.sheet),
+          ),
         ),
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
+          padding: EdgeInsets.fromLTRB(
+            20,
+            12,
+            20,
+            12 + MediaQuery.viewPaddingOf(context).bottom,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: c.borderSoft,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
               Text(
                 'تأیید کار',
                 style: TextStyle(
@@ -5000,14 +5111,19 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                 AppNav.back();
                 _approveOrReject(true, notes: notesController.text.trim());
               }, filled: true),
-              if (isCreator) ...[
+              // 🔧 شرط‌ها عیناً مثلِ وب (task-detail.php) و سرور: نگهداری فقط برای
+              // مسئولِ تأیید در کارِ مقطعی؛ ارجاع برای مسئولی که تعریف‌کننده نیست
+              if (isAssignee &&
+                  _task?['is_workflow_task'] != 1 &&
+                  _task?['is_workflow_task'] != true &&
+                  _task?['task_type'] == 'periodic') ...[
                 const SizedBox(height: 8),
-                action('تأیید و نگه‌داری', c.primary, () {
+                action('تأیید و نگهداری', c.primary, () {
                   AppNav.back();
                   _approveAndKeep(notes: notesController.text.trim());
                 }),
               ],
-              if (isAssignee) ...[
+              if (isAssignee && !isCreator) ...[
                 const SizedBox(height: 8),
                 PlanGate(
                   feature: PlanFeature.delegate,
@@ -5029,6 +5145,8 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
           ),
         ),
       ),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
     );
   }
 
@@ -5055,13 +5173,19 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
       StatefulBuilder(
         builder: (ctx, setSheetState) {
           final q = searchQuery.trim().toLowerCase();
+          List<String> userFields(dynamic u) => [
+            userDisplay(u),
+            (u['phone'] ?? '').toString(),
+          ];
           final filteredUsers = q.isEmpty
               ? _users
-              : _users.where((u) {
-                  final display = userDisplay(u).toLowerCase();
-                  final phone = (u['phone'] ?? '').toString().toLowerCase();
-                  return display.contains(q) || phone.contains(q);
-                }).toList();
+              : rankBySearch<dynamic>(
+                  _users.where(
+                    (u) => searchMatches(searchQuery, userFields(u)),
+                  ),
+                  searchQuery,
+                  userFields,
+                );
 
           // 🔧 رفعِ باگِ «تا بالای صفحه می‌رود»: دیگر اینجا padding برایِ
           // صفحه‌کلید اضافه نمی‌شود — Get.bottomSheet خودش این فاصله را
@@ -6623,22 +6747,30 @@ class _ChecklistAssigneeSheetState extends State<_ChecklistAssigneeSheet> {
     final c = AppColors.of(context);
     final q = _query.trim().toLowerCase();
 
+    List<String> sectionFields(dynamic s) => [
+      (s['section_label'] ?? s['section_key'] ?? '').toString(),
+    ];
+    List<String> userFields(dynamic u) => [
+      _userLabel(u),
+      (u['phone'] ?? '').toString(),
+    ];
     final filteredSections = q.isEmpty
         ? widget.sections
-        : widget.sections.where((s) {
-            final label = (s['section_label'] ?? s['section_key'] ?? '')
-                .toString()
-                .toLowerCase();
-            return label.contains(q);
-          }).toList();
+        : rankBySearch<dynamic>(
+            widget.sections.where(
+              (s) => searchMatches(_query, sectionFields(s)),
+            ),
+            _query,
+            sectionFields,
+          );
 
     final filteredUsers = q.isEmpty
         ? widget.users
-        : widget.users.where((u) {
-            final label = _userLabel(u).toLowerCase();
-            final phone = (u['phone'] ?? '').toString().toLowerCase();
-            return label.contains(q) || phone.contains(q);
-          }).toList();
+        : rankBySearch<dynamic>(
+            widget.users.where((u) => searchMatches(_query, userFields(u))),
+            _query,
+            userFields,
+          );
 
     return DraggableScrollableSheet(
       initialChildSize: 0.75,
