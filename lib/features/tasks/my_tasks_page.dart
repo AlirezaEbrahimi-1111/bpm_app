@@ -250,8 +250,14 @@ class MyTasksPageState extends State<MyTasksPage> {
       return aDays.compareTo(bDays);
     });
 
-    // 🔧 طبق درخواست: موقعِ جستجو، نزدیک‌ترین نتیجه اول
+    // 🔧 طبق درخواست: موقعِ جستجو نزدیک‌ترین نتیجه اول، و در مطابقتِ برابر
+    // جدیدترین کار اول
     if (_searchQuery.trim().isNotEmpty) {
+      list.sort(
+        (a, b) => (b['created_at'] ?? '').toString().compareTo(
+          (a['created_at'] ?? '').toString(),
+        ),
+      );
       return rankTasksBySearch(list, _searchQuery);
     }
     return list;

@@ -48,23 +48,25 @@ bool searchMatches(String query, Iterable<String> fields) {
 bool _hasWholeWord(String text, String phrase) =>
     ' $text '.contains(' $phrase ');
 
-double _fieldScore(String q, List<String> words, String text) {
-  if (text.isEmpty) return 0;
-  if (text == q) return 1000;
-  if (text.startsWith('$q ')) return 950;
-  if (_hasWholeWord(text, q)) return 900;
-  if (text.startsWith(q)) return 850;
-  if (text.contains(q)) return 800;
+/// امتیازِ داشتنِ عینِ عبارت؛ هر فیلدِ پایین‌تر (مثلاً توضیحات بعد از عنوان)
+/// یک پله پایین‌تر است، ولی همیشه بالاتر از مطابقتِ کلمه‌به‌کلمه می‌ماند
+double _phraseScore(String q, String text, int fieldIndex) {
+  if (text.isEmpty || !text.contains(q)) return 0;
+  return (_hasWholeWord(text, q) ? 900 : 800) - fieldIndex * 200.0;
+}
+
+double _wordsScore(List<String> words, String text, int fieldIndex) {
   final found = words.where(text.contains).length;
   if (found == 0) return 0;
   final whole = words.where((w) => _hasWholeWord(text, w)).length;
-  return 700 * found / words.length + 50 * whole / words.length;
+  return (250 * found / words.length + 50 * whole / words.length) /
+      (fieldIndex + 1);
 }
 
-/// 🔧 طبق درخواست: نزدیک‌ترین نتیجه به عبارتِ جستجو اول می‌آید. ترتیب:
-/// برابریِ کامل، شروع با عبارت، داشتنِ کلِ عبارت، سپس تعدادِ کلمه‌های پیدا‌شده.
-/// [fields] به ترتیبِ اهمیت است (مثلاً عنوان، بعد توضیحات) و در امتیازِ برابر
-/// متنِ کوتاه‌تر جلوتر است. [exactKey] مثلِ شناسه، با برابریِ کامل همیشه اول است.
+/// 🔧 طبق درخواست: اول مواردی که عینِ عبارت را دارند، بعد مواردی که بیشترِ
+/// کلمه‌ها را دارند. در امتیازِ برابر ترتیبِ خودِ فهرست (تاریخ/مهلت) حفظ می‌شود.
+/// [fields] به ترتیبِ اهمیت است (مثلاً عنوان، بعد توضیحات). [exactKey] مثلِ
+/// شناسه، با برابریِ کامل همیشه اول است.
 List<T> rankBySearch<T>(
   Iterable<T> items,
   String query,
@@ -74,26 +76,24 @@ List<T> rankBySearch<T>(
   final q = normalizeSearchText(query);
   if (q.isEmpty) return items.toList();
   final words = _queryWords(q);
-  final scored = <(T, double, int, int)>[];
+  final scored = <(T, double, int)>[];
   var index = 0;
   for (final item in items) {
     final values = fields(item).map(normalizeSearchText).toList();
     var score = 0.0;
     for (var i = 0; i < values.length; i++) {
-      final s = _fieldScore(q, words, values[i]) / (i + 1);
+      final phrase = _phraseScore(q, values[i], i);
+      final s = phrase > 0 ? phrase : _wordsScore(words, values[i], i);
       if (s > score) score = s;
     }
     if (exactKey != null && normalizeSearchText(exactKey(item)) == q) {
       score = 2000;
     }
-    final length = values.isEmpty ? 0 : values.first.length;
-    scored.add((item, score, length, index++));
+    scored.add((item, score, index++));
   }
   scored.sort((a, b) {
     final byScore = b.$2.compareTo(a.$2);
-    if (byScore != 0) return byScore;
-    final byLength = a.$3.compareTo(b.$3);
-    return byLength != 0 ? byLength : a.$4.compareTo(b.$4);
+    return byScore != 0 ? byScore : a.$3.compareTo(b.$3);
   });
   return scored.map((e) => e.$1).toList();
 }
