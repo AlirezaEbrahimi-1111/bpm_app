@@ -1876,7 +1876,10 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     final List<_MoreAction> more = [];
 
     // ── حالت منتظر تأیید: رد (بیشتر) / تأیید (اصلی) ──
-    if (isPending && (isCreator || isAssignee)) {
+    // 🔒 مثلِ وب (task-detail.php): فقط تأییدکننده‌یِ فعلی (assignee) — نه تعریف‌کننده.
+    // وقتی کار برای تأیید می‌رود، assignee همان کسی است که الان باید تأیید کند؛
+    // سرور (approveOrRejectTask) هم فقط او را قبول می‌کند (تسک ۴۷۵۴، ۱۴۰۵/۰۸/۱۷)
+    if (isPending && isAssignee) {
       primary.add((
         a: (
           icon: Icons.check_circle_rounded,
@@ -2080,8 +2083,8 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
       ));
     }
 
-    // ── بازتعریف کار (بیشتر) ──
-    if (_canEdit || isAssignee) {
+    // ── بازتعریف کار (بیشتر) — مثلِ وب: فقط تعریف‌کننده، در هر وضعیتی ──
+    if (isCreator) {
       more.add((
         icon: Icons.autorenew_rounded,
         label: 'بازتعریف',
@@ -2090,8 +2093,12 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
       ));
     }
 
-    // ── حذفِ کار (اصلی) ──
-    if (_canEdit) {
+    // ── حذفِ کار (اصلی) — مثلِ وب: تعریف‌کننده وقتی کار شروع نشده، یا تعریف‌کننده‌ای
+    // که خودش مسئول است و کار در حال انجام است (+ اجازه‌ی سرور can_edit) ──
+    final canDeleteNow = _canEdit &&
+        isCreator &&
+        (status == 'not_started' || (isAssignee && status == 'in_progress'));
+    if (canDeleteNow) {
       primary.add((
         a: (
           icon: Icons.delete_outline_rounded,
