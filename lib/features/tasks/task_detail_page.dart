@@ -1866,6 +1866,16 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
     final isPending =
         status == 'pending_approval' &&
         (t['is_pending_approval'] == 1 || t['is_pending_approval'] == true);
+    // 🔧 مثلِ وب (task-detail.php): مرحله‌یِ روتینی که به «واحد» سپرده شده و هنوز
+    // مسئول ندارد → هر عضوِ همان واحد «شروع» را می‌بیند (سرور کار را به نامش
+    // ثبت می‌کند) — تسک ۴۷۷۷، ۱۴۰۵/۰۸/۱۹
+    final canClaimStep =
+        !isAssignee &&
+        _isBlankId(t['assignee_id']) &&
+        (t['is_workflow_task'] == 1 || t['is_workflow_task'] == true) &&
+        t['current_step_status'] == 'active' &&
+        _userInSection(t['current_step_section']?.toString()) &&
+        const ['not_started', 'delegated', 'rejected', 'in_progress'].contains(status);
 
     // 🔧 طبق درخواست: نوارِ اصلی حداکثر همین ۴ تا را نشان می‌دهد — درجِ
     // توضیح، شروع/تکمیل/تأیید، ارجاع، حذفِ کار. هر عملیاتِ دیگری («رد»،
@@ -1969,6 +1979,20 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
           gateLabel: 'ارجاع کار',
         ));
       }
+    }
+
+    // ── شروعِ مرحله‌یِ واحدی توسطِ عضوِ واحد (اصلی) ──
+    if (canClaimStep) {
+      primary.add((
+        a: (
+          icon: Icons.play_arrow_rounded,
+          label: 'شروع',
+          color: const Color(0xFF8E57FE),
+          onTap: () => _updateStatus('in_progress'),
+        ),
+        gate: null,
+        gateLabel: null,
+      ));
     }
 
     // ── یادآوری (بیشتر) ──
@@ -2828,7 +2852,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                 _infoRow(
                   Icons.assignment_ind_outlined,
                   'مسئول انجام',
-                  t['assignee_name'] ?? '—',
+                  _assigneeLabel(t),
                 ),
                 const Divider(height: 26),
                 _buildGroupRow(t),
@@ -5492,6 +5516,31 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
       if (user != null) Get.offAll(() => MainShell(user: user));
     }
     AppSnack.success(title, message);
+  }
+
+  static bool _isBlankId(dynamic v) {
+    final s = v?.toString().trim() ?? '';
+    return s.isEmpty || s == '0' || s == 'null';
+  }
+
+  /// عضویتِ کاربرِ جاری در یک واحد (چندواحدی: activity_sections از ورود/پروفایل) — مثلِ userInSection وب
+  bool _userInSection(String? section) {
+    if (section == null || section.isEmpty) return false;
+    final u = ApiClient.currentUser;
+    final list = u?['activity_sections'];
+    if (list is List && list.isNotEmpty) {
+      return list.map((e) => e.toString()).contains(section);
+    }
+    return u?['activity_section']?.toString() == section;
+  }
+
+  /// «مسئول انجام»: نامِ مسئول؛ اگر مرحله‌یِ روتین به واحد سپرده شده و هنوز مسئول ندارد، «واحد …» (مثلِ وب)
+  String _assigneeLabel(Map t) {
+    final name = t['assignee_name']?.toString().trim() ?? '';
+    if (name.isNotEmpty) return name;
+    final sec = (t['current_step_section_label'] ?? t['current_step_section'])?.toString().trim() ?? '';
+    if (_isBlankId(t['assignee_id']) && sec.isNotEmpty) return 'واحد $sec';
+    return '—';
   }
 
   Future<void> _updateStatus(String status, {String? notes}) async {
