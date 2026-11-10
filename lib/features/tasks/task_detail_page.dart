@@ -5143,7 +5143,8 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                 _approveOrReject(true, notes: notesController.text.trim());
               }, filled: true),
               // 🔧 شرط‌ها عیناً مثلِ وب (task-detail.php) و سرور: نگهداری فقط برای
-              // مسئولِ تأیید در کارِ مقطعی؛ ارجاع برای مسئولی که تعریف‌کننده نیست
+              // مسئولِ تأیید در کارِ مقطعی؛ ارجاع برای مسئولِ تأیید، حتی تعریف‌کننده
+              // (درخواست ۱۴۰۵/۰۸/۱۹، تسک ۴۹۸۸ — مثلِ وب و approve-and-delegate.php)
               if (isAssignee &&
                   _task?['is_workflow_task'] != 1 &&
                   _task?['is_workflow_task'] != true &&
@@ -5154,7 +5155,7 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                   _approveAndKeep(notes: notesController.text.trim());
                 }),
               ],
-              if (isAssignee && !isCreator) ...[
+              if (isAssignee) ...[
                 const SizedBox(height: 8),
                 PlanGate(
                   feature: PlanFeature.delegate,
