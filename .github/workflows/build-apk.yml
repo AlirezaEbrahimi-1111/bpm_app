@@ -19,6 +19,21 @@ on:
         options:
           - release
           - debug
+      publish:
+        description: "انتشار برای به‌روزرسانیِ درون‌برنامه (bpm.itmalek.com/app-releases)"
+        required: false
+        default: true
+        type: boolean
+      forced:
+        description: "به‌روزرسانیِ اجباری (نسخه‌های قدیمی‌تر بدون نصبِ این نسخه کار نمی‌کنند)"
+        required: false
+        default: false
+        type: boolean
+      notes:
+        description: "توضیح تغییرات (در پنجرهٔ به‌روزرسانی نمایش داده می‌شود)"
+        required: false
+        default: ""
+        type: string
 
 jobs:
   build:
@@ -62,12 +77,20 @@ jobs:
       # (arm64 برایِ گوشی‌هایِ امروزی، armv7 برایِ گوشی‌هایِ قدیمیِ ۳۲بیتی؛
       # x86_64 فقط شبیه‌ساز است و حذف شد) و کدِ Dart فشرده/مبهم می‌شود.
       # فایل‌هایِ اشکال‌زدایی (برایِ خواندنِ گزارشِ کرش) جدا آپلود می‌شوند.
+      # شمارهٔ ساخت هر بار بالا می‌رود (۱۰۰ + شمارهٔ اجرای همین workflow) تا اپِ نصب‌شده
+      # نسخهٔ جدید را تشخیص دهد؛ نامِ نسخه (مثل 1.0.3) از pubspec.yaml
+      - name: Version
+        id: ver
+        run: |
+          echo "build=$((100 + ${{ github.run_number }}))" >> "$GITHUB_OUTPUT"
+          echo "name=$(awk '/^version:/{split($2,a,"+"); print a[1]}' pubspec.yaml)" >> "$GITHUB_OUTPUT"
+
       - name: Build APK
         run: |
           if [ "${{ inputs.build_mode }}" = "release" ]; then
-            flutter build apk --release --split-per-abi               --target-platform android-arm,android-arm64               --obfuscate --split-debug-info=build/debug-info
+            flutter build apk --release --split-per-abi               --target-platform android-arm,android-arm64               --build-number=${{ steps.ver.outputs.build }}               --obfuscate --split-debug-info=build/debug-info
           else
-            flutter build apk --debug
+            flutter build apk --debug --build-number=${{ steps.ver.outputs.build }}
           fi
 
       - name: Upload APK
@@ -84,3 +107,46 @@ jobs:
           name: debug-symbols
           path: build/debug-info
           retention-days: 90
+
+      # ── انتشار برای به‌روزرسانیِ درون‌برنامه (lib/core/update/app_updater.dart) ──
+      # APKها با نامِ نسخه + latest.json در /var/www/itmalek/app-releases. latest.json آخر از همه
+      # آپلود می‌شود تا هیچ‌وقت به فایلی اشاره نکند که هنوز نرسیده. min_build: اجباری = همین
+      # ساخت؛ وگرنه همان مقدارِ قبلیِ سرور می‌ماند (اجباریِ قبلی لغو نمی‌شود).
+      - name: Prepare release files
+        if: inputs.build_mode == 'release' && inputs.publish
+        env:
+          NOTES: ${{ inputs.notes }}
+        run: |
+          set -e
+          B=${{ steps.ver.outputs.build }}; V=${{ steps.ver.outputs.name }}
+          mkdir -p release
+          for abi in arm64-v8a armeabi-v7a; do
+            cp "build/app/outputs/flutter-apk/app-$abi-release.apk" "release/bpm-$V-$B-$abi.apk"
+          done
+          PREV_MIN=$(curl -fsS "https://bpm.itmalek.com/app-releases/latest.json?t=$(date +%s)" | jq -r '.min_build // 0' 2>/dev/null || echo 0)
+          if [ "${{ inputs.forced }}" = "true" ]; then MIN=$B; else MIN=${PREV_MIN:-0}; fi
+          base="https://bpm.itmalek.com/app-releases"
+          jq -n --arg v "$V" --argjson b "$B" --argjson min "$MIN" --arg notes "$NOTES"             --arg at "$(TZ=Asia/Tehran date '+%Y-%m-%d %H:%M')"             --arg u64 "$base/bpm-$V-$B-arm64-v8a.apk" --argjson s64 "$(stat -c %s release/bpm-$V-$B-arm64-v8a.apk)"             --arg u32 "$base/bpm-$V-$B-armeabi-v7a.apk" --argjson s32 "$(stat -c %s release/bpm-$V-$B-armeabi-v7a.apk)"             '{version:$v, build:$b, min_build:$min, notes:$notes, released_at:$at,
+              files:{"arm64-v8a":{url:$u64,size:$s64}, "armeabi-v7a":{url:$u32,size:$s32}}}' > latest.json
+          cat latest.json
+
+      - name: Upload APKs to server
+        if: inputs.build_mode == 'release' && inputs.publish
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          source: "release/*.apk"
+          target: /var/www/itmalek/app-releases
+          strip_components: 1
+
+      - name: Publish latest.json
+        if: inputs.build_mode == 'release' && inputs.publish
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          source: latest.json
+          target: /var/www/itmalek/app-releases

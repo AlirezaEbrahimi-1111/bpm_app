@@ -11,6 +11,7 @@ import 'change_password_page.dart';
 import 'personal_info_page.dart';
 import '../shell/widgets/app_bottom_nav.dart';
 import '../../core/navigation/app_nav.dart';
+import '../../core/update/app_updater.dart';
 
 /// صفحه‌ی پروفایل — طبق طرح ارسالی (روشن + تاریک)
 /// نکته: بخش «اشتراک و پرداخت» چون بک‌اندِ اشتراک/پرداختی برای این اپِ
@@ -255,6 +256,16 @@ class ProfilePage extends StatelessWidget {
                     icon: Icons.help_outline_rounded,
                     label: 'راهنما و سوالات متداول',
                     onTap: () => _comingSoon(),
+                  ),
+                  FutureBuilder<String>(
+                    future: AppUpdater.installedLabel(),
+                    builder: (_, snap) => _settingsRow(
+                      c: c,
+                      icon: Icons.system_update_rounded,
+                      label: 'بررسی به‌روزرسانی',
+                      subtitle: snap.hasData ? 'نسخهٔ نصب‌شده: ${snap.data}' : null,
+                      onTap: () => AppUpdater.check(context, manual: true),
+                    ),
                   ),
                   _settingsRow(
                     c: c,

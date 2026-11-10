@@ -1,5 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- 🔧 به‌روزرسانیِ درون‌برنامه (lib/core/update/app_updater.dart): بازکردنِ صفحهٔ نصبِ APK -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
     <!-- 🔧 برایِ گرفتنِ عکسِ مستقیم با دوربین و ضبطِ صدا در پیوستِ کار -->
     <uses-permission android:name="android.permission.CAMERA"/>
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>

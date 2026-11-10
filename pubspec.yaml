@@ -55,6 +55,8 @@ dependencies:
   # توکنِ FCM ثبت نکرد. ماژولِ Push با metrix.notitifcation.enable در
   # android/gradle.properties فعال می‌شود
   metrix_analytics: ^2.9.0
+  open_filex: ^5.0.0
+  device_info_plus: ^12.4.0
 
 dev_dependencies:
   flutter_test:

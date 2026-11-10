@@ -19,6 +19,7 @@ import '../../core/theme/notification_bar_preference.dart';
 import '../../core/plan/plan_access.dart';
 import '../subscription/plan_gate.dart';
 import 'widgets/app_bottom_nav.dart';
+import '../../core/update/app_updater.dart';
 
 /// پوسته اصلی اپ: نوار پایین ثابت + جابجایی بین تب‌ها + Drawer
 class MainShell extends StatefulWidget {
@@ -93,6 +94,10 @@ class _MainShellState extends State<MainShell>
     });
     // 🔧 لمسِ نوتیفیکیشنِ یک کار → باز شدنِ همان کار
     DeepLinkService.start();
+    // 🔧 به‌روزرسانیِ درون‌برنامه: نسخهٔ جدید (اختیاری روزی یک بار، اجباری همیشه)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) AppUpdater.check(context);
+    });
     _pages = [
       DashboardPage(
         key: _dashboardKey,
