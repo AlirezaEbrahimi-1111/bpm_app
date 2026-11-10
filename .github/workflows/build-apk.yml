@@ -42,6 +42,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # 🔧 جاوای پیش‌فرضِ ماشینِ گیت‌هاب به ۲۵ رسید و Gradle با آن کار نمی‌کند (خطای «25.0.5»)؛
+      # همان ۱۷ که پروژه با آن ساخته می‌شود (android/app/build.gradle.kts) ثابت می‌شود.
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
