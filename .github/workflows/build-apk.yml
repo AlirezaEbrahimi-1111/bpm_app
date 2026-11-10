@@ -131,21 +131,27 @@ jobs:
           for abi in arm64-v8a armeabi-v7a; do
             cp "build/app/outputs/flutter-apk/app-$abi-release.apk" "release/bpm-$V-$B-$abi.apk"
           done
-          PREV_MIN=$(curl -fsS "https://bpm.itmalek.com/app-releases/latest.json?t=$(date +%s)" | jq -r '.min_build // 0' 2>/dev/null || echo 0)
+          # latest.json فعلیِ سرور: هم min_build قبلی، هم نگه‌داشتنِ سابقه‌اش به نامِ release-<build>.json
+          # (صفحهٔ https://bpm.itmalek.com/app-releases/ فهرستِ نسخه‌ها را از همین فایل‌ها می‌سازد)
+          curl -fsS "https://bpm.itmalek.com/app-releases/latest.json?t=$(date +%s)" -o prev.json 2>/dev/null || echo '{}' > prev.json
+          PREV_MIN=$(jq -r '.min_build // 0' prev.json 2>/dev/null || echo 0)
+          PREV_B=$(jq -r '.build // 0' prev.json 2>/dev/null || echo 0)
+          if [ "${PREV_B:-0}" -gt 0 ] && [ "$PREV_B" != "$B" ]; then cp prev.json "release/release-$PREV_B.json"; fi
           if [ "${{ inputs.forced }}" = "true" ]; then MIN=$B; else MIN=${PREV_MIN:-0}; fi
           base="https://bpm.itmalek.com/app-releases"
           jq -n --arg v "$V" --argjson b "$B" --argjson min "$MIN" --arg notes "$NOTES"             --arg at "$(TZ=Asia/Tehran date '+%Y-%m-%d %H:%M')"             --arg u64 "$base/bpm-$V-$B-arm64-v8a.apk" --argjson s64 "$(stat -c %s release/bpm-$V-$B-arm64-v8a.apk)"             --arg u32 "$base/bpm-$V-$B-armeabi-v7a.apk" --argjson s32 "$(stat -c %s release/bpm-$V-$B-armeabi-v7a.apk)"             '{version:$v, build:$b, min_build:$min, notes:$notes, released_at:$at,
               files:{"arm64-v8a":{url:$u64,size:$s64}, "armeabi-v7a":{url:$u32,size:$s32}}}' > latest.json
+          cp latest.json "release/release-$B.json"
           cat latest.json
 
-      - name: Upload APKs to server
+      - name: Upload APKs + release history to server
         if: inputs.build_mode == 'release' && inputs.publish
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          source: "release/*.apk"
+          source: "release/*"
           target: /var/www/itmalek/app-releases
           strip_components: 1
 

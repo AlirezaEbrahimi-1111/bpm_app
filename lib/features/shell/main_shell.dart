@@ -98,6 +98,8 @@ class _MainShellState extends State<MainShell>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) AppUpdater.check(context);
     });
+    // آمارِ نسخه‌ها (صفحهٔ app-releases برای مدیر کل)
+    AppUpdater.reportInstalled();
     _pages = [
       DashboardPage(
         key: _dashboardKey,

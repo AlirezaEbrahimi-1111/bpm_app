@@ -9,6 +9,8 @@ import 'package:open_filex/open_filex.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../network/api_client.dart';
+
 /// به‌روزرسانیِ درون‌برنامه، بدونِ فروشگاه (۱۴۰۵/۰۸/۱۹).
 ///
 /// GitHub Actions (build-apk.yml) هر نسخه را می‌سازد و APKها + latest.json را در
@@ -32,6 +34,31 @@ class AppUpdater {
   static Future<String> installedLabel() async {
     final i = await PackageInfo.fromPlatform();
     return '${i.version} (${i.buildNumber})';
+  }
+
+  /// نسخهٔ نصب‌شده را به سرور می‌گوید (یک بار در هر باز شدنِ برنامه، بعد از ورود) — برای آمارِ
+  /// «چند نفر کدام نسخه را دارند» در صفحهٔ bpm.itmalek.com/app-releases (فقط مدیر کل).
+  /// سرور: go-api/internal/appinfo → جدولِ app_installs. خطا بی‌صدا نادیده گرفته می‌شود.
+  static bool _reported = false;
+  static Future<void> reportInstalled() async {
+    if (_reported) return;
+    _reported = true;
+    try {
+      final i = await PackageInfo.fromPlatform();
+      String abi = '';
+      if (Platform.isAndroid) {
+        final abis = (await DeviceInfoPlugin().androidInfo).supportedAbis;
+        abi = abis.isNotEmpty ? abis.first : '';
+      }
+      await ApiClient.dio.post('/go/api/app/report-version', data: {
+        'platform': Platform.isIOS ? 'ios' : 'android',
+        'version': i.version,
+        'build': int.tryParse(i.buildNumber) ?? 0,
+        'abi': abi,
+      });
+    } catch (_) {
+      _reported = false; // دفعهٔ بعد دوباره
+    }
   }
 
   /// [manual] = از دکمهٔ پروفایل: «بعداً» نادیده گرفته می‌شود و نتیجه (حتی «آخرین نسخه را دارید») اعلام می‌شود.
