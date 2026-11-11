@@ -32,6 +32,9 @@ class ApiClient {
   /// پاسخِ 403 با کد PLAN_RESTRICTED؛ UI (شِل) نمایشِ شیتِ ارتقا را تنظیم می‌کند
   static void Function(String? message)? onPlanRestricted;
 
+  /// پاسخِ 403 با کد PLAN_EXPIRED (سازمان قفل شده)؛ شِل دیالوگِ خرید را نشان می‌دهد
+  static void Function(String? message)? onPlanExpired;
+
   // ════════════════════════════════════════════════════════
   // اگر سرور توکن را نامعتبر/منقضی اعلام کند (۴۰۱/۴۰۳)، این callback
   // صدا زده می‌شود تا برنامه کاربر را به صفحه‌ی ورود برگرداند — به‌جای
@@ -127,6 +130,10 @@ class ApiClient {
           // 🔧 خطای پلن: کاربر خارج نمی‌شود؛ فقط پیامِ سرور نشان داده می‌شود
           if (isPlanRestricted) {
             onPlanRestricted?.call(data['message']?.toString());
+          }
+          // سازمان قفل شده (پایان دورهٔ رایگان/پلن) — includes/plan-access.php
+          if (status == 403 && data is Map && data['code'] == 'PLAN_EXPIRED') {
+            onPlanExpired?.call(data['message']?.toString());
           }
           return handler.next(error);
         },

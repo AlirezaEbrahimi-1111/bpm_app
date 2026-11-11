@@ -18,6 +18,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/notification_bar_preference.dart';
 import '../../core/plan/plan_access.dart';
 import '../subscription/plan_gate.dart';
+import '../subscription/plan_expiry_notice.dart';
 import 'widgets/app_bottom_nav.dart';
 import '../../core/update/app_updater.dart';
 
@@ -88,6 +89,11 @@ class _MainShellState extends State<MainShell>
     PlanAccess.setFromUser(widget.user);
     ApiClient.onPlanRestricted = (message) =>
         showPlanUpgradeSheet(message: message);
+    // پایانِ پلن/دورهٔ رایگان: قفل → دیالوگ خرید؛ ۷ روز مانده → یادآوری روزانه (سرپرست)
+    ApiClient.onPlanExpired = PlanExpiryNotice.showExpired;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future.delayed(const Duration(seconds: 2), PlanExpiryNotice.remindIfNeeded);
+    });
     // 🔧 نقش/پلنِ فعلی از سرور (مثلِ وب) — منوها و میانبرها با نقشِ تازه
     ApiClient.refreshCurrentUser().then((ok) {
       if (ok && mounted) setState(() {});
