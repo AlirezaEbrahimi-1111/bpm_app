@@ -111,6 +111,55 @@ class _PersonalInfoPageState extends State<PersonalInfoPage> {
     }
   }
 
+  /// حذف عکس پروفایل (برگشت به حرف اول نام) — POST /api/profile/delete-avatar.php
+  Future<void> _deleteAvatar() async {
+    if (_isUploadingAvatar) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('حذف عکس پروفایل'),
+          content: const Text(
+            'عکس پروفایل شما حذف می‌شود و به‌جای آن حرف اول نامتان نمایش داده می‌شود. ادامه می‌دهید؟',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('انصراف'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('بله، حذف شود'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (ok != true || !mounted) return;
+
+    setState(() => _isUploadingAvatar = true);
+    try {
+      final res = await ApiClient.dio.post('/api/profile/delete-avatar.php');
+      final data = ApiClient.parseResponse(res.data);
+      if (!mounted) return;
+      setState(() => _isUploadingAvatar = false);
+      if (data['success'] == true) {
+        setState(() => _avatarPath = null);
+        widget.user['avatar_path'] = null;
+        await ApiClient.saveCachedUser(widget.user);
+        AppSnack.success('✅ موفق', 'عکس پروفایل حذف شد');
+      } else {
+        AppSnack.error('خطا', (data['message'] ?? 'خطا در حذف عکس').toString());
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isUploadingAvatar = false);
+      AppSnack.error('خطا', 'خطا در اتصال به سرور');
+    }
+  }
+
   Future<void> _saveChanges() async {
     if (_isSaving) return;
     final fullName = _nameController.text.trim();
@@ -227,40 +276,78 @@ class _PersonalInfoPageState extends State<PersonalInfoPage> {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    Container(
-                      width: 72,
-                      height: 72,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(
-                          36,
-                        ), // گرد کامل (عرض ۷۲ ÷ ۲)
-                        gradient: (_avatarPath == null || _avatarPath!.isEmpty)
-                            ? LinearGradient(
-                                colors: [c.primaryLight, c.primary],
-                              )
-                            : null,
-                        color: c.borderSoft,
-                        image: (_avatarPath != null && _avatarPath!.isNotEmpty)
-                            ? DecorationImage(
-                                image: NetworkImage(
-                                  '${ApiClient.baseUrl}/$_avatarPath',
+                    // عکس + بج حذف در گوشهٔ پایین-چپ (فقط وقتی عکس دارد)
+                    Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        Container(
+                          width: 72,
+                          height: 72,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(
+                              36,
+                            ), // گرد کامل (عرض ۷۲ ÷ ۲)
+                            gradient:
+                                (_avatarPath == null || _avatarPath!.isEmpty)
+                                ? LinearGradient(
+                                    colors: [c.primaryLight, c.primary],
+                                  )
+                                : null,
+                            color: c.borderSoft,
+                            image:
+                                (_avatarPath != null && _avatarPath!.isNotEmpty)
+                                ? DecorationImage(
+                                    image: NetworkImage(
+                                      '${ApiClient.baseUrl}/$_avatarPath',
+                                    ),
+                                    fit: BoxFit.cover,
+                                  )
+                                : null,
+                          ),
+                          child: (_avatarPath == null || _avatarPath!.isEmpty)
+                              ? Center(
+                                  child: Text(
+                                    firstName.isNotEmpty ? firstName[0] : 'U',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 26,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                )
+                              : null,
+                        ),
+                        if (_avatarPath != null && _avatarPath!.isNotEmpty)
+                          Positioned(
+                            left: -2,
+                            bottom: -2,
+                            child: Tooltip(
+                              message: 'حذف عکس پروفایل',
+                              child: Material(
+                                color: Colors.red.shade500,
+                                shape: CircleBorder(
+                                  side: BorderSide(color: c.surface, width: 2),
                                 ),
-                                fit: BoxFit.cover,
-                              )
-                            : null,
-                      ),
-                      child: (_avatarPath == null || _avatarPath!.isEmpty)
-                          ? Center(
-                              child: Text(
-                                firstName.isNotEmpty ? firstName[0] : 'U',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 26,
-                                  fontWeight: FontWeight.bold,
+                                elevation: 1,
+                                child: InkWell(
+                                  customBorder: const CircleBorder(),
+                                  onTap: _isUploadingAvatar
+                                      ? null
+                                      : _deleteAvatar,
+                                  child: const SizedBox(
+                                    width: 26,
+                                    height: 26,
+                                    child: Icon(
+                                      Icons.delete_outline,
+                                      size: 15,
+                                      color: Colors.white,
+                                    ),
+                                  ),
                                 ),
                               ),
-                            )
-                          : null,
+                            ),
+                          ),
+                      ],
                     ),
                     const SizedBox(width: 16),
                     // 🔧 طبق درخواست: نام کنارِ عکس (بالا) و دکمه‌ی «تغییر تصویر»
