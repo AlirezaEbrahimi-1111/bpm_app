@@ -74,6 +74,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
         list.where((n) => searchMatches(_searchQuery, fields(n))),
         _searchQuery,
         fields,
+        alphabeticalTies: false, // اعلان‌ها: ترتیب زمانی (مثل وب)
       );
     }
 
