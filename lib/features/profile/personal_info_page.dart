@@ -338,7 +338,7 @@ class _PersonalInfoPageState extends State<PersonalInfoPage> {
                                     width: 26,
                                     height: 26,
                                     child: Icon(
-                                      Icons.delete_outline,
+                                      Icons.close_rounded,
                                       size: 15,
                                       color: Colors.white,
                                     ),
