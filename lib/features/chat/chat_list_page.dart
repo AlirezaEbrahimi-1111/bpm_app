@@ -122,50 +122,44 @@ class _ChatListPageState extends State<ChatListPage>
     super.build(context);
     final c = AppColors.of(context);
     final items = _visibleItems;
-    return Column(
+    return Stack(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-          child: Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  onChanged: (v) => setState(() => _query = v),
-                  decoration: InputDecoration(
-                    hintText: 'جستجو در گفتگوها',
-                    prefixIcon: const Icon(Icons.search_rounded, size: 20),
-                    isDense: true,
-                    filled: true,
-                    fillColor: c.surface,
-                    contentPadding: const EdgeInsets.symmetric(vertical: 10),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(22),
-                      borderSide: BorderSide.none,
-                    ),
+        Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+              child: TextField(
+                onChanged: (v) => setState(() => _query = v),
+                decoration: InputDecoration(
+                  hintText: 'جستجو در گفتگوها',
+                  prefixIcon: const Icon(Icons.search_rounded, size: 20),
+                  isDense: true,
+                  filled: true,
+                  fillColor: c.surface,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(22),
+                    borderSide: BorderSide.none,
                   ),
                 ),
               ),
-              const SizedBox(width: 8),
-              Material(
-                color: c.primary,
-                shape: const CircleBorder(),
-                child: InkWell(
-                  customBorder: const CircleBorder(),
-                  onTap: _newChat,
-                  child: const Padding(
-                    padding: EdgeInsets.all(10),
-                    child: Icon(
-                      Icons.edit_rounded,
-                      color: Colors.white,
-                      size: 20,
-                    ),
-                  ),
-                ),
-              ),
-            ],
+            ),
+            Expanded(child: _body(c, items)),
+          ],
+        ),
+        // ✏️ گفتگو / گروهِ جدید — پایین سمتِ چپ، بالای نوارِ پایین (مثلِ تلگرام)
+        Positioned(
+          left: 16,
+          bottom: navBarFootprint(context) + 8,
+          child: FloatingActionButton(
+            heroTag: 'chat_new',
+            onPressed: _newChat,
+            backgroundColor: c.primary,
+            foregroundColor: Colors.white,
+            tooltip: 'گفتگوی جدید',
+            child: const Icon(Icons.edit_rounded),
           ),
         ),
-        Expanded(child: _body(c, items)),
       ],
     );
   }
@@ -211,7 +205,8 @@ class _ChatListPageState extends State<ChatListPage>
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView.separated(
-        padding: EdgeInsets.only(bottom: navBarFootprint(context)),
+        // جای دکمه‌ی شناورِ ✏️ هم بماند تا آخرین گفتگو زیرش نرود
+        padding: EdgeInsets.only(bottom: navBarFootprint(context) + 72),
         itemCount: items.length,
         separatorBuilder: (_, _) =>
             Divider(height: 1, indent: 82, color: c.borderSoft),

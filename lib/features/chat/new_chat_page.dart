@@ -10,7 +10,7 @@ import 'chat_widgets.dart';
 import 'group_create_page.dart';
 import 'member_picker_page.dart';
 
-/// شروعِ گفتگوی یک‌به‌یک — جستجوی همکارانِ هم‌سازمان (api/chat/search-users.php)
+/// شروعِ گفتگوی یک‌به‌یک — جستجوی مخاطبانِ هم‌سازمان (api/chat/search-users.php)
 /// و باز کردن/ساختنِ گفتگو (api/chat/start.php). برمی‌گرداند true اگر گفتگو باز شد.
 class NewChatPage extends StatefulWidget {
   const NewChatPage({super.key});
@@ -25,6 +25,12 @@ class _NewChatPageState extends State<NewChatPage> {
   List<Map<String, dynamic>> _users = [];
   bool _loading = false;
   bool _starting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _search(''); // فهرستِ کاملِ مخاطبان از همان اول (مثلِ تلگرام)
+  }
 
   @override
   void dispose() {
@@ -42,10 +48,6 @@ class _NewChatPageState extends State<NewChatPage> {
   }
 
   Future<void> _search(String q) async {
-    if (q.isEmpty) {
-      setState(() => _users = []);
-      return;
-    }
     setState(() => _loading = true);
     try {
       final list = await ChatApi.searchUsers(q);
@@ -119,10 +121,10 @@ class _NewChatPageState extends State<NewChatPage> {
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
               child: TextField(
                 controller: _ctrl,
-                autofocus: true,
+                autofocus: false,
                 onChanged: _onChanged,
                 decoration: InputDecoration(
-                  hintText: 'نام همکار را بنویسید…',
+                  hintText: 'جستجوی مخاطب…',
                   prefixIcon: const Icon(Icons.search_rounded),
                   filled: true,
                   fillColor: c.surface,
@@ -153,9 +155,9 @@ class _NewChatPageState extends State<NewChatPage> {
               child: _users.isEmpty
                   ? Center(
                       child: Text(
-                        _ctrl.text.trim().isEmpty
-                            ? 'برای شروع، نام همکار را جستجو کنید'
-                            : (_loading ? '' : 'کسی پیدا نشد'),
+                        _loading
+                            ? ''
+                            : (_ctrl.text.trim().isEmpty ? 'مخاطبی وجود ندارد' : 'مخاطبی پیدا نشد'),
                         style: TextStyle(color: c.textMuted),
                       ),
                     )
