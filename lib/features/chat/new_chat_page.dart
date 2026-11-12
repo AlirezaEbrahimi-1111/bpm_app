@@ -1,0 +1,156 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+
+import '../../core/theme/app_colors.dart';
+import '../../core/widgets/app_snack.dart';
+import 'chat_api.dart';
+import 'chat_conversation_page.dart';
+import 'chat_widgets.dart';
+
+/// شروعِ گفتگوی یک‌به‌یک — جستجوی همکارانِ هم‌سازمان (api/chat/search-users.php)
+/// و باز کردن/ساختنِ گفتگو (api/chat/start.php). برمی‌گرداند true اگر گفتگو باز شد.
+class NewChatPage extends StatefulWidget {
+  const NewChatPage({super.key});
+
+  @override
+  State<NewChatPage> createState() => _NewChatPageState();
+}
+
+class _NewChatPageState extends State<NewChatPage> {
+  final _ctrl = TextEditingController();
+  Timer? _debounce;
+  List<Map<String, dynamic>> _users = [];
+  bool _loading = false;
+  bool _starting = false;
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  void _onChanged(String v) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 300), () => _search(v.trim()));
+  }
+
+  Future<void> _search(String q) async {
+    if (q.isEmpty) {
+      setState(() => _users = []);
+      return;
+    }
+    setState(() => _loading = true);
+    try {
+      final list = await ChatApi.searchUsers(q);
+      if (mounted && _ctrl.text.trim() == q) setState(() => _users = list);
+    } catch (e) {
+      AppSnack.error('خطا', e.toString());
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _start(Map<String, dynamic> u) async {
+    if (_starting) return;
+    setState(() => _starting = true);
+    try {
+      final id = await ChatApi.start((u['id'] as num).toInt());
+      if (!mounted) return;
+      // همین صفحه با گفتگو جایگزین شود؛ true یعنی فهرستِ گفتگوها تازه شود
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => ChatConversationPage(
+            conversationId: id,
+            initial: {
+              'conversation_id': id,
+              'type': 'direct',
+              'title': u['full_name'],
+              'avatar_url': u['avatar_url'],
+              'other_user_id': u['id'],
+              'other_user_is_online': u['is_online'],
+              'other_user_last_seen_at': u['last_seen_at'],
+            },
+          ),
+        ),
+        result: true,
+      );
+    } catch (e) {
+      AppSnack.error('خطا', e.toString());
+      if (mounted) setState(() => _starting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppColors.of(context);
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        backgroundColor: c.bgPage,
+        appBar: AppBar(
+          backgroundColor: c.bgPage,
+          elevation: 0,
+          title: const Text('گفتگوی جدید'),
+        ),
+        body: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+              child: TextField(
+                controller: _ctrl,
+                autofocus: true,
+                onChanged: _onChanged,
+                decoration: InputDecoration(
+                  hintText: 'نام همکار را بنویسید…',
+                  prefixIcon: const Icon(Icons.search_rounded),
+                  filled: true,
+                  fillColor: c.surface,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(22),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+            ),
+            if (_loading || _starting) const LinearProgressIndicator(minHeight: 2),
+            Expanded(
+              child: _users.isEmpty
+                  ? Center(
+                      child: Text(
+                        _ctrl.text.trim().isEmpty ? 'برای شروع، نام همکار را جستجو کنید' : (_loading ? '' : 'کسی پیدا نشد'),
+                        style: TextStyle(color: c.textMuted),
+                      ),
+                    )
+                  : ListView.builder(
+                      itemCount: _users.length,
+                      itemBuilder: (_, i) {
+                        final u = _users[i];
+                        final online = u['is_online'] == true;
+                        final section = (u['section_label'] ?? '').toString();
+                        return ListTile(
+                          onTap: () => _start(u),
+                          leading: ChatAvatar(
+                            name: (u['full_name'] ?? '').toString(),
+                            imageUrl: u['avatar_url']?.toString(),
+                            colorSeed: u['id'],
+                            online: online,
+                            size: 46,
+                          ),
+                          title: Text((u['full_name'] ?? '').toString(),
+                              style: TextStyle(fontWeight: FontWeight.w600, color: c.textStrong)),
+                          subtitle: Text(
+                            online ? 'آنلاین' : (section.isEmpty ? ' ' : section),
+                            style: TextStyle(color: online ? c.primary : c.textMuted, fontSize: 12.5),
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

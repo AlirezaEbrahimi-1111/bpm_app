@@ -50,6 +50,13 @@
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="malekbpm" android:host="task"/>
             </intent-filter>
+            <!-- لمسِ نوتیفیکیشنِ پیامِ چت: malekbpm://chat/<conversation_id> -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="malekbpm" android:host="chat"/>
+            </intent-filter>
             <!-- لینک را خودِ اپ (کانالِ malekbpm/deeplink) مدیریت می‌کند، نه
                  مسیریابیِ پیش‌فرضِ فلاتر -->
             <meta-data android:name="flutter_deeplinking_enabled" android:value="false"/>

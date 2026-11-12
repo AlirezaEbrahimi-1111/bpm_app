@@ -19,6 +19,8 @@ import '../../core/theme/notification_bar_preference.dart';
 import '../../core/plan/plan_access.dart';
 import '../subscription/plan_gate.dart';
 import '../subscription/plan_expiry_notice.dart';
+import '../chat/chat_api.dart';
+import '../chat/chat_list_page.dart';
 import 'widgets/app_bottom_nav.dart';
 import '../../core/update/app_updater.dart';
 
@@ -33,6 +35,13 @@ class MainShell extends StatefulWidget {
   // به تبِ موردنظر از همین نمونه‌ی زنده‌ی MainShell برمی‌گردند — بدونِ
   // از نو ساختنِ کل پوسته.
   static final ValueNotifier<int?> requestedTab = ValueNotifier<int?>(null);
+
+  /// تبِ فعلیِ نمایش‌داده‌شده — تبِ چت فقط وقتی دیده می‌شود به‌روز می‌شود
+  static final ValueNotifier<int> currentTab = ValueNotifier<int>(0);
+
+  /// شماره‌ی تب‌ها در PageView: ۰ داشبورد، ۱ تنظیمات، ۲ اعلان‌ها (از زنگوله‌ی بالا)، ۳ کارها، ۴ چت
+  static const int notificationsTab = 2;
+  static const int chatTab = 4;
 
   @override
   State<MainShell> createState() => _MainShellState();
@@ -119,7 +128,11 @@ class _MainShellState extends State<MainShell>
         },
       ),
       MyTasksPage(key: _myTasksKey, user: widget.user),
+      ChatListPage(currentTab: MainShell.currentTab, tabIndex: MainShell.chatTab),
     ];
+    MainShell.currentTab.value = 0;
+    // بجِ چت در نوار پایین (هر ۳۰ ثانیه همراهِ شمارشِ اعلان‌ها)
+    ChatApi.refreshUnread();
 
     // 🔧 همان لحظه‌ی باز شدن اپ، یک‌بار تعداد نخوانده‌ها را می‌گیریم...
     _loadUnreadCount();
@@ -127,7 +140,10 @@ class _MainShellState extends State<MainShell>
     // تبِ اعلان‌ها نیست هم، عدد روی زنگوله به‌روز بماند.
     _unreadPollTimer = Timer.periodic(
       const Duration(seconds: 30),
-      (_) => _loadUnreadCount(),
+      (_) {
+        _loadUnreadCount();
+        ChatApi.refreshUnread();
+      },
     );
     MainShell.requestedTab.addListener(_onTabRequestedFromElsewhere);
   }
@@ -165,6 +181,7 @@ class _MainShellState extends State<MainShell>
 
   void _onTabTapped(int index) {
     setState(() => _selectedIndex = index);
+    MainShell.currentTab.value = index;
     // 🔧 اصلاح باگِ کندی/ناپایداریِ لودِ تب‌ها: animateToPage بین دو تبِ
     // غیرمجاور (مثلاً داشبورد → اعلان‌ها)، از وسطِ تب‌های «کارها» و
     // «واگذارشده» هم رد می‌شود و باعث می‌شود آن‌ها هم بدونِ نیاز ساخته و
@@ -210,10 +227,11 @@ class _MainShellState extends State<MainShell>
           // سراسری همان‌جا اضافه و گمراه‌کننده است، پس فقط در این تب
           // مخفی می‌شود
           child: IgnorePointer(
-            ignoring: _isDrawerOpen || _selectedIndex == 3,
+            // در تبِ «چت» هم جستجوی اختصاصیِ خودش را دارد
+            ignoring: _isDrawerOpen || _selectedIndex == 3 || _selectedIndex == MainShell.chatTab,
             child: AnimatedOpacity(
               duration: const Duration(milliseconds: 150),
-              opacity: (_isDrawerOpen || _selectedIndex == 3) ? 0 : 1,
+              opacity: (_isDrawerOpen || _selectedIndex == 3 || _selectedIndex == MainShell.chatTab) ? 0 : 1,
               child: GestureDetector(
                 onTap: () => showGlobalSearchSheet(context),
                 // 🔧 طبق درخواست: انیمیشنِ بالا-پایینِ پیوسته تا این دکمه
@@ -276,7 +294,13 @@ class _MainShellState extends State<MainShell>
         bottom: false,
         child: Column(
           children: [
-            AppTopBar(user: widget.user, onMenuTap: _openDrawer),
+            AppTopBar(
+              user: widget.user,
+              onMenuTap: _openDrawer,
+              notificationsUnread: _unreadCount,
+              onNotificationsTap: () => _onTabTapped(MainShell.notificationsTab),
+              notificationsSelected: _selectedIndex == MainShell.notificationsTab,
+            ),
             // 🔧 اصلاح: نوار «بدون اینترنت» هم مثل نوار بالا، فقط یک‌بار
             // و همیشه دقیقاً همین‌جا رندر می‌شود — نه داخل هر صفحه با
             // جای متفاوت. این‌طور در همه‌ی تب‌ها دقیقاً یک‌شکل است.
@@ -309,7 +333,14 @@ class _MainShellState extends State<MainShell>
                     showPlanUpgradeSheet(label: 'اعلان‌ها');
                     return;
                   }
+                  if (index == MainShell.chatTab &&
+                      !PlanAccess.allows(PlanFeature.chat)) {
+                    _pageController.jumpToPage(_selectedIndex);
+                    showPlanUpgradeSheet(label: 'چت', feature: PlanFeature.chat);
+                    return;
+                  }
                   setState(() => _selectedIndex = index);
+                  MainShell.currentTab.value = index;
                 },
                 children: _pages,
               ),
@@ -339,10 +370,7 @@ class _MainShellState extends State<MainShell>
       // منتقل شد (widgets/app_bottom_nav.dart) تا صفحاتِ دیگری که
       // Scaffoldِ خودشان را دارند (پس نوارِ این پوسته را نمی‌بینند) هم
       // بتوانند همان نوار را نشان دهند، نه یک نسخه‌ی کپی‌شده‌ی جدا
-      bottomNavigationBar: AppBottomNav(
-        selectedIndex: _selectedIndex,
-        unreadCount: _unreadCount,
-      ),
+      bottomNavigationBar: AppBottomNav(selectedIndex: _selectedIndex),
     );
   }
 }

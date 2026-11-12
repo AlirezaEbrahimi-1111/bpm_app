@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:get/get.dart';
 import '../../features/tasks/task_detail_page.dart';
+import '../../features/chat/chat_conversation_page.dart';
 import '../network/api_client.dart';
 
 /// 🔧 طبق درخواست: لمسِ نوتیفیکیشنِ یک کار، مستقیم همان کار را باز کند.
@@ -39,11 +40,18 @@ class DeepLinkService {
 
   static void _open(String link) {
     final uri = Uri.tryParse(link);
-    if (uri == null || uri.host != 'task') return;
+    if (uri == null) return;
     final id = int.tryParse(
       uri.pathSegments.isNotEmpty ? uri.pathSegments.first : '',
     );
     if (id == null) return;
+    // پیامِ چت: malekbpm://chat/<conversation_id> (api/chat/send.php)
+    if (uri.host == 'chat') {
+      if (ChatConversationPage.openConversationId == id) return; // همین الان باز است
+      Get.to(() => ChatConversationPage(conversationId: id));
+      return;
+    }
+    if (uri.host != 'task') return;
     // اعلانِ همین کار دیگر «خوانده‌نشده» نماند
     ApiClient.markTaskNotificationsRead(id);
     Get.to(() => TaskDetailPage(taskId: id));

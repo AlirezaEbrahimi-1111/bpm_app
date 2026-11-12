@@ -8,6 +8,7 @@ import '../../subscription/plan_gate.dart';
 import '../../tasks/create_task_page.dart';
 import 'global_search_sheet.dart';
 import '../main_shell.dart';
+import '../../chat/chat_api.dart';
 
 /// 🔧 تنظیمِ محوشدنِ دورِ نوارِ پایین — برایِ تغییر فقط این دو عدد را عوض کنید:
 /// چند پیکسل بالاتر از لبه‌ی نوار شروع شود (۰ = دقیقاً از لبه‌ی نوار)
@@ -36,11 +37,10 @@ class AppBottomNav extends StatelessWidget {
   /// صفحاتِ دیگر، null بگذارید تا هیچ گزینه‌ای پررنگ نشود.
   final int? selectedIndex;
 
-  /// تعدادِ اعلانِ نخوانده — فقط در خودِ MainShell به‌روز نگه داشته
-  /// می‌شود؛ در بقیه‌ی صفحات پیش‌فرض صفر است (بجِ قرمز نشان داده نمی‌شود)
-  final int unreadCount;
+  // بجِ «چت» از ChatApi.unreadTotal می‌آید (در همه‌ی صفحات یکسان)؛
+  // بجِ اعلان‌ها روی زنگوله‌ی نوار بالاست (AppTopBar)
 
-  const AppBottomNav({super.key, this.selectedIndex, this.unreadCount = 0});
+  const AppBottomNav({super.key, this.selectedIndex});
 
   @override
   Widget build(BuildContext context) {
@@ -106,17 +106,19 @@ class AppBottomNav extends StatelessWidget {
                               onTap: () => navigateToShellTab(1),
                             ),
                             const SizedBox(width: 64),
-                            _navItem(
-                              c: c,
-                              icon: Icons.notifications_rounded,
-                              label: 'اعلان‌ها',
-                              selected: selectedIndex == 2,
-                              locked: !PlanAccess.allows(
-                                PlanFeature.notifications,
+                            // 🔧 «چت» جای «اعلان‌ها» (اعلان‌ها → زنگوله‌ی نوار بالا)
+                            ValueListenableBuilder<int>(
+                              valueListenable: ChatApi.unreadTotal,
+                              builder: (_, chatUnread, _) => _navItem(
+                                c: c,
+                                icon: Icons.forum_rounded,
+                                label: 'چت',
+                                selected: selectedIndex == MainShell.chatTab,
+                                locked: !PlanAccess.allows(PlanFeature.chat),
+                                feature: PlanFeature.chat,
+                                badgeCount: chatUnread,
+                                onTap: () => navigateToShellTab(MainShell.chatTab),
                               ),
-                              feature: PlanFeature.notifications,
-                              showBadge: unreadCount > 0,
-                              onTap: () => navigateToShellTab(2),
                             ),
                             _navItem(
                               c: c,
@@ -145,7 +147,7 @@ class AppBottomNav extends StatelessWidget {
     required String label,
     required bool selected,
     required VoidCallback onTap,
-    bool showBadge = false,
+    int badgeCount = 0,
     bool locked = false,
     PlanFeature? feature,
   }) {
@@ -192,7 +194,7 @@ class AppBottomNav extends StatelessWidget {
                           ),
                         ),
                       )
-                    else if (showBadge)
+                    else if (badgeCount > 0)
                       Positioned(
                         right: -6,
                         top: -4,
@@ -211,9 +213,9 @@ class AppBottomNav extends StatelessWidget {
                             border: Border.all(color: c.navBarBg, width: 1.5),
                           ),
                           child: Text(
-                            unreadCount > 99
+                            badgeCount > 99
                                 ? '${toPersianDigits('99')}+'
-                                : toPersianDigits(unreadCount.toString()),
+                                : toPersianDigits(badgeCount.toString()),
                             textAlign: TextAlign.center,
                             style: const TextStyle(
                               color: Colors.white,
