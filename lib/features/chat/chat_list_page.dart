@@ -153,6 +153,8 @@ class _ChatListPageState extends State<ChatListPage>
           bottom: navBarFootprint(context) + 8,
           child: FloatingActionButton(
             heroTag: 'chat_new',
+            shape:
+                const CircleBorder(), // دایره، مثلِ تلگرام (پیش‌فرضِ Material 3 مربعِ گوشه‌گرد است)
             onPressed: _newChat,
             backgroundColor: c.primary,
             foregroundColor: Colors.white,

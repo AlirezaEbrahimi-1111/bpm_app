@@ -375,6 +375,58 @@ class ChatApi {
     }
   }
 
+  /// بی‌صدا/باصدا (شخصی) → وضعیتِ جدید
+  static Future<bool> toggleMute(int conversationId) async {
+    try {
+      final res = await ApiClient.dio.post(
+        '/api/chat/toggle-mute.php',
+        data: {'conversation_id': conversationId},
+      );
+      return _ok(res)['is_muted'] == true;
+    } catch (e) {
+      _fail(e);
+    }
+  }
+
+  /// جستجو در پیام‌های یک گفتگو: [{message_id, sender_name, is_own, snippet, date_jalali, time_jalali}]
+  static Future<List<Map<String, dynamic>>> searchMessages(
+    int conversationId,
+    String q,
+  ) async {
+    try {
+      final res = await ApiClient.dio.get(
+        '/api/chat/search-messages.php',
+        queryParameters: {'q': q, 'conversation_id': conversationId},
+      );
+      return (_ok(res)['results'] as List? ?? [])
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+    } catch (e) {
+      _fail(e);
+    }
+  }
+
+  /// پیام‌های اطرافِ یک پیام (برای پرش از نتیجه‌ی جستجو)
+  static Future<Map<String, dynamic>> messagesAround(
+    int conversationId,
+    int messageId, {
+    int limit = 30,
+  }) async {
+    try {
+      final res = await ApiClient.dio.get(
+        '/api/chat/messages.php',
+        queryParameters: {
+          'conversation_id': conversationId,
+          'around_id': messageId,
+          'limit': limit,
+        },
+      );
+      return _ok(res);
+    } catch (e) {
+      _fail(e);
+    }
+  }
+
   /// برچسبِ فارسیِ اختیاراتِ گروه — همان GROUP_PERMISSION_LABELS وب
   static const groupPermissionLabels = {
     'pin': 'سنجاق‌کردن پیام',

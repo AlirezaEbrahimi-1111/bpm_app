@@ -69,6 +69,15 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
   bool _sending = false;
 
   Timer? _pollTimer, _receiptTimer, _pingTimer, _infoTimer;
+
+  // جستجو در گفتگو (منوی سه‌نقطه)
+  bool _searching = false;
+  final _searchCtrl = TextEditingController();
+  Timer? _searchDebounce;
+  List<Map<String, dynamic>> _searchResults = [];
+  bool _searchLoading = false;
+  int? _highlightId;
+  final Map<int, GlobalKey> _keys = {};
   Map<String, String> _headers = {};
 
   int get _cid => widget.conversationId;
@@ -112,6 +121,8 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
       t?.cancel();
     }
     _input.dispose();
+    _searchDebounce?.cancel();
+    _searchCtrl.dispose();
     _scroll.dispose();
     _focus.dispose();
     ChatApi.refreshUnread();
@@ -470,6 +481,212 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
     return chatLastSeen(_conv['other_user_last_seen_at']?.toString());
   }
 
+  // ───────────── منوی سه‌نقطه ─────────────
+
+  PopupMenuItem<String> _menuItem(
+    String value,
+    IconData icon,
+    String label, {
+    bool danger = false,
+  }) {
+    final color = danger ? Colors.red : null;
+    return PopupMenuItem<String>(
+      value: value,
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: color),
+          const SizedBox(width: 12),
+          Text(label, style: TextStyle(color: color)),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _onMenu(String v) async {
+    switch (v) {
+      case 'search':
+        setState(() {
+          _searching = true;
+          _searchResults = [];
+          _searchCtrl.clear();
+        });
+      case 'mute':
+        try {
+          final muted = await ChatApi.toggleMute(_cid);
+          if (!mounted) return;
+          setState(() => _conv['is_muted'] = muted);
+          AppSnack.success(
+            muted ? 'بی‌صدا شد' : 'باصدا شد',
+            muted
+                ? 'برای پیام‌های این گفتگو اعلان نمی‌آید'
+                : 'اعلان پیام‌های این گفتگو دوباره فعال شد',
+          );
+        } catch (e) {
+          AppSnack.error('خطا', e.toString());
+        }
+      case 'leave':
+        await _leaveGroup();
+    }
+  }
+
+  Future<void> _leaveGroup() async {
+    final owner = _conv['is_owner'] == true;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('ترک گروه'),
+          content: Text(
+            owner
+                ? 'شما سازندهٔ این گروه هستید. اگر خارج شوید، گروه بدون سازنده می‌ماند و دیگر کسی نمی‌تواند اختیارات اعضا را تغییر دهد. ادامه می‌دهید؟'
+                : 'از این گروه خارج می‌شوید و دیگر پیام‌های آن را نمی‌بینید. ادامه می‌دهید؟',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('انصراف'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('ترک گروه'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await ChatApi.leaveGroup(_cid);
+      if (mounted) Navigator.of(context).pop();
+    } catch (e) {
+      AppSnack.error('خطا', e.toString());
+    }
+  }
+
+  // ───────────── جستجو در گفتگو ─────────────
+
+  void _closeSearch() {
+    _searchDebounce?.cancel();
+    setState(() {
+      _searching = false;
+      _searchResults = [];
+      _searchCtrl.clear();
+    });
+  }
+
+  void _onSearchChanged(String v) {
+    _searchDebounce?.cancel();
+    setState(() {});
+    _searchDebounce = Timer(const Duration(milliseconds: 350), () async {
+      final q = v.trim();
+      if (q.length < 2) {
+        if (mounted) setState(() => _searchResults = []);
+        return;
+      }
+      setState(() => _searchLoading = true);
+      try {
+        final r = await ChatApi.searchMessages(_cid, q);
+        if (mounted && _searchCtrl.text.trim() == q)
+          setState(() => _searchResults = r);
+      } catch (_) {
+      } finally {
+        if (mounted) setState(() => _searchLoading = false);
+      }
+    });
+  }
+
+  Widget _searchResultsView(AppColors c) {
+    return Container(
+      color: c.surface,
+      child: _searchLoading && _searchResults.isEmpty
+          ? const Center(child: CircularProgressIndicator())
+          : _searchResults.isEmpty
+          ? Center(
+              child: Text(
+                _searchCtrl.text.trim().length < 2
+                    ? 'دست‌کم دو حرف بنویسید'
+                    : 'پیامی پیدا نشد',
+                style: TextStyle(color: c.textMuted),
+              ),
+            )
+          : ListView.separated(
+              itemCount: _searchResults.length,
+              separatorBuilder: (_, _) =>
+                  Divider(height: 1, indent: 16, color: c.borderSoft),
+              itemBuilder: (_, i) {
+                final r = _searchResults[i];
+                return ListTile(
+                  title: Text(
+                    r['is_own'] == true
+                        ? 'شما'
+                        : (r['sender_name'] ?? '').toString(),
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: c.textStrong,
+                    ),
+                  ),
+                  subtitle: Text(
+                    (r['snippet'] ?? '').toString(),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  trailing: Text(
+                    '${r['date_jalali'] ?? ''}\n${r['time_jalali'] ?? ''}',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 11, color: c.textMuted),
+                  ),
+                  onTap: () {
+                    final id = (r['message_id'] as num).toInt();
+                    _closeSearch();
+                    _jumpTo(id);
+                  },
+                );
+              },
+            ),
+    );
+  }
+
+  /// پرش به یک پیام: اگر بارگذاری نشده، پیام‌های اطرافش گرفته می‌شود؛ بعد اسکرول و هاله‌ی کوتاه
+  Future<void> _jumpTo(int id) async {
+    if (!_messages.any((m) => (m['id'] as num).toInt() == id)) {
+      try {
+        final data = await ChatApi.messagesAround(_cid, id);
+        final list =
+            (data['messages'] as List)
+                .map((e) => Map<String, dynamic>.from(e as Map))
+                .toList()
+              ..sort((a, b) => (a['id'] as num).compareTo(b['id'] as num));
+        if (!mounted) return;
+        setState(() {
+          _messages
+            ..clear()
+            ..addAll(list);
+          _hasMore =
+              true; // قدیمی‌ترها با اسکرول؛ تازه‌ترها با polling (after_id) پر می‌شوند
+        });
+      } catch (e) {
+        AppSnack.error('خطا', e.toString());
+        return;
+      }
+    }
+    setState(() => _highlightId = id);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = _keys[id]?.currentContext;
+      if (ctx != null) {
+        Scrollable.ensureVisible(
+          ctx,
+          alignment: 0.5,
+          duration: const Duration(milliseconds: 300),
+        );
+      }
+    });
+    Future.delayed(const Duration(milliseconds: 1800), () {
+      if (mounted && _highlightId == id) setState(() => _highlightId = null);
+    });
+  }
+
   /// لمسِ نوارِ بالا در گروه → اطلاعات گروه (مرحله‌ی ۲)
   Future<void> _openInfo() async {
     if (!_isGroup) return;
@@ -506,59 +723,100 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
           backgroundColor: c.surface,
           elevation: 0.5,
           titleSpacing: 0,
-          title: GestureDetector(
-            onTap: _openInfo,
-            behavior: HitTestBehavior.opaque,
-            child: Row(
-              children: [
-                ChatAvatar(
-                  name: title,
-                  imageUrl: _conv['avatar_url']?.toString(),
-                  colorSeed: _conv['other_user_id'] ?? _cid,
-                  isGroup: _isGroup,
-                  size: 40,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+          leading: _searching
+              ? IconButton(
+                  icon: const Icon(Icons.close_rounded),
+                  onPressed: _closeSearch,
+                )
+              : null,
+          title: _searching
+              ? TextField(
+                  controller: _searchCtrl,
+                  autofocus: true,
+                  onChanged: _onSearchChanged,
+                  decoration: const InputDecoration(
+                    hintText: 'جستجو در این گفتگو…',
+                    border: InputBorder.none,
+                  ),
+                )
+              : GestureDetector(
+                  onTap: _openInfo,
+                  behavior: HitTestBehavior.opaque,
+                  child: Row(
                     children: [
-                      Text(
-                        title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: c.textStrong,
-                        ),
+                      ChatAvatar(
+                        name: title,
+                        imageUrl: _conv['avatar_url']?.toString(),
+                        colorSeed: _conv['other_user_id'] ?? _cid,
+                        isGroup: _isGroup,
+                        size: 40,
                       ),
-                      Text(
-                        sub,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: live ? c.primary : c.textMuted,
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: c.textStrong,
+                              ),
+                            ),
+                            Text(
+                              sub,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: live ? c.primary : c.textMuted,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
                   ),
                 ),
+          actions: [
+            // منوی سه‌نقطه: جستجو، بی‌صدا/باصدا، ترک گروه (فقط گروه — هر عضوی، مثلِ وب)
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert_rounded),
+              tooltip: 'گزینه‌های بیشتر',
+              onSelected: _onMenu,
+              itemBuilder: (_) => [
+                _menuItem('search', Icons.search_rounded, 'جستجو'),
+                _conv['is_muted'] == true
+                    ? _menuItem('mute', Icons.volume_up_rounded, 'باصدا کردن')
+                    : _menuItem(
+                        'mute',
+                        Icons.volume_off_rounded,
+                        'بی‌صدا کردن',
+                      ),
+                if (_isGroup)
+                  _menuItem(
+                    'leave',
+                    Icons.logout_rounded,
+                    'ترک گروه',
+                    danger: true,
+                  ),
               ],
             ),
-          ),
-          actions: [
-            if (_isGroup)
-              IconButton(
-                icon: const Icon(Icons.info_outline_rounded),
-                tooltip: 'اطلاعات گروه',
-                onPressed: _openInfo,
-              ),
           ],
         ),
         body: Column(
           children: [
-            Expanded(child: _messagesView(c, cc)),
-            _composer(c, cc),
+            Expanded(
+              child: Stack(
+                children: [
+                  _messagesView(c, cc),
+                  if (_searching && _searchCtrl.text.trim().isNotEmpty)
+                    _searchResultsView(c),
+                ],
+              ),
+            ),
+            if (!_searching) _composer(c, cc),
           ],
         ),
       ),
@@ -622,6 +880,8 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
     return ListView.builder(
       controller: _scroll,
       reverse: true,
+      // پیام‌های بیشتری ساخته بمانند تا پرش به نتیجه‌ی جستجو پیدایشان کند
+      cacheExtent: 4000,
       padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
       itemCount: items.length + (_hasMore ? 1 : 0),
       itemBuilder: (_, i) {
@@ -687,7 +947,14 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
         child: _bubble(c, cc, m, own, lastOfRun),
       ),
     );
-    return Padding(
+    final id = (m['id'] as num).toInt();
+    return AnimatedContainer(
+      key: _keys.putIfAbsent(id, () => GlobalKey()),
+      duration: const Duration(milliseconds: 400),
+      // هاله‌ی سرتاسری وقتی از نتیجه‌ی جستجو به این پیام پریدیم (مثلِ وب)
+      color: _highlightId == id
+          ? AppColors.of(context).primary.withValues(alpha: 0.18)
+          : Colors.transparent,
       padding: EdgeInsets.only(bottom: lastOfRun ? 6 : 2),
       child: Row(
         mainAxisAlignment: own

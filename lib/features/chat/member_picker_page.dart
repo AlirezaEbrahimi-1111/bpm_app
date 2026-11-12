@@ -199,7 +199,9 @@ class _MemberPickerPageState extends State<MemberPickerPage> {
                       child: Text(
                         _loading
                             ? ''
-                            : (_ctrl.text.trim().isEmpty ? 'مخاطبی وجود ندارد' : 'مخاطبی پیدا نشد'),
+                            : (_ctrl.text.trim().isEmpty
+                                  ? 'مخاطبی وجود ندارد'
+                                  : 'مخاطبی پیدا نشد'),
                         style: TextStyle(color: c.textMuted),
                       ),
                     )
