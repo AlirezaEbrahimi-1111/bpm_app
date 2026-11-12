@@ -1,6 +1,12 @@
-import 'package:flutter/material.dart';
+import 'dart:io';
 
+import 'package:flutter/material.dart';
+import 'package:open_filex/open_filex.dart';
+import 'package:path_provider/path_provider.dart';
+
+import '../../core/network/api_client.dart';
 import '../../core/utils/persian_number.dart';
+import '../../core/widgets/app_snack.dart';
 import 'chat_api.dart';
 
 /// رنگ‌های تلگرام‌مانندِ چت (روشن/تاریک)
@@ -184,6 +190,33 @@ String chatListStamp(Map c) {
   // «۱۴۰۵/۰۸/۲۰» → «۰۸/۲۰» (سالِ جاری کوتاه)
   final parts = date.split('/');
   return parts.length == 3 ? '${parts[1]}/${parts[2]}' : date;
+}
+
+/// دانلود و باز کردنِ پیوستِ چت با برنامه‌ی گوشی (گفتگو و تبِ فایل‌های اطلاعات گروه)
+Future<void> openChatAttachment(Map a) async {
+  final id = (a['id'] as num).toInt();
+  AppSnack.info('دانلود', 'در حال دریافت فایل…');
+  try {
+    final dir = await getTemporaryDirectory();
+    final name = (a['original_name'] ?? 'file').toString().replaceAll(
+      RegExp(r'[\\/:*?"<>|]'),
+      '_',
+    );
+    final path = '${dir.path}${Platform.pathSeparator}chat_${id}_$name';
+    if (!File(path).existsSync()) {
+      await ApiClient.dio.download(
+        '/api/chat/download.php',
+        path,
+        queryParameters: {'id': id},
+      );
+    }
+    final r = await OpenFilex.open(path);
+    if (r.type != ResultType.done) {
+      AppSnack.error('خطا', 'برنامه‌ای برای باز کردن این فایل پیدا نشد');
+    }
+  } catch (_) {
+    AppSnack.error('خطا', 'دریافت فایل ناموفق بود');
+  }
 }
 
 /// «آخرین بازدید …» — امروز: ساعت؛ وگرنه ماه/روز (تاریخِ امروز از سرور)

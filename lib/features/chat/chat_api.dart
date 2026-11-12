@@ -427,6 +427,200 @@ class ChatApi {
     }
   }
 
+  // ── مرحله‌ی ۳ ──
+
+  /// ایموجی‌های سریعِ واکنش — همان منوی وب
+  static const quickReactions = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
+
+  /// واکنش (تاگل/جایگزینی) → فهرستِ تازه‌ی واکنش‌های همان پیام
+  static Future<List<Map<String, dynamic>>> react(
+    int messageId,
+    String emoji,
+  ) async {
+    try {
+      final res = await ApiClient.dio.post(
+        '/api/chat/react-message.php',
+        data: {'message_id': messageId, 'emoji': emoji},
+      );
+      return (_ok(res)['reactions'] as List? ?? [])
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+    } catch (e) {
+      _fail(e);
+    }
+  }
+
+  /// message_id → واکنش‌ها (برای همگام‌سازیِ دوره‌ای)
+  static Future<Map<int, List<Map<String, dynamic>>>> reactions(
+    int conversationId,
+  ) async {
+    try {
+      final res = await ApiClient.dio.get(
+        '/api/chat/reactions.php',
+        queryParameters: {'conversation_id': conversationId},
+      );
+      final raw = _ok(res)['reactions'];
+      final out = <int, List<Map<String, dynamic>>>{};
+      if (raw is Map) {
+        raw.forEach((k, v) {
+          final id = int.tryParse('$k');
+          if (id != null && v is List) {
+            out[id] = v
+                .map((e) => Map<String, dynamic>.from(e as Map))
+                .toList();
+          }
+        });
+      }
+      return out;
+    } catch (_) {
+      return {};
+    }
+  }
+
+  /// {pinned: {id, snippet, user_name, is_own} | null, can_manage}
+  static Future<Map<String, dynamic>> pinnedMessage(int conversationId) async {
+    try {
+      final res = await ApiClient.dio.get(
+        '/api/chat/pinned-message.php',
+        queryParameters: {'conversation_id': conversationId},
+      );
+      return _ok(res);
+    } catch (_) {
+      return {};
+    }
+  }
+
+  static Future<void> pin(int conversationId, int messageId) async {
+    try {
+      _ok(
+        await ApiClient.dio.post(
+          '/api/chat/pin-message.php',
+          data: {'conversation_id': conversationId, 'message_id': messageId},
+        ),
+      );
+    } catch (e) {
+      _fail(e);
+    }
+  }
+
+  static Future<void> unpin(int conversationId) async {
+    try {
+      _ok(
+        await ApiClient.dio.post(
+          '/api/chat/unpin-message.php',
+          data: {'conversation_id': conversationId},
+        ),
+      );
+    } catch (e) {
+      _fail(e);
+    }
+  }
+
+  static Future<void> forward(int messageId, int toConversationId) async {
+    try {
+      _ok(
+        await ApiClient.dio.post(
+          '/api/chat/forward-message.php',
+          data: {'message_id': messageId, 'conversation_id': toConversationId},
+        ),
+      );
+    } catch (e) {
+      _fail(e);
+    }
+  }
+
+  static Future<void> archive(int conversationId, bool archived) async {
+    try {
+      _ok(
+        await ApiClient.dio.post(
+          '/api/chat/archive.php',
+          data: {'conversation_id': conversationId, 'archived': archived},
+        ),
+      );
+    } catch (e) {
+      _fail(e);
+    }
+  }
+
+  /// سنجاقِ شخصیِ گفتگو در فهرست → pinned_at تازه (null یعنی برداشته شد)
+  static Future<String?> togglePinConversation(int conversationId) async {
+    try {
+      final res = await ApiClient.dio.post(
+        '/api/chat/toggle-pin.php',
+        data: {'conversation_id': conversationId},
+      );
+      return _ok(res)['pinned_at']?.toString();
+    } catch (e) {
+      _fail(e);
+    }
+  }
+
+  /// فقط گفتگوی مستقیم، فقط از دیدِ خودم
+  static Future<void> deleteConversation(int conversationId) async {
+    try {
+      _ok(
+        await ApiClient.dio.post(
+          '/api/chat/delete-conversation.php',
+          data: {'conversation_id': conversationId},
+        ),
+      );
+    } catch (e) {
+      _fail(e);
+    }
+  }
+
+  /// فایل‌ها و عکس‌های گفتگو: [{id, message_id, original_name, mime_type, file_size, created_at, uploader_name, is_image}]
+  static Future<List<Map<String, dynamic>>> media(int conversationId) async {
+    try {
+      final res = await ApiClient.dio.get(
+        '/api/chat/media.php',
+        queryParameters: {'conversation_id': conversationId},
+      );
+      return (_ok(res)['files'] as List? ?? [])
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+    } catch (e) {
+      _fail(e);
+    }
+  }
+
+  /// لینک‌های گفتگو: [{message_id, url, host, sender_name, created_at}]
+  static Future<List<Map<String, dynamic>>> links(int conversationId) async {
+    try {
+      final res = await ApiClient.dio.get(
+        '/api/chat/links.php',
+        queryParameters: {'conversation_id': conversationId},
+      );
+      return (_ok(res)['links'] as List? ?? [])
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+    } catch (e) {
+      _fail(e);
+    }
+  }
+
+  /// «در حال نوشتن» — سرور ۵ ثانیه نگه می‌دارد؛ کلاینت باید throttle کند
+  static Future<void> typing(int conversationId) async {
+    try {
+      await ApiClient.dio.post(
+        '/api/chat/typing.php',
+        data: {'conversation_id': conversationId},
+      );
+    } catch (_) {}
+  }
+
+  static Future<bool> typingStatus(int conversationId) async {
+    try {
+      final res = await ApiClient.dio.get(
+        '/api/chat/typing-status.php',
+        queryParameters: {'conversation_id': conversationId},
+      );
+      return _ok(res)['is_typing'] == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// برچسبِ فارسیِ اختیاراتِ گروه — همان GROUP_PERMISSION_LABELS وب
   static const groupPermissionLabels = {
     'pin': 'سنجاق‌کردن پیام',

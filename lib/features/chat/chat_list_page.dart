@@ -7,6 +7,7 @@ import 'package:get/get.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/persian_number.dart';
 import '../../core/utils/task_search.dart';
+import '../../core/widgets/app_snack.dart';
 import '../shell/widgets/app_bottom_nav.dart';
 import 'chat_api.dart';
 import 'chat_conversation_page.dart';
@@ -18,10 +19,14 @@ import 'new_chat_page.dart';
 class ChatListPage extends StatefulWidget {
   final ValueListenable<int> currentTab;
   final int tabIndex;
+
+  /// حالتِ «بایگانی‌شده‌ها» (صفحه‌ی جدا از تب) — بدونِ دکمه‌ی ✏️ و ردیفِ بایگانی
+  final bool archived;
   const ChatListPage({
     super.key,
     required this.currentTab,
     required this.tabIndex,
+    this.archived = false,
   });
 
   @override
@@ -35,6 +40,8 @@ class _ChatListPageState extends State<ChatListPage>
   String? _error;
   String _query = '';
   Timer? _poll;
+  int _archivedCount = 0;
+  int _tick = 0;
 
   @override
   bool get wantKeepAlive => true;
@@ -66,7 +73,16 @@ class _ChatListPageState extends State<ChatListPage>
     if (!ChatApi.enabled) return;
     if (!silent) setState(() => _loading = _items.isEmpty);
     try {
-      final list = await ChatApi.conversations();
+      final list = await ChatApi.conversations(archived: widget.archived);
+      // تعدادِ بایگانی‌شده‌ها (برای ردیفِ «بایگانی‌شده» بالای فهرست) — هر ۳۰ ثانیه
+      if (!widget.archived && (!silent || _tick++ % 6 == 0)) {
+        ChatApi.conversations(archived: true)
+            .then((a) {
+              if (mounted && a.length != _archivedCount)
+                setState(() => _archivedCount = a.length);
+            })
+            .catchError((_) {});
+      }
       // سنجاق‌شده‌ها بالا (آخرین سنجاق اول)، بقیه به ترتیبِ آخرین فعالیت (همان ترتیبِ سرور)
       final pinned = list.where((c) => c['pinned_at'] != null).toList()
         ..sort(
@@ -117,6 +133,130 @@ class _ChatListPageState extends State<ChatListPage>
     if (opened == true) _load(silent: true);
   }
 
+  Future<void> _openArchived() async {
+    await Get.to(() => const ArchivedChatsPage());
+    _load(silent: true);
+  }
+
+  /// لمسِ طولانی روی گفتگو — همان منوی راست‌کلیکِ وب: سنجاق، بی‌صدا، بایگانی، حذف/ترک
+  void _convOptions(Map<String, dynamic> conv) {
+    final c = AppColors.of(context);
+    final id = (conv['conversation_id'] as num).toInt();
+    final isGroup = conv['type'] != 'direct';
+    final pinned = conv['pinned_at'] != null;
+    final muted = conv['is_muted'] == true;
+    Widget item(
+      IconData icon,
+      String label,
+      Future<void> Function() run, {
+      bool danger = false,
+    }) {
+      final color = danger ? Colors.red : null;
+      return ListTile(
+        leading: Icon(icon, color: color),
+        title: Text(label, style: TextStyle(color: color)),
+        onTap: () async {
+          Navigator.pop(context);
+          try {
+            await run();
+          } catch (e) {
+            AppSnack.error('خطا', e.toString());
+          }
+          _load(silent: true);
+        },
+      );
+    }
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: c.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
+                child: Text(
+                  (conv['title'] ?? '').toString(),
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: c.textStrong,
+                  ),
+                ),
+              ),
+              if (!widget.archived)
+                item(
+                  pinned ? Icons.push_pin_outlined : Icons.push_pin_rounded,
+                  pinned ? 'برداشتن سنجاق' : 'سنجاق کردن',
+                  () async => ChatApi.togglePinConversation(id),
+                ),
+              item(
+                muted ? Icons.volume_up_rounded : Icons.volume_off_rounded,
+                muted ? 'باصدا کردن' : 'بی‌صدا کردن',
+                () async => ChatApi.toggleMute(id),
+              ),
+              item(
+                widget.archived
+                    ? Icons.unarchive_outlined
+                    : Icons.archive_outlined,
+                widget.archived ? 'خروج از بایگانی' : 'بایگانی',
+                () => ChatApi.archive(id, !widget.archived),
+              ),
+              isGroup
+                  ? item(Icons.logout_rounded, 'ترک گروه', () async {
+                      if (await _confirm(
+                        'ترک گروه',
+                        'از گروه «${conv['title']}» خارج می‌شوید. ادامه می‌دهید؟',
+                      )) {
+                        await ChatApi.leaveGroup(id);
+                      }
+                    }, danger: true)
+                  : item(Icons.delete_outline_rounded, 'حذف گفتگو', () async {
+                      if (await _confirm(
+                        'حذف گفتگو',
+                        'این گفتگو فقط از فهرست شما حذف می‌شود؛ طرف مقابل همچنان پیام‌ها را می‌بیند. اگر پیام تازه‌ای بیاید، دوباره نمایش داده می‌شود.',
+                      )) {
+                        await ChatApi.deleteConversation(id);
+                      }
+                    }, danger: true),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<bool> _confirm(String title, String body) async {
+    final r = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: Text(title),
+          content: Text(body),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('انصراف'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: Text(title),
+            ),
+          ],
+        ),
+      ),
+    );
+    return r == true;
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -148,20 +288,21 @@ class _ChatListPageState extends State<ChatListPage>
           ],
         ),
         // ✏️ گفتگو / گروهِ جدید — پایین سمتِ چپ، بالای نوارِ پایین (مثلِ تلگرام)
-        Positioned(
-          left: 16,
-          bottom: navBarFootprint(context) + 8,
-          child: FloatingActionButton(
-            heroTag: 'chat_new',
-            shape:
-                const CircleBorder(), // دایره، مثلِ تلگرام (پیش‌فرضِ Material 3 مربعِ گوشه‌گرد است)
-            onPressed: _newChat,
-            backgroundColor: c.primary,
-            foregroundColor: Colors.white,
-            tooltip: 'گفتگوی جدید',
-            child: const Icon(Icons.edit_rounded),
+        if (!widget.archived)
+          Positioned(
+            left: 16,
+            bottom: navBarFootprint(context) + 8,
+            child: FloatingActionButton(
+              heroTag: 'chat_new',
+              shape:
+                  const CircleBorder(), // دایره، مثلِ تلگرام (پیش‌فرضِ Material 3 مربعِ گوشه‌گرد است)
+              onPressed: _newChat,
+              backgroundColor: c.primary,
+              foregroundColor: Colors.white,
+              tooltip: 'گفتگوی جدید',
+              child: const Icon(Icons.edit_rounded),
+            ),
           ),
-        ),
       ],
     );
   }
@@ -179,7 +320,9 @@ class _ChatListPageState extends State<ChatListPage>
         ),
       );
     }
-    if (items.isEmpty) {
+    final showArchivedRow =
+        !widget.archived && _archivedCount > 0 && _query.trim().isEmpty;
+    if (items.isEmpty && !showArchivedRow) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -191,10 +334,14 @@ class _ChatListPageState extends State<ChatListPage>
             ),
             const SizedBox(height: 10),
             Text(
-              _query.isEmpty ? 'هنوز گفتگویی ندارید' : 'گفتگویی پیدا نشد',
+              widget.archived
+                  ? 'گفتگوی بایگانی‌شده‌ای ندارید'
+                  : (_query.isEmpty
+                        ? 'هنوز گفتگویی ندارید'
+                        : 'گفتگویی پیدا نشد'),
               style: TextStyle(color: c.textMuted),
             ),
-            if (_query.isEmpty)
+            if (_query.isEmpty && !widget.archived)
               TextButton.icon(
                 onPressed: _newChat,
                 icon: const Icon(Icons.edit_rounded, size: 18),
@@ -208,11 +355,53 @@ class _ChatListPageState extends State<ChatListPage>
       onRefresh: _load,
       child: ListView.separated(
         // جای دکمه‌ی شناورِ ✏️ هم بماند تا آخرین گفتگو زیرش نرود
-        padding: EdgeInsets.only(bottom: navBarFootprint(context) + 72),
-        itemCount: items.length,
+        padding: EdgeInsets.only(
+          bottom: widget.archived ? 24 : navBarFootprint(context) + 72,
+        ),
+        itemCount: items.length + (showArchivedRow ? 1 : 0),
         separatorBuilder: (_, _) =>
             Divider(height: 1, indent: 82, color: c.borderSoft),
-        itemBuilder: (_, i) => _tile(c, items[i]),
+        itemBuilder: (_, i) {
+          if (showArchivedRow) {
+            if (i == 0) return _archivedRow(c);
+            return _tile(c, items[i - 1]);
+          }
+          return _tile(c, items[i]);
+        },
+      ),
+    );
+  }
+
+  /// ردیفِ «بایگانی‌شده» بالای فهرست (مثلِ تلگرام)
+  Widget _archivedRow(AppColors c) {
+    return InkWell(
+      onTap: _openArchived,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        child: Row(
+          children: [
+            CircleAvatar(
+              radius: 26,
+              backgroundColor: c.textMuted.withValues(alpha: 0.6),
+              child: const Icon(Icons.archive_rounded, color: Colors.white),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'بایگانی‌شده',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 15,
+                  color: c.textStrong,
+                ),
+              ),
+            ),
+            Text(
+              toPersianDigits('$_archivedCount'),
+              style: TextStyle(color: c.textMuted),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -230,6 +419,7 @@ class _ChatListPageState extends State<ChatListPage>
 
     return InkWell(
       onTap: () => _open(conv),
+      onLongPress: () => _convOptions(conv),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
         child: Row(
@@ -348,6 +538,34 @@ class _ChatListPageState extends State<ChatListPage>
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// «بایگانی‌شده» — همان فهرست با archived=1 (لمسِ طولانی → خروج از بایگانی)
+class ArchivedChatsPage extends StatelessWidget {
+  const ArchivedChatsPage({super.key});
+
+  static final _alwaysVisible = ValueNotifier<int>(0);
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppColors.of(context);
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        backgroundColor: c.bgPage,
+        appBar: AppBar(
+          backgroundColor: c.bgPage,
+          elevation: 0,
+          title: const Text('بایگانی‌شده'),
+        ),
+        body: ChatListPage(
+          currentTab: _alwaysVisible,
+          tabIndex: 0,
+          archived: true,
         ),
       ),
     );

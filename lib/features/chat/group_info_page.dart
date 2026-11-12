@@ -9,6 +9,7 @@ import '../../core/widgets/app_snack.dart';
 import 'chat_api.dart';
 import 'chat_conversation_page.dart';
 import 'chat_widgets.dart';
+import 'chat_media_tabs.dart';
 import 'member_picker_page.dart';
 
 /// اطلاعاتِ گروه — هم‌قاعده با کشوی «اطلاعات گروه» در وب (pages/chat.php):
@@ -635,6 +636,9 @@ class _GroupInfoPageState extends State<GroupInfoPage> {
             ],
           ),
         ),
+        const SizedBox(height: 22),
+        // ── رسانه / فایل / لینک (مرحله‌ی ۳) ──
+        ChatMediaTabs(conversationId: _cid),
       ],
     );
   }

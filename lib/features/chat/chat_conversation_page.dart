@@ -1,12 +1,9 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
-import 'package:open_filex/open_filex.dart';
-import 'package:path_provider/path_provider.dart';
 
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_colors.dart';
@@ -14,6 +11,7 @@ import '../../core/utils/persian_number.dart';
 import '../../core/widgets/app_snack.dart';
 import 'chat_api.dart';
 import 'chat_widgets.dart';
+import 'forward_picker_page.dart';
 import 'group_info_page.dart';
 
 /// صفحه‌ی یک گفتگو — به سبکِ تلگرام.
@@ -78,6 +76,15 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
   bool _searchLoading = false;
   int? _highlightId;
   final Map<int, GlobalKey> _keys = {};
+
+  // مرحله‌ی ۳: سنجاق، «در حال نوشتن»، منشن
+  Map<String, dynamic>? _pinned;
+  bool _canPin = false;
+  bool _otherTyping = false;
+  DateTime _lastTypingSent = DateTime.fromMillisecondsSinceEpoch(0);
+  Timer? _extrasTimer;
+  List<Map<String, dynamic>> _groupMembers = [];
+  List<Map<String, dynamic>> _mentionOptions = [];
   Map<String, String> _headers = {};
 
   int get _cid => widget.conversationId;
@@ -91,7 +98,7 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
     ChatConversationPage.openConversationId = _cid;
     _conv = Map<String, dynamic>.from(widget.initial ?? {});
     _scroll.addListener(_onScroll);
-    _input.addListener(() => setState(() {}));
+    _input.addListener(_onInputChanged);
     ChatApi.authHeaders().then(
       (h) => mounted ? setState(() => _headers = h) : null,
     );
@@ -111,13 +118,234 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
       const Duration(seconds: 20),
       (_) => _loadInfo(),
     );
+    // سنجاق + واکنش‌ها + «در حال نوشتن» — هم‌گام با بقیه (وب هم polling دارد)
+    _loadPinned();
+    _extrasTimer = Timer.periodic(
+      const Duration(seconds: 4),
+      (_) => _pollExtras(),
+    );
+    if ((widget.initial?['type'] ?? 'direct') != 'direct') _loadGroupMembers();
+  }
+
+  // ───────────── مرحله‌ی ۳: سنجاق، واکنش، تایپ، منشن ─────────────
+
+  int _extrasTick = 0;
+  Future<void> _pollExtras() async {
+    if (!mounted) return;
+    final typing = await ChatApi.typingStatus(_cid);
+    if (mounted && typing != _otherTyping)
+      setState(() => _otherTyping = typing);
+    _extrasTick++;
+    if (_extrasTick % 2 == 0) _syncReactions();
+    if (_extrasTick % 5 == 0) _loadPinned();
+  }
+
+  Future<void> _loadPinned() async {
+    final d = await ChatApi.pinnedMessage(_cid);
+    if (!mounted || d.isEmpty) return;
+    setState(() {
+      _pinned = d['pinned'] is Map
+          ? Map<String, dynamic>.from(d['pinned'])
+          : null;
+      // گفتگوی مستقیم: هر دو طرف؛ گروه: سازنده/مدیرِ دارای اختیارِ pin (سرور تعیین می‌کند)
+      _canPin = !_isGroup || d['can_manage'] == true;
+    });
+  }
+
+  Future<void> _syncReactions() async {
+    final map = await ChatApi.reactions(_cid);
+    if (!mounted) return;
+    var changed = false;
+    for (final m in _messages) {
+      final next = map[(m['id'] as num).toInt()] ?? const [];
+      final prev = (m['reactions'] as List?) ?? const [];
+      if (prev.length != next.length || prev.toString() != next.toString()) {
+        m['reactions'] = next;
+        changed = true;
+      }
+    }
+    if (changed) setState(() {});
+  }
+
+  Future<void> _react(Map<String, dynamic> m, String emoji) async {
+    try {
+      final r = await ChatApi.react((m['id'] as num).toInt(), emoji);
+      if (mounted) setState(() => m['reactions'] = r);
+    } catch (e) {
+      AppSnack.error('خطا', e.toString());
+    }
+  }
+
+  Future<void> _pinMessage(Map<String, dynamic> m) async {
+    try {
+      await ChatApi.pin(_cid, (m['id'] as num).toInt());
+      await _loadPinned();
+    } catch (e) {
+      AppSnack.error('خطا', e.toString());
+    }
+  }
+
+  Future<void> _unpin() async {
+    try {
+      await ChatApi.unpin(_cid);
+      if (mounted) setState(() => _pinned = null);
+    } catch (e) {
+      AppSnack.error('خطا', e.toString());
+    }
+  }
+
+  Future<void> _forward(Map<String, dynamic> m) async {
+    final targets = await Navigator.of(context)
+        .push<List<Map<String, dynamic>>>(
+          MaterialPageRoute(builder: (_) => const ForwardPickerPage()),
+        );
+    if (targets == null || targets.isEmpty) return;
+    var ok = 0;
+    for (final t in targets) {
+      try {
+        await ChatApi.forward(
+          (m['id'] as num).toInt(),
+          (t['conversation_id'] as num).toInt(),
+        );
+        ok++;
+      } catch (_) {}
+    }
+    if (ok == targets.length) {
+      AppSnack.success(
+        'هدایت شد',
+        toPersianDigits('پیام به $ok گفتگو فرستاده شد'),
+      );
+    } else {
+      AppSnack.error(
+        'هدایت',
+        toPersianDigits('$ok از ${targets.length} گفتگو موفق بود'),
+      );
+    }
+    if (targets.any((t) => (t['conversation_id'] as num).toInt() == _cid))
+      _poll();
+  }
+
+  Future<void> _loadGroupMembers() async {
+    try {
+      final d = await ChatApi.groupMembers(_cid);
+      if (mounted) {
+        _groupMembers = ((d['members'] as List?) ?? [])
+            .map((e) => Map<String, dynamic>.from(e as Map))
+            .toList();
+      }
+    } catch (_) {}
+  }
+
+  /// تایپ: بجِ «در حال نوشتن» برای طرف مقابل (حداکثر هر ۳ ثانیه یک بار) + پیشنهادِ منشن
+  void _onInputChanged() {
+    setState(() {});
+    final text = _input.text;
+    if (text.trim().isNotEmpty &&
+        _editing == null &&
+        DateTime.now().difference(_lastTypingSent).inSeconds >= 3) {
+      _lastTypingSent = DateTime.now();
+      ChatApi.typing(_cid);
+    }
+    _updateMentionOptions();
+  }
+
+  /// منشن در گروه: کلمه‌ی جاری با @ شروع شود → فهرستِ اعضا (مثلِ وب)
+  void _updateMentionOptions() {
+    if (!_isGroup || _groupMembers.isEmpty) {
+      if (_mentionOptions.isNotEmpty) setState(() => _mentionOptions = []);
+      return;
+    }
+    final sel = _input.selection;
+    final cursor = sel.isValid ? sel.baseOffset : _input.text.length;
+    final before = _input.text.substring(
+      0,
+      cursor.clamp(0, _input.text.length),
+    );
+    final at = before.lastIndexOf('@');
+    if (at < 0 || (at > 0 && !RegExp(r'\s').hasMatch(before[at - 1]))) {
+      if (_mentionOptions.isNotEmpty) setState(() => _mentionOptions = []);
+      return;
+    }
+    final q = before.substring(at + 1);
+    if (q.contains('\n') || q.length > 30) {
+      if (_mentionOptions.isNotEmpty) setState(() => _mentionOptions = []);
+      return;
+    }
+    final me = ApiClient.currentUserId;
+    final opts = _groupMembers
+        .where((m) => (m['id'] as num).toInt() != me)
+        .where((m) => (m['full_name'] ?? '').toString().contains(q.trim()))
+        .take(6)
+        .toList();
+    setState(() => _mentionOptions = opts);
+  }
+
+  void _applyMention(Map<String, dynamic> m) {
+    final text = _input.text;
+    final sel = _input.selection;
+    final cursor = sel.isValid ? sel.baseOffset : text.length;
+    final at = text.substring(0, cursor).lastIndexOf('@');
+    if (at < 0) return;
+    final insert = '@${m['full_name']} ';
+    final next = text.replaceRange(at, cursor, insert);
+    _input.value = TextEditingValue(
+      text: next,
+      selection: TextSelection.collapsed(offset: at + insert.length),
+    );
+    setState(() => _mentionOptions = []);
+  }
+
+  /// متنِ پیام با منشن‌های رنگی (@نامِ عضو) — مثلِ highlightMentions وب
+  Widget _messageText(ChatColors cc, String text) {
+    final style = TextStyle(fontSize: 15, height: 1.45, color: cc.text);
+    if (!_isGroup || _groupMembers.isEmpty || !text.contains('@')) {
+      return Text(text, style: style);
+    }
+    final names =
+        _groupMembers
+            .map((m) => '@${m['full_name']}')
+            .where((n) => n.length > 1)
+            .toList()
+          ..sort((a, b) => b.length.compareTo(a.length));
+    final spans = <TextSpan>[];
+    var i = 0;
+    while (i < text.length) {
+      String? hit;
+      for (final n in names) {
+        if (text.startsWith(n, i)) {
+          hit = n;
+          break;
+        }
+      }
+      if (hit != null) {
+        spans.add(
+          TextSpan(
+            text: hit,
+            style: TextStyle(color: cc.link, fontWeight: FontWeight.w600),
+          ),
+        );
+        i += hit.length;
+      } else {
+        final next = text.indexOf('@', i + 1);
+        final end = next < 0 ? text.length : next;
+        spans.add(TextSpan(text: text.substring(i, end)));
+        i = end;
+      }
+    }
+    return Text.rich(TextSpan(children: spans), style: style);
   }
 
   @override
   void dispose() {
     if (ChatConversationPage.openConversationId == _cid)
       ChatConversationPage.openConversationId = null;
-    for (final t in [_pollTimer, _receiptTimer, _pingTimer, _infoTimer]) {
+    for (final t in [
+      _pollTimer,
+      _receiptTimer,
+      _pingTimer,
+      _infoTimer,
+      _extrasTimer,
+    ]) {
       t?.cancel();
     }
     _input.dispose();
@@ -137,7 +365,10 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
       final me = list.firstWhereOrNull(
         (c) => (c['conversation_id'] as num).toInt() == _cid,
       );
-      if (me != null && mounted) setState(() => _conv = me);
+      if (me != null && mounted) {
+        setState(() => _conv = me);
+        if (_isGroup && _groupMembers.isEmpty) _loadGroupMembers();
+      }
     } catch (_) {}
   }
 
@@ -354,30 +585,7 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
     }
   }
 
-  Future<void> _openFile(Map a) async {
-    final id = (a['id'] as num).toInt();
-    AppSnack.info('دانلود', 'در حال دریافت فایل…');
-    try {
-      final dir = await getTemporaryDirectory();
-      final name = (a['original_name'] ?? 'file').toString().replaceAll(
-        RegExp(r'[\\/:*?"<>|]'),
-        '_',
-      );
-      final path = '${dir.path}${Platform.pathSeparator}chat_${id}_$name';
-      if (!File(path).existsSync()) {
-        await ApiClient.dio.download(
-          '/api/chat/download.php',
-          path,
-          queryParameters: {'id': id},
-        );
-      }
-      final r = await OpenFilex.open(path);
-      if (r.type != ResultType.done)
-        AppSnack.error('خطا', 'برنامه‌ای برای باز کردن این فایل پیدا نشد');
-    } catch (_) {
-      AppSnack.error('خطا', 'دریافت فایل ناموفق بود');
-    }
-  }
+  Future<void> _openFile(Map a) => openChatAttachment(a);
 
   void _showActions(Map<String, dynamic> m) {
     final own = m['is_own'] == true;
@@ -396,8 +604,52 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const SizedBox(height: 6),
+              // ردیفِ واکنشِ سریع (مثلِ تلگرام/وب)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: ChatApi.quickReactions.map((e) {
+                    final mine = ((m['reactions'] as List?) ?? []).any(
+                      (r) => r['emoji'] == e && r['reacted_by_me'] == true,
+                    );
+                    return InkWell(
+                      borderRadius: BorderRadius.circular(24),
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        _react(m, e);
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: mine
+                              ? c.primary.withValues(alpha: 0.15)
+                              : null,
+                        ),
+                        child: Text(e, style: const TextStyle(fontSize: 26)),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+              const Divider(height: 1),
               _action(ctx, Icons.reply_rounded, 'پاسخ', () => _startReply(m)),
+              _action(ctx, Icons.shortcut_rounded, 'هدایت', () => _forward(m)),
+              if (_canPin)
+                (_pinned != null && _pinned!['id'] == m['id'])
+                    ? _action(
+                        ctx,
+                        Icons.push_pin_outlined,
+                        'برداشتن سنجاق',
+                        _unpin,
+                      )
+                    : _action(
+                        ctx,
+                        Icons.push_pin_rounded,
+                        'سنجاق',
+                        () => _pinMessage(m),
+                      ),
               if (text.isNotEmpty)
                 _action(ctx, Icons.copy_rounded, 'کپی متن', () {
                   Clipboard.setData(ClipboardData(text: text));
@@ -475,8 +727,12 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
   // ───────────────────────── نما ─────────────────────────
 
   String _subtitle() {
-    if (_isGroup) return toPersianDigits('${_conv['member_count'] ?? ''} عضو');
-    if (_conv['other_user_is_typing'] == true) return 'در حال نوشتن…';
+    if (_isGroup) {
+      if (_otherTyping) return 'کسی در حال نوشتن است…';
+      return toPersianDigits('${_conv['member_count'] ?? ''} عضو');
+    }
+    if (_otherTyping || _conv['other_user_is_typing'] == true)
+      return 'در حال نوشتن…';
     if (_conv['other_user_is_online'] == true) return 'آنلاین';
     return chatLastSeen(_conv['other_user_last_seen_at']?.toString());
   }
@@ -719,7 +975,7 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
     final cc = ChatColors.of(context);
     final title = (_conv['title'] ?? '').toString();
     final sub = _subtitle();
-    final live = sub == 'آنلاین' || sub == 'در حال نوشتن…';
+    final live = sub == 'آنلاین' || sub.contains('در حال نوشتن');
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
@@ -812,6 +1068,7 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
         ),
         body: Column(
           children: [
+            if (_pinned != null && !_searching) _pinnedBar(c),
             Expanded(
               child: Stack(
                 children: [
@@ -821,6 +1078,7 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
                 ],
               ),
             ),
+            if (!_searching && _mentionOptions.isNotEmpty) _mentionList(c),
             if (!_searching) _composer(c, cc),
           ],
         ),
@@ -1055,11 +1313,10 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
           if (text.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 1),
-              child: Text(
-                text,
-                style: TextStyle(fontSize: 15, height: 1.45, color: cc.text),
-              ),
+              child: _messageText(cc, text),
             ),
+          if (((m['reactions'] as List?) ?? []).isNotEmpty)
+            _reactionChips(c, cc, m, own),
           const SizedBox(height: 2),
           Row(
             mainAxisSize: MainAxisSize.min,
@@ -1077,6 +1334,136 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  /// تراشه‌های واکنش زیرِ متن (ایموجی + تعداد)؛ لمس = تاگلِ همان ایموجی
+  Widget _reactionChips(
+    AppColors c,
+    ChatColors cc,
+    Map<String, dynamic> m,
+    bool own,
+  ) {
+    final list = ((m['reactions'] as List?) ?? []).cast<Map>();
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Wrap(
+        spacing: 4,
+        runSpacing: 4,
+        children: list.map((r) {
+          final mine = r['reacted_by_me'] == true;
+          return GestureDetector(
+            onTap: () => _react(m, r['emoji'].toString()),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+              decoration: BoxDecoration(
+                color: mine
+                    ? (own ? cc.ownMeta : c.primary)
+                    : (own ? cc.ownMeta : c.primary).withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Text(
+                '${r['emoji']} ${toPersianDigits('${r['count']}')}',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  color: mine ? Colors.white : cc.text,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  /// نوارِ پیامِ سنجاق‌شده بالای گفتگو — لمس: پرش به پیام؛ × فقط برای کسی که اجازه دارد
+  Widget _pinnedBar(AppColors c) {
+    final p = _pinned!;
+    final snippet = (p['snippet'] ?? '').toString();
+    return Material(
+      color: c.surface,
+      child: InkWell(
+        onTap: () => _jumpTo((p['id'] as num).toInt()),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(12, 6, 4, 6),
+          decoration: BoxDecoration(
+            border: Border(bottom: BorderSide(color: c.borderSoft)),
+          ),
+          child: Row(
+            children: [
+              Container(width: 3, height: 34, color: c.primary),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'پیام سنجاق‌شده',
+                      style: TextStyle(
+                        color: c.primary,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12.5,
+                      ),
+                    ),
+                    Text(
+                      snippet.isEmpty ? '📎 فایل' : snippet,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 13, color: c.textStrong),
+                    ),
+                  ],
+                ),
+              ),
+              if (_canPin)
+                IconButton(
+                  icon: Icon(Icons.close_rounded, size: 20, color: c.textMuted),
+                  tooltip: 'برداشتن سنجاق',
+                  onPressed: _unpin,
+                )
+              else
+                Padding(
+                  padding: const EdgeInsets.all(10),
+                  child: Icon(
+                    Icons.push_pin_rounded,
+                    size: 18,
+                    color: c.textMuted,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// پیشنهادِ منشن بالای کادرِ نوشتن
+  Widget _mentionList(AppColors c) {
+    return Container(
+      constraints: const BoxConstraints(maxHeight: 220),
+      decoration: BoxDecoration(
+        color: c.surface,
+        border: Border(top: BorderSide(color: c.borderSoft)),
+      ),
+      child: ListView(
+        shrinkWrap: true,
+        padding: EdgeInsets.zero,
+        children: _mentionOptions
+            .map(
+              (m) => ListTile(
+                dense: true,
+                leading: ChatAvatar(
+                  name: (m['full_name'] ?? '').toString(),
+                  imageUrl: m['avatar_url']?.toString(),
+                  colorSeed: m['id'],
+                  size: 32,
+                ),
+                title: Text((m['full_name'] ?? '').toString()),
+                onTap: () => _applyMention(m),
+              ),
+            )
+            .toList(),
       ),
     );
   }
