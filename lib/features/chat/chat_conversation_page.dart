@@ -14,6 +14,7 @@ import '../../core/utils/persian_number.dart';
 import '../../core/widgets/app_snack.dart';
 import 'chat_api.dart';
 import 'chat_widgets.dart';
+import 'group_info_page.dart';
 
 /// صفحه‌ی یک گفتگو — به سبکِ تلگرام.
 ///
@@ -27,7 +28,11 @@ class ChatConversationPage extends StatefulWidget {
   /// خودش از سرور گرفته می‌شود
   final Map<String, dynamic>? initial;
 
-  const ChatConversationPage({super.key, required this.conversationId, this.initial});
+  const ChatConversationPage({
+    super.key,
+    required this.conversationId,
+    this.initial,
+  });
 
   /// گفتگویی که همین الان باز است (برای اینکه شِل/اعلان دوباره بازش نکند)
   static int? openConversationId;
@@ -68,7 +73,8 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
 
   int get _cid => widget.conversationId;
   bool get _isGroup => (_conv['type'] ?? 'direct') != 'direct';
-  int get _lastId => _messages.isEmpty ? 0 : (_messages.last['id'] as num).toInt();
+  int get _lastId =>
+      _messages.isEmpty ? 0 : (_messages.last['id'] as num).toInt();
 
   @override
   void initState() {
@@ -77,19 +83,31 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
     _conv = Map<String, dynamic>.from(widget.initial ?? {});
     _scroll.addListener(_onScroll);
     _input.addListener(() => setState(() {}));
-    ChatApi.authHeaders().then((h) => mounted ? setState(() => _headers = h) : null);
+    ChatApi.authHeaders().then(
+      (h) => mounted ? setState(() => _headers = h) : null,
+    );
     _loadInfo();
     _loadInitial();
     ChatApi.ping();
     _pollTimer = Timer.periodic(const Duration(seconds: 3), (_) => _poll());
-    _receiptTimer = Timer.periodic(const Duration(seconds: 6), (_) => _loadReceipts());
-    _pingTimer = Timer.periodic(const Duration(seconds: 50), (_) => ChatApi.ping());
-    _infoTimer = Timer.periodic(const Duration(seconds: 20), (_) => _loadInfo());
+    _receiptTimer = Timer.periodic(
+      const Duration(seconds: 6),
+      (_) => _loadReceipts(),
+    );
+    _pingTimer = Timer.periodic(
+      const Duration(seconds: 50),
+      (_) => ChatApi.ping(),
+    );
+    _infoTimer = Timer.periodic(
+      const Duration(seconds: 20),
+      (_) => _loadInfo(),
+    );
   }
 
   @override
   void dispose() {
-    if (ChatConversationPage.openConversationId == _cid) ChatConversationPage.openConversationId = null;
+    if (ChatConversationPage.openConversationId == _cid)
+      ChatConversationPage.openConversationId = null;
     for (final t in [_pollTimer, _receiptTimer, _pingTimer, _infoTimer]) {
       t?.cancel();
     }
@@ -105,7 +123,9 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
   Future<void> _loadInfo() async {
     try {
       final list = await ChatApi.conversations();
-      final me = list.firstWhereOrNull((c) => (c['conversation_id'] as num).toInt() == _cid);
+      final me = list.firstWhereOrNull(
+        (c) => (c['conversation_id'] as num).toInt() == _cid,
+      );
       if (me != null && mounted) setState(() => _conv = me);
     } catch (_) {}
   }
@@ -119,8 +139,11 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
     try {
       final data = await ChatApi.messages(_cid, limit: 40);
       _absorbDates(data);
-      final list = (data['messages'] as List).map((e) => Map<String, dynamic>.from(e as Map)).toList()
-        ..sort((a, b) => (a['id'] as num).compareTo(b['id'] as num));
+      final list =
+          (data['messages'] as List)
+              .map((e) => Map<String, dynamic>.from(e as Map))
+              .toList()
+            ..sort((a, b) => (a['id'] as num).compareTo(b['id'] as num));
       if (!mounted) return;
       setState(() {
         _messages
@@ -147,7 +170,9 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
       // after_id: سرور همین پیام‌های تازه را «خوانده‌شده» هم ثبت می‌کند
       final data = await ChatApi.messages(_cid, afterId: _lastId, limit: 100);
       _absorbDates(data);
-      final list = (data['messages'] as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      final list = (data['messages'] as List)
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
       if (list.isEmpty || !mounted) return;
       final known = _messages.map((m) => m['id']).toSet();
       setState(() {
@@ -161,8 +186,14 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
     if (_loadingOlder || !_hasMore || _messages.isEmpty) return;
     setState(() => _loadingOlder = true);
     try {
-      final data = await ChatApi.messages(_cid, beforeId: (_messages.first['id'] as num).toInt(), limit: 40);
-      final list = (data['messages'] as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      final data = await ChatApi.messages(
+        _cid,
+        beforeId: (_messages.first['id'] as num).toInt(),
+        limit: 40,
+      );
+      final list = (data['messages'] as List)
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
       if (!mounted) return;
       setState(() {
         final known = _messages.map((m) => m['id']).toSet();
@@ -183,7 +214,8 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
 
   void _onScroll() {
     // لیست برعکس است: بالای صفحه = انتهای اسکرول
-    if (_scroll.position.pixels >= _scroll.position.maxScrollExtent - 400) _loadOlder();
+    if (_scroll.position.pixels >= _scroll.position.maxScrollExtent - 400)
+      _loadOlder();
   }
 
   // ───────────────────────── اقدام‌ها ─────────────────────────
@@ -199,11 +231,14 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
       if (res == null) return;
       final tooBig = res.files.where((f) => f.size > 20 * 1024 * 1024).length;
       setState(() {
-        _files.addAll(res.files
-            .where((f) => f.bytes != null && f.size <= 20 * 1024 * 1024)
-            .map((f) => ChatUpload(f.name, f.bytes!)));
+        _files.addAll(
+          res.files
+              .where((f) => f.bytes != null && f.size <= 20 * 1024 * 1024)
+              .map((f) => ChatUpload(f.name, f.bytes!)),
+        );
       });
-      if (tooBig > 0) AppSnack.error('فایل بزرگ', 'حجم هر فایل حداکثر ۲۰ مگابایت است');
+      if (tooBig > 0)
+        AppSnack.error('فایل بزرگ', 'حجم هر فایل حداکثر ۲۰ مگابایت است');
     } catch (_) {
       AppSnack.error('خطا', 'انتخاب فایل ناموفق بود');
     }
@@ -213,7 +248,12 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
     final text = _input.text.trim();
     if (_editing != null) return _saveEdit(text);
     if (text.isEmpty && _files.isEmpty) return;
-    final p = _Pending(DateTime.now().microsecondsSinceEpoch, text, _replyTo, List.of(_files));
+    final p = _Pending(
+      DateTime.now().microsecondsSinceEpoch,
+      text,
+      _replyTo,
+      List.of(_files),
+    );
     setState(() {
       _pending.add(p);
       _input.clear();
@@ -222,8 +262,12 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
     });
     _jumpToBottom();
     try {
-      await ChatApi.send(_cid, text,
-          replyToId: p.replyTo == null ? null : (p.replyTo!['id'] as num).toInt(), files: p.files);
+      await ChatApi.send(
+        _cid,
+        text,
+        replyToId: p.replyTo == null ? null : (p.replyTo!['id'] as num).toInt(),
+        files: p.files,
+      );
       await _poll();
     } catch (e) {
       AppSnack.error('ارسال نشد', e.toString());
@@ -277,7 +321,10 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
     _focus.requestFocus();
   }
 
-  Future<void> _delete(Map<String, dynamic> m, {required bool forEveryone}) async {
+  Future<void> _delete(
+    Map<String, dynamic> m, {
+    required bool forEveryone,
+  }) async {
     try {
       await ChatApi.delete((m['id'] as num).toInt(), forEveryone: forEveryone);
       setState(() => _messages.removeWhere((x) => x['id'] == m['id']));
@@ -288,7 +335,11 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
 
   void _jumpToBottom() {
     if (_scroll.hasClients) {
-      _scroll.animateTo(0, duration: const Duration(milliseconds: 200), curve: Curves.easeOut);
+      _scroll.animateTo(
+        0,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+      );
     }
   }
 
@@ -297,13 +348,21 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
     AppSnack.info('دانلود', 'در حال دریافت فایل…');
     try {
       final dir = await getTemporaryDirectory();
-      final name = (a['original_name'] ?? 'file').toString().replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+      final name = (a['original_name'] ?? 'file').toString().replaceAll(
+        RegExp(r'[\\/:*?"<>|]'),
+        '_',
+      );
       final path = '${dir.path}${Platform.pathSeparator}chat_${id}_$name';
       if (!File(path).existsSync()) {
-        await ApiClient.dio.download('/api/chat/download.php', path, queryParameters: {'id': id});
+        await ApiClient.dio.download(
+          '/api/chat/download.php',
+          path,
+          queryParameters: {'id': id},
+        );
       }
       final r = await OpenFilex.open(path);
-      if (r.type != ResultType.done) AppSnack.error('خطا', 'برنامه‌ای برای باز کردن این فایل پیدا نشد');
+      if (r.type != ResultType.done)
+        AppSnack.error('خطا', 'برنامه‌ای برای باز کردن این فایل پیدا نشد');
     } catch (_) {
       AppSnack.error('خطا', 'دریافت فایل ناموفق بود');
     }
@@ -317,7 +376,9 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
     showModalBottomSheet(
       context: context,
       backgroundColor: c.surface,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(18))),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
       builder: (ctx) => Directionality(
         textDirection: TextDirection.rtl,
         child: SafeArea(
@@ -331,11 +392,23 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
                   Clipboard.setData(ClipboardData(text: text));
                   AppSnack.success('کپی شد', 'متن پیام کپی شد');
                 }),
-              if (own && text.isNotEmpty) _action(ctx, Icons.edit_rounded, 'ویرایش', () => _startEdit(m)),
-              _action(ctx, Icons.delete_outline_rounded, 'حذف برای من', () => _delete(m, forEveryone: false),
-                  danger: true),
+              if (own && text.isNotEmpty)
+                _action(ctx, Icons.edit_rounded, 'ویرایش', () => _startEdit(m)),
+              _action(
+                ctx,
+                Icons.delete_outline_rounded,
+                'حذف برای من',
+                () => _delete(m, forEveryone: false),
+                danger: true,
+              ),
               if (own || _conv['is_owner'] == true)
-                _action(ctx, Icons.delete_forever_rounded, 'حذف برای همه', () => _confirmDeleteAll(m), danger: true),
+                _action(
+                  ctx,
+                  Icons.delete_forever_rounded,
+                  'حذف برای همه',
+                  () => _confirmDeleteAll(m),
+                  danger: true,
+                ),
             ],
           ),
         ),
@@ -343,7 +416,13 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
     );
   }
 
-  Widget _action(BuildContext ctx, IconData icon, String label, VoidCallback onTap, {bool danger = false}) {
+  Widget _action(
+    BuildContext ctx,
+    IconData icon,
+    String label,
+    VoidCallback onTap, {
+    bool danger = false,
+  }) {
     final color = danger ? Colors.red : null;
     return ListTile(
       leading: Icon(icon, color: color),
@@ -362,9 +441,14 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
         textDirection: TextDirection.rtl,
         child: AlertDialog(
           title: const Text('حذف برای همه'),
-          content: const Text('این پیام برای همهٔ اعضای گفتگو حذف می‌شود. ادامه می‌دهید؟'),
+          content: const Text(
+            'این پیام برای همهٔ اعضای گفتگو حذف می‌شود. ادامه می‌دهید؟',
+          ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('انصراف')),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('انصراف'),
+            ),
             TextButton(
               onPressed: () => Navigator.pop(ctx, true),
               style: TextButton.styleFrom(foregroundColor: Colors.red),
@@ -383,12 +467,22 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
     if (_isGroup) return toPersianDigits('${_conv['member_count'] ?? ''} عضو');
     if (_conv['other_user_is_typing'] == true) return 'در حال نوشتن…';
     if (_conv['other_user_is_online'] == true) return 'آنلاین';
-    final seen = _conv['other_user_last_seen_at']?.toString();
-    if (seen == null || seen.length < 16) return 'اخیراً دیده شده';
-    if (ChatApi.serverDate.isNotEmpty && seen.startsWith(ChatApi.serverDate)) {
-      return 'آخرین بازدید ${chatTime(seen)}';
+    return chatLastSeen(_conv['other_user_last_seen_at']?.toString());
+  }
+
+  /// لمسِ نوارِ بالا در گروه → اطلاعات گروه (مرحله‌ی ۲)
+  Future<void> _openInfo() async {
+    if (!_isGroup) return;
+    final r = await Navigator.of(context).push<String>(
+      MaterialPageRoute(builder: (_) => GroupInfoPage(conversationId: _cid)),
+    );
+    if (!mounted) return;
+    if (r == 'left') {
+      Navigator.of(context).pop();
+      return;
     }
-    return 'آخرین بازدید ${toPersianDigits(seen.substring(5, 10).replaceAll('-', '/'))}';
+    _loadInfo();
+    _poll();
   }
 
   String _dayLabel(String j) {
@@ -412,28 +506,54 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
           backgroundColor: c.surface,
           elevation: 0.5,
           titleSpacing: 0,
-          title: Row(
-            children: [
-              ChatAvatar(
-                name: title,
-                imageUrl: _conv['avatar_url']?.toString(),
-                colorSeed: _conv['other_user_id'] ?? _cid,
-                isGroup: _isGroup,
-                size: 40,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(title, maxLines: 1, overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: c.textStrong)),
-                    Text(sub, style: TextStyle(fontSize: 12, color: live ? c.primary : c.textMuted)),
-                  ],
+          title: GestureDetector(
+            onTap: _openInfo,
+            behavior: HitTestBehavior.opaque,
+            child: Row(
+              children: [
+                ChatAvatar(
+                  name: title,
+                  imageUrl: _conv['avatar_url']?.toString(),
+                  colorSeed: _conv['other_user_id'] ?? _cid,
+                  isGroup: _isGroup,
+                  size: 40,
                 ),
-              ),
-            ],
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: c.textStrong,
+                        ),
+                      ),
+                      Text(
+                        sub,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: live ? c.primary : c.textMuted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
+          actions: [
+            if (_isGroup)
+              IconButton(
+                icon: const Icon(Icons.info_outline_rounded),
+                tooltip: 'اطلاعات گروه',
+                onPressed: _openInfo,
+              ),
+          ],
         ),
         body: Column(
           children: [
@@ -449,16 +569,22 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_error != null && _messages.isEmpty) {
       return Center(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Text(_error!, style: TextStyle(color: c.textMuted)),
-          TextButton(onPressed: () {
-            setState(() {
-              _loading = true;
-              _error = null;
-            });
-            _loadInitial();
-          }, child: const Text('تلاش دوباره')),
-        ]),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(_error!, style: TextStyle(color: c.textMuted)),
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  _loading = true;
+                  _error = null;
+                });
+                _loadInitial();
+              },
+              child: const Text('تلاش دوباره'),
+            ),
+          ],
+        ),
       );
     }
 
@@ -481,8 +607,14 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
       return Center(
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          decoration: BoxDecoration(color: cc.dateChip, borderRadius: BorderRadius.circular(14)),
-          child: Text('هنوز پیامی نیست. اولین پیام را بفرستید 👋', style: TextStyle(color: cc.dateChipText)),
+          decoration: BoxDecoration(
+            color: cc.dateChip,
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Text(
+            'هنوز پیامی نیست. اولین پیام را بفرستید 👋',
+            style: TextStyle(color: cc.dateChipText),
+          ),
         ),
       );
     }
@@ -496,7 +628,13 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
         if (i == items.length) {
           return const Padding(
             padding: EdgeInsets.all(12),
-            child: Center(child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))),
+            child: Center(
+              child: SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
           );
         }
         final e = items[i];
@@ -505,23 +643,38 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
         final m = e as Map<String, dynamic>;
         // آواتار فقط برای آخرین پیامِ یک «دنباله» از همان فرستنده (مثلِ تلگرام)
         final newer = i > 0 ? items[i - 1] : null;
-        final lastOfRun = newer is! Map<String, dynamic> || newer['user_id'] != m['user_id'];
+        final lastOfRun =
+            newer is! Map<String, dynamic> || newer['user_id'] != m['user_id'];
         return _messageRow(c, cc, m, lastOfRun);
       },
     );
   }
 
   Widget _dayChip(ChatColors cc, String label) => Center(
-        child: Container(
-          margin: const EdgeInsets.symmetric(vertical: 8),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          decoration: BoxDecoration(color: cc.dateChip, borderRadius: BorderRadius.circular(12)),
-          child: Text(toPersianDigits(label),
-              style: TextStyle(color: cc.dateChipText, fontSize: 12, fontWeight: FontWeight.w600)),
+    child: Container(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      decoration: BoxDecoration(
+        color: cc.dateChip,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        toPersianDigits(label),
+        style: TextStyle(
+          color: cc.dateChipText,
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
         ),
-      );
+      ),
+    ),
+  );
 
-  Widget _messageRow(AppColors c, ChatColors cc, Map<String, dynamic> m, bool lastOfRun) {
+  Widget _messageRow(
+    AppColors c,
+    ChatColors cc,
+    Map<String, dynamic> m,
+    bool lastOfRun,
+  ) {
     if (m['type'] == 'system') {
       return _dayChip(cc, (m['message'] ?? '').toString());
     }
@@ -537,7 +690,9 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
     return Padding(
       padding: EdgeInsets.only(bottom: lastOfRun ? 6 : 2),
       child: Row(
-        mainAxisAlignment: own ? MainAxisAlignment.start : MainAxisAlignment.end,
+        mainAxisAlignment: own
+            ? MainAxisAlignment.start
+            : MainAxisAlignment.end,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           Flexible(child: bubble),
@@ -557,7 +712,13 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
     );
   }
 
-  Widget _bubble(AppColors c, ChatColors cc, Map<String, dynamic> m, bool own, bool lastOfRun) {
+  Widget _bubble(
+    AppColors c,
+    ChatColors cc,
+    Map<String, dynamic> m,
+    bool own,
+    bool lastOfRun,
+  ) {
     final maxW = MediaQuery.sizeOf(context).width * 0.78;
     final text = (m['message'] ?? '').toString();
     final atts = (m['attachments'] as List? ?? []).cast<Map>();
@@ -580,7 +741,13 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
           bottomStart: own && lastOfRun ? tail : r,
           bottomEnd: !own && lastOfRun ? tail : r,
         ),
-        boxShadow: const [BoxShadow(color: Color(0x14000000), blurRadius: 2, offset: Offset(0, 1))],
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x14000000),
+            blurRadius: 2,
+            offset: Offset(0, 1),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -589,13 +756,26 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
           if (_isGroup && !own)
             Padding(
               padding: const EdgeInsets.only(bottom: 2),
-              child: Text((m['user_name'] ?? '').toString(),
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: chatPersonColor(m['user_id']))),
+              child: Text(
+                (m['user_name'] ?? '').toString(),
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                  color: chatPersonColor(m['user_id']),
+                ),
+              ),
             ),
           if (fwd != null && fwd.toString().isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(bottom: 3),
-              child: Text('هدایت‌شده از $fwd', style: TextStyle(fontSize: 12, color: cc.link, fontStyle: FontStyle.italic)),
+              child: Text(
+                'هدایت‌شده از $fwd',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: cc.link,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
             ),
           if (reply != null) _replyQuote(cc, reply, own),
           ...images.map((a) => _imageAttachment(a)),
@@ -603,15 +783,24 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
           if (text.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 1),
-              child: Text(text, style: TextStyle(fontSize: 15, height: 1.45, color: cc.text)),
+              child: Text(
+                text,
+                style: TextStyle(fontSize: 15, height: 1.45, color: cc.text),
+              ),
             ),
           const SizedBox(height: 2),
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               if (m['is_edited'] == true)
-                Text('ویرایش‌شده  ', style: TextStyle(fontSize: 10.5, color: meta)),
-              Text(chatTime(m['created_at']?.toString()), style: TextStyle(fontSize: 11, color: meta)),
+                Text(
+                  'ویرایش‌شده  ',
+                  style: TextStyle(fontSize: 10.5, color: meta),
+                ),
+              Text(
+                chatTime(m['created_at']?.toString()),
+                style: TextStyle(fontSize: 11, color: meta),
+              ),
               if (own) ...[const SizedBox(width: 3), _ticks(cc, m)],
             ],
           ),
@@ -624,16 +813,27 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
     final id = (m['id'] as num).toInt();
     final seen = _receipts.values.where((v) => v >= id).length;
     if (seen == 0) return Icon(Icons.done_rounded, size: 15, color: cc.ownMeta);
-    return Row(mainAxisSize: MainAxisSize.min, children: [
-      Icon(Icons.done_all_rounded, size: 15, color: cc.readTick),
-      if (_isGroup && seen > 1) Text(toPersianDigits('$seen'), style: TextStyle(fontSize: 10, color: cc.readTick)),
-    ]);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.done_all_rounded, size: 15, color: cc.readTick),
+        if (_isGroup && seen > 1)
+          Text(
+            toPersianDigits('$seen'),
+            style: TextStyle(fontSize: 10, color: cc.readTick),
+          ),
+      ],
+    );
   }
 
   Widget _replyQuote(ChatColors cc, Map reply, bool own) {
     final name = (reply['user_name'] ?? '').toString();
     final deleted = reply['is_deleted'] == true;
-    final snippet = deleted ? 'پیام حذف شده' : ((reply['snippet'] ?? '').toString().isEmpty ? '📎 فایل' : reply['snippet'].toString());
+    final snippet = deleted
+        ? 'پیام حذف شده'
+        : ((reply['snippet'] ?? '').toString().isEmpty
+              ? '📎 فایل'
+              : reply['snippet'].toString());
     final color = chatPersonColor(name);
     return Container(
       margin: const EdgeInsets.only(bottom: 4),
@@ -647,9 +847,23 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(name, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: color)),
-          Text(snippet, maxLines: 1, overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 12.5, color: cc.text.withValues(alpha: 0.75))),
+          Text(
+            name,
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+          Text(
+            snippet,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 12.5,
+              color: cc.text.withValues(alpha: 0.75),
+            ),
+          ),
         ],
       ),
     );
@@ -679,7 +893,12 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
                     loadingBuilder: (_, child, p) => p == null
                         ? child
                         : const SizedBox(
-                            width: 200, height: 150, child: Center(child: CircularProgressIndicator(strokeWidth: 2))),
+                            width: 200,
+                            height: 150,
+                            child: Center(
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          ),
                   ),
           ),
         ),
@@ -699,17 +918,34 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
             CircleAvatar(
               radius: 21,
               backgroundColor: own ? cc.ownMeta : c.primary,
-              child: const Icon(Icons.insert_drive_file_rounded, color: Colors.white, size: 20),
+              child: const Icon(
+                Icons.insert_drive_file_rounded,
+                color: Colors.white,
+                size: 20,
+              ),
             ),
             const SizedBox(width: 10),
             Flexible(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(name, maxLines: 2, overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: cc.text)),
-                  Text(chatFileSize((a['file_size'] as num? ?? 0).toInt()),
-                      style: TextStyle(fontSize: 11.5, color: own ? cc.ownMeta : cc.otherMeta)),
+                  Text(
+                    name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w600,
+                      color: cc.text,
+                    ),
+                  ),
+                  Text(
+                    chatFileSize((a['file_size'] as num? ?? 0).toInt()),
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: own ? cc.ownMeta : cc.otherMeta,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -737,12 +973,26 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (p.replyTo != null) _replyQuote(cc, {
-                  'user_name': p.replyTo!['user_name'],
-                  'snippet': p.replyTo!['message'],
-                }, true),
-                ...p.files.map((f) => Text('📎 ${f.name}', style: TextStyle(color: cc.text, fontSize: 13))),
-                if (p.text.isNotEmpty) Text(p.text, style: TextStyle(fontSize: 15, height: 1.45, color: cc.text)),
+                if (p.replyTo != null)
+                  _replyQuote(cc, {
+                    'user_name': p.replyTo!['user_name'],
+                    'snippet': p.replyTo!['message'],
+                  }, true),
+                ...p.files.map(
+                  (f) => Text(
+                    '📎 ${f.name}',
+                    style: TextStyle(color: cc.text, fontSize: 13),
+                  ),
+                ),
+                if (p.text.isNotEmpty)
+                  Text(
+                    p.text,
+                    style: TextStyle(
+                      fontSize: 15,
+                      height: 1.45,
+                      color: cc.text,
+                    ),
+                  ),
                 Icon(Icons.schedule_rounded, size: 13, color: cc.ownMeta),
               ],
             ),
@@ -767,21 +1017,37 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
                 padding: const EdgeInsets.fromLTRB(8, 6, 12, 0),
                 child: Row(
                   children: [
-                    Icon(_editing != null ? Icons.edit_rounded : Icons.reply_rounded, color: c.primary),
+                    Icon(
+                      _editing != null
+                          ? Icons.edit_rounded
+                          : Icons.reply_rounded,
+                      color: c.primary,
+                    ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            _editing != null ? 'ویرایش پیام' : 'پاسخ به ${ref['user_name'] ?? ''}',
-                            style: TextStyle(color: c.primary, fontWeight: FontWeight.bold, fontSize: 13),
+                            _editing != null
+                                ? 'ویرایش پیام'
+                                : 'پاسخ به ${ref['user_name'] ?? ''}',
+                            style: TextStyle(
+                              color: c.primary,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
                           ),
                           Text(
-                            (ref['message'] ?? '').toString().isEmpty ? '📎 فایل' : ref['message'].toString(),
+                            (ref['message'] ?? '').toString().isEmpty
+                                ? '📎 فایل'
+                                : ref['message'].toString(),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(color: c.textMuted, fontSize: 12.5),
+                            style: TextStyle(
+                              color: c.textMuted,
+                              fontSize: 12.5,
+                            ),
                           ),
                         ],
                       ),
@@ -802,17 +1068,30 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
                 height: 44,
                 child: ListView(
                   scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
                   children: _files
-                      .map((f) => Padding(
-                            padding: const EdgeInsetsDirectional.only(end: 6),
-                            child: InputChip(
-                              avatar: Icon(f.isImage ? Icons.image_outlined : Icons.insert_drive_file_outlined, size: 16),
-                              label: Text(f.name, overflow: TextOverflow.ellipsis),
-                              onDeleted: () => setState(() => _files.remove(f)),
-                              visualDensity: VisualDensity.compact,
+                      .map(
+                        (f) => Padding(
+                          padding: const EdgeInsetsDirectional.only(end: 6),
+                          child: InputChip(
+                            avatar: Icon(
+                              f.isImage
+                                  ? Icons.image_outlined
+                                  : Icons.insert_drive_file_outlined,
+                              size: 16,
                             ),
-                          ))
+                            label: Text(
+                              f.name,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            onDeleted: () => setState(() => _files.remove(f)),
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        ),
+                      )
                       .toList(),
                 ),
               ),
@@ -839,8 +1118,14 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
                         isDense: true,
                         filled: true,
                         fillColor: c.bgPage,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(22), borderSide: BorderSide.none),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 10,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(22),
+                          borderSide: BorderSide.none,
+                        ),
                       ),
                     ),
                   ),
@@ -849,7 +1134,9 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
                     scale: hasContent ? 1 : 0.85,
                     duration: const Duration(milliseconds: 150),
                     child: Material(
-                      color: hasContent ? c.primary : c.textMuted.withValues(alpha: 0.4),
+                      color: hasContent
+                          ? c.primary
+                          : c.textMuted.withValues(alpha: 0.4),
                       shape: const CircleBorder(),
                       child: InkWell(
                         customBorder: const CircleBorder(),
@@ -858,11 +1145,22 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
                           padding: const EdgeInsets.all(11),
                           child: _sending
                               ? const SizedBox(
-                                  width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                              : Icon(_editing != null ? Icons.check_rounded : Icons.send_rounded,
-                                  color: Colors.white, size: 20,
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : Icon(
+                                  _editing != null
+                                      ? Icons.check_rounded
+                                      : Icons.send_rounded,
+                                  color: Colors.white,
+                                  size: 20,
                                   // در RTL هم فلش رو به جلو (سمت چپ)
-                                  textDirection: TextDirection.rtl),
+                                  textDirection: TextDirection.rtl,
+                                ),
                         ),
                       ),
                     ),
@@ -927,7 +1225,11 @@ class _SwipeToReplyState extends State<_SwipeToReply> {
                 child: CircleAvatar(
                   radius: 15,
                   backgroundColor: Colors.black26,
-                  child: const Icon(Icons.reply_rounded, size: 18, color: Colors.white),
+                  child: const Icon(
+                    Icons.reply_rounded,
+                    size: 18,
+                    color: Colors.white,
+                  ),
                 ),
               ),
             ),
@@ -952,7 +1254,11 @@ class _ImageViewer extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: AppBar(backgroundColor: Colors.black, foregroundColor: Colors.white, elevation: 0),
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        elevation: 0,
+      ),
       body: Center(
         child: InteractiveViewer(
           maxScale: 5,

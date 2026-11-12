@@ -61,15 +61,25 @@ class ChatColors {
 
 /// رنگِ ثابت برای هر شخص/گروه (مثلِ تلگرام) — از روی شناسه یا نام
 const _avatarPalette = [
-  Color(0xFFE17076), Color(0xFF7BC862), Color(0xFFE5CA77), Color(0xFF65AADD),
-  Color(0xFFA695E7), Color(0xFFEE7AAE), Color(0xFF6EC9CB), Color(0xFFFAA774),
+  Color(0xFFE17076),
+  Color(0xFF7BC862),
+  Color(0xFFE5CA77),
+  Color(0xFF65AADD),
+  Color(0xFFA695E7),
+  Color(0xFFEE7AAE),
+  Color(0xFF6EC9CB),
+  Color(0xFFFAA774),
 ];
 
 Color chatPersonColor(Object seed) =>
     _avatarPalette[seed.toString().hashCode.abs() % _avatarPalette.length];
 
 String chatInitials(String name) {
-  final parts = name.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
+  final parts = name
+      .trim()
+      .split(RegExp(r'\s+'))
+      .where((p) => p.isNotEmpty)
+      .toList();
   if (parts.isEmpty) return '؟';
   if (parts.length == 1) return parts.first.characters.first;
   return '${parts.first.characters.first}${parts[1].characters.first}';
@@ -116,15 +126,19 @@ class ChatAvatar extends StatelessWidget {
       alignment: Alignment.center,
       child: url == null
           ? (isGroup
-              ? Icon(Icons.groups_rounded, color: Colors.white, size: size * 0.5)
-              : Text(
-                  chatInitials(name),
-                  style: TextStyle(
+                ? Icon(
+                    Icons.groups_rounded,
                     color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: size * 0.36,
-                  ),
-                ))
+                    size: size * 0.5,
+                  )
+                : Text(
+                    chatInitials(name),
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: size * 0.36,
+                    ),
+                  ))
           : null,
     );
     if (!online) return circle;
@@ -141,7 +155,10 @@ class ChatAvatar extends StatelessWidget {
             decoration: BoxDecoration(
               color: const Color(0xFF4CD964),
               shape: BoxShape.circle,
-              border: Border.all(color: Theme.of(context).scaffoldBackgroundColor, width: 2),
+              border: Border.all(
+                color: Theme.of(context).scaffoldBackgroundColor,
+                width: 2,
+              ),
             ),
           ),
         ),
@@ -160,7 +177,8 @@ String chatTime(String? mysqlDt) {
 String chatListStamp(Map c) {
   final at = c['last_message_at']?.toString();
   if (at == null || at.isEmpty) return '';
-  if (ChatApi.serverDate.isNotEmpty && at.startsWith(ChatApi.serverDate)) return chatTime(at);
+  if (ChatApi.serverDate.isNotEmpty && at.startsWith(ChatApi.serverDate))
+    return chatTime(at);
   final j = c['last_message_jalali']?.toString() ?? '';
   final date = j.split(' ').first;
   // «۱۴۰۵/۰۸/۲۰» → «۰۸/۲۰» (سالِ جاری کوتاه)
@@ -168,8 +186,18 @@ String chatListStamp(Map c) {
   return parts.length == 3 ? '${parts[1]}/${parts[2]}' : date;
 }
 
+/// «آخرین بازدید …» — امروز: ساعت؛ وگرنه ماه/روز (تاریخِ امروز از سرور)
+String chatLastSeen(String? seen) {
+  if (seen == null || seen.length < 16) return 'اخیراً دیده نشده';
+  if (ChatApi.serverDate.isNotEmpty && seen.startsWith(ChatApi.serverDate)) {
+    return 'آخرین بازدید ${chatTime(seen)}';
+  }
+  return 'آخرین بازدید ${toPersianDigits(seen.substring(5, 10).replaceAll('-', '/'))}';
+}
+
 String chatFileSize(int bytes) {
   if (bytes < 1024) return toPersianDigits('$bytes بایت');
-  if (bytes < 1024 * 1024) return toPersianDigits('${(bytes / 1024).toStringAsFixed(0)} کیلوبایت');
+  if (bytes < 1024 * 1024)
+    return toPersianDigits('${(bytes / 1024).toStringAsFixed(0)} کیلوبایت');
   return toPersianDigits('${(bytes / 1024 / 1024).toStringAsFixed(1)} مگابایت');
 }

@@ -18,13 +18,18 @@ import 'new_chat_page.dart';
 class ChatListPage extends StatefulWidget {
   final ValueListenable<int> currentTab;
   final int tabIndex;
-  const ChatListPage({super.key, required this.currentTab, required this.tabIndex});
+  const ChatListPage({
+    super.key,
+    required this.currentTab,
+    required this.tabIndex,
+  });
 
   @override
   State<ChatListPage> createState() => _ChatListPageState();
 }
 
-class _ChatListPageState extends State<ChatListPage> with AutomaticKeepAliveClientMixin {
+class _ChatListPageState extends State<ChatListPage>
+    with AutomaticKeepAliveClientMixin {
   List<Map<String, dynamic>> _items = [];
   bool _loading = true;
   String? _error;
@@ -64,7 +69,10 @@ class _ChatListPageState extends State<ChatListPage> with AutomaticKeepAliveClie
       final list = await ChatApi.conversations();
       // سنجاق‌شده‌ها بالا (آخرین سنجاق اول)، بقیه به ترتیبِ آخرین فعالیت (همان ترتیبِ سرور)
       final pinned = list.where((c) => c['pinned_at'] != null).toList()
-        ..sort((a, b) => b['pinned_at'].toString().compareTo(a['pinned_at'].toString()));
+        ..sort(
+          (a, b) =>
+              b['pinned_at'].toString().compareTo(a['pinned_at'].toString()),
+        );
       final rest = list.where((c) => c['pinned_at'] == null).toList();
       if (mounted) {
         setState(() {
@@ -86,17 +94,21 @@ class _ChatListPageState extends State<ChatListPage> with AutomaticKeepAliveClie
   List<Map<String, dynamic>> get _visibleItems {
     if (_query.trim().isEmpty) return _items;
     return rankBySearch<Map<String, dynamic>>(
-      _items.where((c) => searchMatches(_query, [(c['title'] ?? '').toString()])),
+      _items.where(
+        (c) => searchMatches(_query, [(c['title'] ?? '').toString()]),
+      ),
       _query,
       (c) => [(c['title'] ?? '').toString()],
     );
   }
 
   Future<void> _open(Map<String, dynamic> c) async {
-    await Get.to(() => ChatConversationPage(
-          conversationId: (c['conversation_id'] as num).toInt(),
-          initial: c,
-        ));
+    await Get.to(
+      () => ChatConversationPage(
+        conversationId: (c['conversation_id'] as num).toInt(),
+        initial: c,
+      ),
+    );
     _load(silent: true);
   }
 
@@ -142,7 +154,11 @@ class _ChatListPageState extends State<ChatListPage> with AutomaticKeepAliveClie
                   onTap: _newChat,
                   child: const Padding(
                     padding: EdgeInsets.all(10),
-                    child: Icon(Icons.edit_rounded, color: Colors.white, size: 20),
+                    child: Icon(
+                      Icons.edit_rounded,
+                      color: Colors.white,
+                      size: 20,
+                    ),
                   ),
                 ),
               ),
@@ -172,7 +188,11 @@ class _ChatListPageState extends State<ChatListPage> with AutomaticKeepAliveClie
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.forum_outlined, size: 56, color: c.textMuted.withValues(alpha: 0.5)),
+            Icon(
+              Icons.forum_outlined,
+              size: 56,
+              color: c.textMuted.withValues(alpha: 0.5),
+            ),
             const SizedBox(height: 10),
             Text(
               _query.isEmpty ? 'هنوز گفتگویی ندارید' : 'گفتگویی پیدا نشد',
@@ -193,7 +213,8 @@ class _ChatListPageState extends State<ChatListPage> with AutomaticKeepAliveClie
       child: ListView.separated(
         padding: EdgeInsets.only(bottom: navBarFootprint(context)),
         itemCount: items.length,
-        separatorBuilder: (_, _) => Divider(height: 1, indent: 82, color: c.borderSoft),
+        separatorBuilder: (_, _) =>
+            Divider(height: 1, indent: 82, color: c.borderSoft),
         itemBuilder: (_, i) => _tile(c, items[i]),
       ),
     );
@@ -231,7 +252,11 @@ class _ChatListPageState extends State<ChatListPage> with AutomaticKeepAliveClie
                   Row(
                     children: [
                       if (isGroup) ...[
-                        Icon(Icons.groups_2_rounded, size: 16, color: c.textMuted),
+                        Icon(
+                          Icons.groups_2_rounded,
+                          size: 16,
+                          color: c.textMuted,
+                        ),
                         const SizedBox(width: 4),
                       ],
                       Expanded(
@@ -239,12 +264,27 @@ class _ChatListPageState extends State<ChatListPage> with AutomaticKeepAliveClie
                           (conv['title'] ?? '').toString(),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: c.textStrong),
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                            color: c.textStrong,
+                          ),
                         ),
                       ),
-                      if (muted) Icon(Icons.volume_off_rounded, size: 15, color: c.textMuted),
+                      if (muted)
+                        Icon(
+                          Icons.volume_off_rounded,
+                          size: 15,
+                          color: c.textMuted,
+                        ),
                       const SizedBox(width: 6),
-                      Text(chatListStamp(conv), style: TextStyle(fontSize: 11.5, color: unread > 0 ? c.primary : c.textMuted)),
+                      Text(
+                        chatListStamp(conv),
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: unread > 0 ? c.primary : c.textMuted,
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 4),
@@ -252,24 +292,45 @@ class _ChatListPageState extends State<ChatListPage> with AutomaticKeepAliveClie
                     children: [
                       Expanded(
                         child: typing
-                            ? Text('در حال نوشتن…', style: TextStyle(color: c.primary, fontSize: 13.5))
+                            ? Text(
+                                'در حال نوشتن…',
+                                style: TextStyle(
+                                  color: c.primary,
+                                  fontSize: 13.5,
+                                ),
+                              )
                             : Text.rich(
-                                TextSpan(children: [
-                                  if (sender.isNotEmpty)
-                                    TextSpan(text: '$sender: ', style: TextStyle(color: c.primary)),
-                                  TextSpan(text: preview),
-                                ]),
+                                TextSpan(
+                                  children: [
+                                    if (sender.isNotEmpty)
+                                      TextSpan(
+                                        text: '$sender: ',
+                                        style: TextStyle(color: c.primary),
+                                      ),
+                                    TextSpan(text: preview),
+                                  ],
+                                ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: TextStyle(color: c.textMuted, fontSize: 13.5),
+                                style: TextStyle(
+                                  color: c.textMuted,
+                                  fontSize: 13.5,
+                                ),
                               ),
                       ),
                       if (conv['pinned_at'] != null && unread == 0)
-                        Icon(Icons.push_pin_rounded, size: 15, color: c.textMuted),
+                        Icon(
+                          Icons.push_pin_rounded,
+                          size: 15,
+                          color: c.textMuted,
+                        ),
                       if (unread > 0)
                         Container(
                           constraints: const BoxConstraints(minWidth: 22),
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
                           decoration: BoxDecoration(
                             color: muted ? c.textMuted : c.primary,
                             borderRadius: BorderRadius.circular(12),
@@ -277,7 +338,11 @@ class _ChatListPageState extends State<ChatListPage> with AutomaticKeepAliveClie
                           child: Text(
                             unread > 999 ? '+۹۹۹' : toPersianDigits('$unread'),
                             textAlign: TextAlign.center,
-                            style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.bold),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ),
                     ],

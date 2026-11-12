@@ -7,6 +7,8 @@ import '../../core/widgets/app_snack.dart';
 import 'chat_api.dart';
 import 'chat_conversation_page.dart';
 import 'chat_widgets.dart';
+import 'group_create_page.dart';
+import 'member_picker_page.dart';
 
 /// شروعِ گفتگوی یک‌به‌یک — جستجوی همکارانِ هم‌سازمان (api/chat/search-users.php)
 /// و باز کردن/ساختنِ گفتگو (api/chat/start.php). برمی‌گرداند true اگر گفتگو باز شد.
@@ -33,7 +35,10 @@ class _NewChatPageState extends State<NewChatPage> {
 
   void _onChanged(String v) {
     _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 300), () => _search(v.trim()));
+    _debounce = Timer(
+      const Duration(milliseconds: 300),
+      () => _search(v.trim()),
+    );
   }
 
   Future<void> _search(String q) async {
@@ -82,6 +87,20 @@ class _NewChatPageState extends State<NewChatPage> {
     }
   }
 
+  Future<void> _newGroup() async {
+    final picked = await Navigator.of(context).push<List<Map<String, dynamic>>>(
+      MaterialPageRoute(
+        builder: (_) =>
+            const MemberPickerPage(title: 'افزودن اعضا', confirmLabel: 'بعدی'),
+      ),
+    );
+    if (picked == null || picked.isEmpty || !mounted) return;
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (_) => GroupCreatePage(members: picked)),
+      result: true,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
@@ -114,12 +133,29 @@ class _NewChatPageState extends State<NewChatPage> {
                 ),
               ),
             ),
-            if (_loading || _starting) const LinearProgressIndicator(minHeight: 2),
+            // گروهِ جدید (مرحله‌ی ۲): انتخابِ اعضا → نام و عکس
+            ListTile(
+              leading: CircleAvatar(
+                radius: 23,
+                backgroundColor: c.primary.withValues(alpha: 0.12),
+                child: Icon(Icons.group_add_rounded, color: c.primary),
+              ),
+              title: Text(
+                'گروه جدید',
+                style: TextStyle(color: c.primary, fontWeight: FontWeight.w600),
+              ),
+              onTap: _newGroup,
+            ),
+            Divider(height: 1, color: c.borderSoft),
+            if (_loading || _starting)
+              const LinearProgressIndicator(minHeight: 2),
             Expanded(
               child: _users.isEmpty
                   ? Center(
                       child: Text(
-                        _ctrl.text.trim().isEmpty ? 'برای شروع، نام همکار را جستجو کنید' : (_loading ? '' : 'کسی پیدا نشد'),
+                        _ctrl.text.trim().isEmpty
+                            ? 'برای شروع، نام همکار را جستجو کنید'
+                            : (_loading ? '' : 'کسی پیدا نشد'),
                         style: TextStyle(color: c.textMuted),
                       ),
                     )
@@ -138,11 +174,21 @@ class _NewChatPageState extends State<NewChatPage> {
                             online: online,
                             size: 46,
                           ),
-                          title: Text((u['full_name'] ?? '').toString(),
-                              style: TextStyle(fontWeight: FontWeight.w600, color: c.textStrong)),
+                          title: Text(
+                            (u['full_name'] ?? '').toString(),
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              color: c.textStrong,
+                            ),
+                          ),
                           subtitle: Text(
-                            online ? 'آنلاین' : (section.isEmpty ? ' ' : section),
-                            style: TextStyle(color: online ? c.primary : c.textMuted, fontSize: 12.5),
+                            online
+                                ? 'آنلاین'
+                                : (section.isEmpty ? ' ' : section),
+                            style: TextStyle(
+                              color: online ? c.primary : c.textMuted,
+                              fontSize: 12.5,
+                            ),
                           ),
                         );
                       },
