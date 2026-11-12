@@ -691,7 +691,12 @@ class _ChatConversationPageState extends State<ChatConversationPage> {
   Future<void> _openInfo() async {
     if (!_isGroup) return;
     final r = await Navigator.of(context).push<String>(
-      MaterialPageRoute(builder: (_) => GroupInfoPage(conversationId: _cid)),
+      MaterialPageRoute(
+        builder: (_) => GroupInfoPage(
+          conversationId: _cid,
+          isMuted: _conv['is_muted'] == true,
+        ),
+      ),
     );
     if (!mounted) return;
     if (r == 'left') {
